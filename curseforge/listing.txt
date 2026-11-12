@@ -8,10 +8,13 @@ Name
     numbers stay out of it: the naming rule forbids them.
 
 Summary
-    Adds a controller cross hotbar to the normal interface: hold LT, RT or both for 32 buttons, with Gamepad UI mode off. A light alternative to ConsolePort.
+    FFXIV-style cross hotbar for controller and gamepad play, in the normal interface. Hold LT, RT or both for 32 slots that take any spell, item or macro. Gamepad UI mode stays off, so targeting and menus stay yours. A light alternative to ConsolePort.
 
-    "ConsolePort" is here because the summary is the only honest place for it: it is what puts the
-    project in front of someone searching for that addon. Drop the last sentence to leave it out.
+    249 characters; the field takes 256. Search matches the summary, so it carries the words people
+    type: controller, gamepad, cross hotbar, FFXIV, ConsolePort. "ConsolePort" is here because the
+    summary is the only honest place for it: it is what puts the project in front of someone
+    searching for that addon. To leave it out, replace the last sentence with
+    "Xbox, PlayStation and Nintendo labels."
 
 Main category        Action Bars
 Additional category  Combat
