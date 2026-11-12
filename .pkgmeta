@@ -1,0 +1,22 @@
+# Build settings for the BigWigs packager (https://github.com/BigWigsMods/packager), which the
+# release workflow runs. The addon lives in the FreeControl/ folder of this repository; everything
+# else here is tooling and is left out of the zip players download.
+package-as: FreeControl
+
+move-folders:
+  FreeControl/FreeControl: FreeControl
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+# The zip ships the addon and its licence, nothing else.
+license-output: LICENSE
+
+ignore:
+  - tools
+  - docs
+  - curseforge
+  - README.md
+  - CHANGELOG.md
+  - "*.code-workspace"

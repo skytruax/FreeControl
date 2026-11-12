@@ -1,0 +1,5 @@
+## Interface: 16001
+## Title: !SimInput (simulator test support)
+## Notes: Test-only helper for wow-ui-sim: secure-origin clicks and CLICK-binding key presses. Not for the real client.
+
+SimInput.lua

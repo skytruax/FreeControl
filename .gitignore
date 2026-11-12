@@ -1,0 +1,13 @@
+# Secrets: API tokens live here and must never be committed
+.env
+.env.*
+
+# Personal editor files
+*.code-workspace
+
+# Generated or downloaded; rebuild with the scripts in tools/
+dist/
+.release/
+tools/sim/out/
+tools/sim/lab/dl-wowless-wowf-data/
+__pycache__/

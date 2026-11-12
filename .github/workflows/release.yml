@@ -1,0 +1,29 @@
+# Pushing a version tag (for example v0.1.0) builds the addon zip, attaches it to a GitHub
+# release, and uploads it to CurseForge.
+#
+# The CurseForge upload needs two things: the project id in FreeControl/FreeControl.toc
+# (## X-Curse-Project-ID) and a repository secret named CF_API_TOKEN holding a CurseForge API
+# token. Without them the workflow still makes the GitHub release.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to create the GitHub release
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out the repository with its tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package and upload
+        uses: BigWigsMods/packager@v2

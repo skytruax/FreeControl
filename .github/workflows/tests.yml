@@ -1,0 +1,29 @@
+# Runs the mock-client test suite (tools/tests) on every push and pull request. It needs no game
+# files: the addon is loaded into Lua 5.1 against a stand-in for the client.
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  mock-client:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lupa (Lua 5.1 embedded in Python)
+        run: pip install lupa==2.8
+
+      - name: Run the tests
+        run: python tools/tests/run.py
