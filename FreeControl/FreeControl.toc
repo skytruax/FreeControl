@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: FreeControl
 ## Notes: Controller cross hotbar (LT / RT / LT+RT) for the normal interface. Does not use Gamepad UI mode.
-## Version: 1.0.0
+## Version: 1.0.1
 ## Author: Sky Truax
 ## X-License: MIT
 ## X-Website: https://github.com/skytruax/FreeControl

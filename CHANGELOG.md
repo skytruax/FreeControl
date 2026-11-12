@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.1
+
+First version published on CurseForge. The addon itself is the same as v1.0.0.
+
 ## v1.0.0
 
 First public release, for World of Warcraft: Forever 1.60.1.
