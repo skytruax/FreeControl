@@ -55,12 +55,12 @@ TAGLINE = "Play with a controller. Keep the rest of your game."
 PLACEHOLDERS = False  # set by --placeholders: draw stand-ins instead of the game's spell icons
 
 
-def note(short=False):
-    """The line every picture carries: what it is, and whose the spell icons are."""
-    icons = "Spell icons are placeholders." if PLACEHOLDERS else "Spell icons \u00a9 Blizzard Entertainment."
-    if short:
-        return "Illustration, not a screenshot. " + icons
-    return "Illustration built from the addon's own artwork, not a screenshot. " + icons
+def note(short=False, spell_icons=True):
+    """The line every picture carries: what it is and, where it shows any, whose the spell icons are."""
+    line = "Illustration, not a screenshot." if short else "Illustration built from the addon's own artwork, not a screenshot."
+    if spell_icons:
+        line += " Spell icons are placeholders." if PLACEHOLDERS else " Spell icons \u00a9 Blizzard Entertainment."
+    return line
 
 
 def spell_icon(name):
@@ -368,13 +368,13 @@ def social():
 # ---------------------------------------------------------------------------
 # Feature pictures
 # ---------------------------------------------------------------------------
-def slide(parts, sub, glows=()):
+def slide(parts, sub, glows=(), spell_icons=True):
     canvas = backdrop(W, H, glows)
     canvas.alpha_composite(logo().resize((56, 56), Image.LANCZOS), (72, 50))
     text(canvas, (142, 79), "FreeControl", 30, WHITE, "Bold", "lm")
     headline(canvas, W / 2, 196, parts, 84)
     text(canvas, (W / 2, 278), sub, 32, SOFT, "Medium")
-    text(canvas, (W / 2, H - 34), note(), 20, DIM, "Medium")
+    text(canvas, (W / 2, H - 34), note(spell_icons=spell_icons), 20, DIM, "Medium")
     return canvas
 
 
@@ -506,7 +506,7 @@ def interact():
     bx, by = 430, 630
     canvas = slide([("One button ", WHITE), ("for the world.", GOLD)],
                    "Press Interact and the game picks what is in reach. Loot, talk and open without the mouse.",
-                   glows=[(bx, by, 520, 420, 0.42)])
+                   glows=[(bx, by, 520, 420, 0.42)], spell_icons=False)  # the four pictograms here are drawn, not the game's
     painter(7.4).button(canvas, bx, by, 5, preview.STYLES["xbox"][0], ("role", "Interact"))
     canvas.alpha_composite(sized(big("Glyph-X"), 64, 64), (bx - 128, by + 168))
     text(canvas, (bx - 50, by + 200), "Interact", 46, WHITE, "Black", "lm")
