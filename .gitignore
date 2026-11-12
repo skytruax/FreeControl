@@ -11,3 +11,6 @@ dist/
 tools/sim/out/
 tools/sim/lab/dl-wowless-wowf-data/
 __pycache__/
+
+# Blizzard's spell icons, fetched for the pictures by tools/game_icons.py; never committed
+tools/.icon-cache/

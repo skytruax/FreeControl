@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 """Renders a picture of the bar from the shipped textures and the layout numbers in Layout.lua.
 
-    python3 tools/preview.py            # writes docs/preview.png and docs/textures.png
+    python3 tools/preview.py                  # writes docs/preview.png and docs/textures.png
+    python3 tools/preview.py --placeholders   # the same, with drawn stand-ins for the spell icons
 
 This is a mock-up, not the game: it places the same textures at the same offsets the addon uses,
-so the art and the spacing can be judged without launching the client. The spell icons are
-stand-ins drawn by tools/placeholder_icons.py. tools/make_listing.py builds the store and README
-pictures with the Painter class below.
+so the art and the spacing can be judged without launching the client. The filled slots show a
+Rogue's spell icons, which are Blizzard's and are fetched by tools/game_icons.py, or stand-ins
+drawn by tools/placeholder_icons.py. tools/make_listing.py builds the store and README pictures
+with the Painter class below.
 """
 import functools
 import os
 import re
+import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-import placeholder_icons
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # the sibling modules, also under python -I
+import game_icons  # noqa: E402
+import placeholder_icons  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ART = os.path.join(ROOT, "FreeControl", "Art")
@@ -90,6 +95,17 @@ def paste(canvas, img, cx, cy, alpha=1.0, add=False):
         canvas.alpha_composite(img, (x, y))
 
 
+@functools.lru_cache(maxsize=None)
+def game_icon(name):
+    """The game's icon for an ability named in game_icons.FILES."""
+    return game_icons.icon(name)
+
+
+def placeholder_icon(name):
+    """A drawn stand-in for the same ability: always the same one for the same name."""
+    return placeholder_icons.icon(list(game_icons.FILES).index(name))
+
+
 def FONT(size, weight="SemiBold"):
     for path in (os.path.expanduser("~/.local/share/fonts/Inter/Inter-%s.ttf" % weight),
                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
@@ -105,12 +121,14 @@ class Painter:
     """Draws buttons and whole bars at `k` pixels per bar unit.
 
     `textures` maps a texture name to an image. It defaults to the shipped files; a caller that
-    draws large can pass sharper renderings of the same art.
+    draws large can pass sharper renderings of the same art. `icons` maps an ability name to its
+    icon: game_icon or placeholder_icon.
     """
 
-    def __init__(self, k=2.0, textures=tex):
+    def __init__(self, k=2.0, textures=tex, icons=game_icon):
         self.k = k
         self.textures = textures
+        self.icons = icons
         self._sized = functools.lru_cache(maxsize=None)(lambda name, w, h: sized(self.textures(name), w, h))
 
     def tex(self, name, w, h):
@@ -120,7 +138,7 @@ class Painter:
                count=None):
         """One button. index is 1-4 for the D-pad (square) and 5-8 for the face buttons (round).
 
-        content: None or ("pass",) for an empty slot, ("icon", number) or ("role", name).
+        content: None or ("pass",) for an empty slot, ("icon", ability) or ("role", name).
         state: normal, cooldown, unusable, nomana, range, checked, pushed or hover.
         """
         k = self.k * scale
@@ -132,7 +150,7 @@ class Painter:
         glyph = "Glyph-" + (DPAD[index - 1] if index <= 4 else face[index - 5])
         icon = None
         if content and content[0] == "icon":
-            icon = placeholder_icons.icon(content[1])
+            icon = self.icons(content[1])
         elif content and content[0] == "role":
             icon = self.textures("Role-" + content[1])
         if icon is not None:
@@ -216,15 +234,22 @@ class Painter:
                          {i: v for (s, i), v in counts.items() if s == set_id}, glow)
 
 
-# A plausible, mostly filled bar: what the pictures show unless they say otherwise.
+def spells(*names):
+    return [("icon", name) if name else None for name in names]
+
+
+# A Rogue's bar, mostly filled: what the pictures show unless they say otherwise. Each row lists
+# D-pad left, up, right, down, then the face buttons left, top, right, bottom.
 CONTENT = {
-    0: [("icon", 0), ("icon", 9), ("icon", 13), ("icon", 26), ("role", "Interact"), ("pass",), ("role", "Cancel"), ("role", "Jump")],
-    1: [("icon", 1), ("icon", 2), ("icon", 3), ("icon", 4), ("icon", 5), ("icon", 6), None, ("icon", 7)],
-    2: [("icon", 8), ("icon", 10), ("icon", 11), ("icon", 12), ("icon", 14), ("icon", 15), ("icon", 16), ("icon", 17)],
-    3: [("icon", 18), ("icon", 19), None, ("icon", 20), ("icon", 21), ("icon", 22), ("icon", 23), None],
+    0: spells("Sinister Strike", "Healing Potion", "Eviscerate", "Slice and Dice")
+       + [("role", "Interact"), ("pass",), ("role", "Cancel"), ("role", "Jump")],
+    1: spells("Backstab", "Gouge", "Kick", "Feint", "Sprint", "Evasion", None, "Vanish"),
+    2: spells("Cheap Shot", "Kidney Shot", "Ambush", "Garrote", "Rupture", "Expose Armor", "Blind", "Stealth"),
+    3: spells("Sap", "Distract", None, "Pick Pocket", "Instant Poison", "Bandage", "Mount", None),
 }
-STATES = {(2, 2): "cooldown", (2, 6): "checked", (1, 3): "unusable", (3, 5): "cooldown"}
-COUNTS = {(0, 2): "5"}
+# Kidney Shot and Sprint on cooldown; Ambush dark, as it is out of stealth.
+STATES = {(2, 2): "cooldown", (1, 5): "cooldown", (2, 3): "unusable"}
+COUNTS = {(0, 2): "5", (3, 6): "12"}
 
 
 def background(w, h):
@@ -237,11 +262,11 @@ def background(w, h):
     return Image.fromarray(np.clip(base, 0, 255).astype(np.uint8), "RGB").convert("RGBA")
 
 
-def render(held, style, title, k=2.0):
+def render(held, style, title, k=2.0, icons=game_icon):
     rw, rh = int(LAYOUT["root"][0] * k), int(LAYOUT["root"][1] * k)
     pad = 26
     canvas = background(rw + 2 * pad, rh + 2 * pad + 22)
-    Painter(k).bar(canvas, pad + rw / 2, pad + 22 + rh / 2, held, style, CONTENT, STATES, COUNTS)
+    Painter(k, icons=icons).bar(canvas, pad + rw / 2, pad + 22 + rh / 2, held, style, CONTENT, STATES, COUNTS)
     ImageDraw.Draw(canvas).text((pad, 12), title, fill=(235, 235, 235, 255), font=FONT(15))
     return canvas
 
@@ -263,10 +288,11 @@ def texture_sheet():
 
 if __name__ == "__main__":
     os.makedirs(DOCS, exist_ok=True)
+    source = placeholder_icon if "--placeholders" in sys.argv[1:] else game_icon
     frames = [
-        render(0, "xbox", "No trigger held"),
-        render(2, "xbox", "Right trigger held"),
-        render(3, "playstation", "Both triggers held (PlayStation labels)"),
+        render(0, "xbox", "No trigger held", icons=source),
+        render(2, "xbox", "Right trigger held", icons=source),
+        render(3, "playstation", "Both triggers held (PlayStation labels)", icons=source),
     ]
     out = Image.new("RGBA", (frames[0].width, sum(f.height for f in frames)), (0, 0, 0, 255))
     y = 0

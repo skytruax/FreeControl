@@ -78,8 +78,8 @@ controller and play.
   </tr>
 </table>
 
-<sub>The pictures on this page are illustrations, drawn by <code>tools/make_listing.py</code> from the
-addon's own textures and layout numbers. The spell icons are stand-ins.</sub>
+<sub>The pictures on this page are illustrations, not screenshots, drawn by <code>tools/make_listing.py</code>
+from the addon's own textures and layout numbers. The spell icons in them are Blizzard's.</sub>
 
 ## Install
 
@@ -208,6 +208,10 @@ combat. Each file's header comment explains its part.
     python3 tools/preview.py         # docs/preview.png: the bar as the addon lays it out
     python3 tools/make_listing.py    # the README and CurseForge pictures (uses the Inter font if installed)
 
+The pictures show a Rogue's spell icons. `tools/game_icons.py` downloads those from a public mirror
+of the game's interface art into a git-ignored folder the first time they are needed; add
+`--placeholders` to draw stand-ins instead and download nothing.
+
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
@@ -264,6 +268,8 @@ FreeControl is released under the [MIT licence](LICENSE). One file is the except
 and stays under the GPL 3.0, whose text sits next to it. It is test tooling and is not part of the
 addon you install.
 
-The artwork is drawn by the scripts in `tools/`. No Blizzard art is included, and the spell icons
-in the pictures are stand-ins. World of Warcraft is a trademark of Blizzard Entertainment;
-FreeControl is a fan-made addon and is not affiliated with or endorsed by Blizzard.
+The addon's artwork is drawn by the scripts in `tools/`, and the addon ships no Blizzard art. The
+spell icons that appear in the pictures are Blizzard Entertainment's, shown the way any screenshot
+of the game shows them; they are not part of the addon and are not covered by the MIT licence.
+World of Warcraft is a trademark of Blizzard Entertainment. FreeControl is a fan-made addon and is
+not affiliated with or endorsed by Blizzard.

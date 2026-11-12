@@ -59,7 +59,7 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 
 World of Warcraft: Forever and a controller the game recognises. No libraries or other addons needed.
 
-The pictures on this page are illustrations made from the addon's own artwork, with stand-in spell icons. They are not screenshots.
+The pictures on this page are illustrations built from the addon's own artwork, not screenshots. The spell icons in them are Blizzard's.
 
 ## Feedback
 

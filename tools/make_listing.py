@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Draws the pictures for the CurseForge page and the README.
 
-    python3 tools/make_listing.py              # all of them
-    python3 tools/make_listing.py hero sets    # only the ones named
+    python3 tools/make_listing.py                 # all of them
+    python3 tools/make_listing.py hero sets       # only the ones named
+    python3 tools/make_listing.py --placeholders  # with drawn stand-ins for the spell icons
 
   curseforge/logo.png                    the project avatar: 400 x 400, as CurseForge requires
   curseforge/gallery/01-hero.png         title picture
@@ -19,8 +20,10 @@
   curseforge/description.html            curseforge/description.md as HTML, for the page editor's
                                          source view (needs the "markdown" package)
 
-Every picture is an illustration built from the addon's own textures and layout numbers, with stand-in
-spell icons, and says so on the picture. Screenshots have to come from the game.
+Every picture is an illustration built from the addon's own textures and layout numbers, and says
+so on the picture. The filled slots show a Rogue's spell icons. Those are Blizzard's: they are
+fetched by tools/game_icons.py when the pictures are built and credited on each picture.
+Screenshots have to come from the game.
 """
 import functools
 import os
@@ -29,10 +32,11 @@ import sys
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
-import make_art
-import placeholder_icons
-import preview
-from preview import CONTENT, COUNTS, LAYOUT, STATES, Painter, paste, sized
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # the sibling modules, also under python -I
+import make_art  # noqa: E402
+import placeholder_icons  # noqa: E402
+import preview  # noqa: E402
+from preview import CONTENT, COUNTS, LAYOUT, STATES, Painter, paste, sized, spells  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "curseforge")
@@ -48,7 +52,23 @@ SOFT = (184, 192, 210, 255)
 DIM = (140, 148, 168, 255)
 GOLD = (255, 214, 96, 255)
 TAGLINE = "Play with a controller. Keep the rest of your game."
-NOTE = "Illustration made from the addon's own artwork. Spell icons are placeholders. Not a screenshot."
+PLACEHOLDERS = False  # set by --placeholders: draw stand-ins instead of the game's spell icons
+
+
+def note(short=False):
+    """The line every picture carries: what it is, and whose the spell icons are."""
+    icons = "Spell icons are placeholders." if PLACEHOLDERS else "Spell icons \u00a9 Blizzard Entertainment."
+    if short:
+        return "Illustration, not a screenshot. " + icons
+    return "Illustration built from the addon's own artwork, not a screenshot. " + icons
+
+
+def spell_icon(name):
+    return (preview.placeholder_icon if PLACEHOLDERS else preview.game_icon)(name)
+
+
+def painter(k):
+    return Painter(k, big, spell_icon)
 
 
 # ---------------------------------------------------------------------------
@@ -324,12 +344,12 @@ def hero(w=W, h=H, k=2.2, title_y=150, title_size=150, tagline_size=46, bar_y=65
     scrim[..., 3] = shade * 255
     canvas.alpha_composite(Image.fromarray(scrim.astype(np.uint8), "RGBA"))  # keeps the bar readable
 
-    Painter(k, big).bar(canvas, w / 2, bar_y, 2, "xbox", CONTENT, STATES, COUNTS)
+    painter(k).bar(canvas, w / 2, bar_y, 2, "xbox", CONTENT, STATES, COUNTS)
     shadow_text(canvas, (w / 2, title_y), "FreeControl", title_size, WHITE, "Black")
     shadow_text(canvas, (w / 2, title_y + title_size * 0.76), TAGLINE, tagline_size, (238, 240, 248, 255), "SemiBold", spread=7)
     if chips:
         pills(canvas, w / 2, h - 96, chips, 28, 58, (8, 10, 20, 150), (255, 255, 255, 76))
-    shadow_text(canvas, (w / 2, h - 26), NOTE, note_size, (206, 210, 224, 255), "Medium", spread=4, strength=0.9)
+    shadow_text(canvas, (w / 2, h - 26), note(), note_size, (206, 210, 224, 255), "Medium", spread=4, strength=0.9)
     return canvas
 
 
@@ -354,7 +374,7 @@ def slide(parts, sub, glows=()):
     text(canvas, (142, 79), "FreeControl", 30, WHITE, "Bold", "lm")
     headline(canvas, W / 2, 196, parts, 84)
     text(canvas, (W / 2, 278), sub, 32, SOFT, "Medium")
-    text(canvas, (W / 2, H - 34), NOTE, 20, DIM, "Medium")
+    text(canvas, (W / 2, H - 34), note(), 20, DIM, "Medium")
     return canvas
 
 
@@ -375,7 +395,7 @@ def hold_label(canvas, x, y, label, badges, size=30):
 def sets():
     canvas = slide([("Hold a trigger. ", WHITE), ("Get a new set.", GOLD)],
                    "Four sets of eight on the D-pad and face buttons. The one you hold grows and lights up.")
-    painter = Painter(1.08, big)
+    bars = painter(1.08)
     panels = [(0, "No trigger", [], "4 action slots, Interact, Cancel and Jump"), (1, "Hold", ["LT"], "8 action slots"),
               (2, "Hold", ["RT"], "8 action slots"), (3, "Hold", ["LT", "RT"], "8 action slots")]
     pw, ph, gap = 880, 320, 32
@@ -383,7 +403,7 @@ def sets():
     for i, (held, label, badges, sub) in enumerate(panels):
         x, y = x0 + (i % 2) * (pw + gap), 336 + (i // 2) * (ph + 20)
         box(canvas, (x, y, x + pw, y + ph), 28, (255, 255, 255, 10), (255, 255, 255, 32))
-        painter.bar(canvas, x + pw / 2, y + 198, held, "xbox", CONTENT, STATES, COUNTS)
+        bars.bar(canvas, x + pw / 2, y + 198, held, "xbox", CONTENT, STATES, COUNTS)
         hold_label(canvas, x + 34, y + 46, label, badges)
         text(canvas, (x + pw - 34, y + 46), sub, 22, SOFT, "Medium", "rm")
     return canvas
@@ -414,9 +434,9 @@ def dashed(canvas, points, colour, width=5, dash=18, gap=14):
     canvas.alpha_composite(layer.resize(canvas.size, Image.LANCZOS))
 
 
-def rounded_icon(number, size, radius=16, alpha=1.0):
-    """A stand-in icon as it would look in a spellbook or bag: a plain tile with a dark edge."""
-    icon = sized(placeholder_icons.icon(number), size, size)
+def rounded_icon(image, size, radius=16, alpha=1.0):
+    """An icon as it would look in a spellbook or bag: a plain tile with a dark edge."""
+    icon = sized(image, size, size)
     mask = drawn(size, size, lambda d, s: d.rounded_rectangle((0, 0, size * s - 1, size * s - 1), radius=radius * s, fill=(255, 255, 255, 255)))
     icon.putalpha(mask.getchannel("A"))
     edge = drawn(size, size, lambda d, s: d.rounded_rectangle((0, 0, size * s - 1, size * s - 1), radius=radius * s,
@@ -441,7 +461,9 @@ def cursor(size=58):
 def drop():
     canvas = slide([("Drop anything, ", WHITE), ("anywhere.", GOLD)],
                    "Drag spells, items and macros onto any slot. Cooldowns, counts and range show like a normal action bar.")
-    groups = [("SPELLS", [1, 0, 7, 4]), ("ITEMS", [9, 28, 26]), ("MACROS", [27, 18, 6])]
+    groups = [("SPELLS", ["Backstab", "Eviscerate", "Sprint", "Evasion"]),
+              ("ITEMS", ["Healing Potion", "Thistle Tea", "Bandage"]),
+              ("MACROS", ["Macro", "Blade Flurry", "Adrenaline Rush"])]
     tile, gap, group_gap, top = 100, 14, 64, 372
     total = sum(len(icons) * tile + (len(icons) - 1) * gap for _, icons in groups) + group_gap * (len(groups) - 1)
     x = (W - total) / 2
@@ -449,26 +471,27 @@ def drop():
     for label, icons in groups:
         width = len(icons) * tile + (len(icons) - 1) * gap
         text(canvas, (x + width / 2, top - 26), label, 19, DIM, "Bold")
-        for n, number in enumerate(icons):
+        for n, name in enumerate(icons):
             first = picked is None
-            canvas.alpha_composite(rounded_icon(number, tile, alpha=0.32 if first else 1.0), (round(x + n * (tile + gap)), top))
+            canvas.alpha_composite(rounded_icon(spell_icon(name), tile, alpha=0.32 if first else 1.0),
+                                   (round(x + n * (tile + gap)), top))
             if first:
-                picked = (number, x + tile / 2, top + tile)
+                picked = (name, x + tile / 2, top + tile)
         x += width + group_gap
 
     # The bar with the slot under the picked spell still empty; that is where it is headed.
     content = {set_id: list(row) for set_id, row in CONTENT.items()}
     content[1][0] = None
-    painter = Painter(1.72, big)
+    bars = painter(1.72)
     ox, oy = W / 2, 748
-    tx, ty = painter.button_centre(ox, oy, 1, 1)
-    painter.bar(canvas, ox, oy, 0, "xbox", content, {**STATES, (1, 1): "hover"}, COUNTS)
+    tx, ty = bars.button_centre(ox, oy, 1, 1)
+    bars.bar(canvas, ox, oy, 0, "xbox", content, {**STATES, (1, 1): "hover"}, COUNTS)
 
-    number, sx, sy = picked
+    name, sx, sy = picked
     path = cubic((sx, sy + 12), (sx + 90, sy + 90), (tx + 90, ty - 150), (tx, ty - 46))
     dashed(canvas, path, GOLD)
     fx, fy = path[52]
-    flying = rounded_icon(number, 92).rotate(8, resample=Image.BICUBIC, expand=True)
+    flying = rounded_icon(spell_icon(name), 92).rotate(8, resample=Image.BICUBIC, expand=True)
     shadow = Image.new("RGBA", flying.size, (0, 0, 0, 255))
     shadow.putalpha(flying.getchannel("A").filter(ImageFilter.GaussianBlur(8)).point(lambda v: int(v * 0.55)))
     paste(canvas, shadow, fx + 6, fy + 12)
@@ -484,7 +507,7 @@ def interact():
     canvas = slide([("One button ", WHITE), ("for the world.", GOLD)],
                    "Press Interact and the game picks what is in reach. Loot, talk and open without the mouse.",
                    glows=[(bx, by, 520, 420, 0.42)])
-    Painter(7.4, big).button(canvas, bx, by, 5, preview.STYLES["xbox"][0], ("role", "Interact"))
+    painter(7.4).button(canvas, bx, by, 5, preview.STYLES["xbox"][0], ("role", "Interact"))
     canvas.alpha_composite(sized(big("Glyph-X"), 64, 64), (bx - 128, by + 168))
     text(canvas, (bx - 50, by + 200), "Interact", 46, WHITE, "Black", "lm")
     text(canvas, (bx, by + 258), "the left face button, with no trigger held", 23, SOFT, "Medium")
@@ -498,7 +521,7 @@ def interact():
     for i, (number, title, sub) in enumerate(cards):
         x, y = x0 + (i % 2) * (cw + gap), y0 + (i // 2) * (ch + gap)
         box(canvas, (x, y, x + cw, y + ch), 26, (255, 255, 255, 12), (255, 255, 255, 34))
-        canvas.alpha_composite(rounded_icon(number, 112, 20), (x + 36, y + (ch - 112) // 2))
+        canvas.alpha_composite(rounded_icon(placeholder_icons.icon(number), 112, 20), (x + 36, y + (ch - 112) // 2))
         text(canvas, (x + 180, y + ch / 2 - 22), title, 40, WHITE, "Bold", "lm")
         text(canvas, (x + 180, y + ch / 2 + 26), sub, 24, SOFT, "Medium", "lm")
     text(canvas, (x0 + cw + gap / 2, y0 + 2 * ch + gap + 58),
@@ -562,7 +585,7 @@ def normal_mode():
     label(sw - 100, 446, "Menus and bags")
 
     cx, cy = sx + sw / 2, sy + 262
-    Painter(0.58, big).bar(canvas, cx, cy, 2, "xbox", CONTENT, STATES)
+    painter(0.58).bar(canvas, cx, cy, 2, "xbox", CONTENT, STATES)
     box(canvas, (cx - 244, cy - 76, cx + 244, cy + 74), 16, (0, 0, 0, 0), GOLD, 3)
     text(canvas, (cx, cy - 100), "FreeControl: the one thing added", 22, GOLD, "Bold")
     text(canvas, (sx + sw / 2, sy + sh + 44), "Everything in grey is the game's normal interface, as you have it.", 24, DIM, "Medium")
@@ -572,16 +595,16 @@ def normal_mode():
 def combat():
     canvas = slide([("Made for ", WHITE), ("combat.", GOLD)],
                    "Every slot shows what a normal action bar shows, and your abilities fire on the press.")
-    shown = [(1, ("icon", 0), "cooldown", None, "Cooldowns", "the familiar sweep"),
-             (5, ("icon", 10), "range", None, "Out of range", "turns red"),
-             (2, ("icon", 6), "nomana", None, "Not enough mana", "turns blue"),
-             (6, ("icon", 3), "unusable", None, "Not usable yet", "goes dark"),
-             (3, ("icon", 9), "normal", "5", "Item counts", "how many are left"),
-             (7, ("icon", 14), "checked", None, "In progress", "gold ring while it runs")]
-    painter, face = Painter(4.6, big), preview.STYLES["xbox"][0]
-    for i, (index, content, state, count, title, sub) in enumerate(shown):
+    shown = [(1, "Kidney Shot", "cooldown", None, "Cooldowns", "the familiar sweep"),
+             (5, "Sinister Strike", "range", None, "Out of range", "turns red"),
+             (2, "Eviscerate", "nomana", None, "Not enough energy", "turns blue"),
+             (6, "Ambush", "unusable", None, "Not usable yet", "goes dark"),
+             (3, "Thistle Tea", "normal", "5", "Item counts", "how many are left"),
+             (7, "Throw", "checked", None, "In progress", "gold ring while it runs")]
+    buttons, face = painter(4.6), preview.STYLES["xbox"][0]
+    for i, (index, ability, state, count, title, sub) in enumerate(shown):
         x = 235 + i * 290
-        painter.button(canvas, x, 560, index, face, content, state=state, count=count)
+        buttons.button(canvas, x, 560, index, face, ("icon", ability), state=state, count=count)
         text(canvas, (x, 694), title, 29, WHITE, "Bold")
         text(canvas, (x, 732), sub, 22, SOFT, "Medium")
     pills(canvas, W / 2, 880, ["Abilities fire on the press", "Sets switch in the middle of a fight",
@@ -592,15 +615,15 @@ def combat():
 def controllers():
     canvas = slide([("Speaks ", WHITE), ("your controller.", GOLD)],
                    "Xbox, PlayStation and Nintendo labels: matched to the pad you plug in, or picked in the settings.")
-    painter = Painter(1.72, big)
-    contents = [("icon", 1), ("icon", 2), ("icon", 3), ("icon", 4), ("icon", 5), None, ("icon", 7), None]
+    sets_painter = painter(1.72)
+    contents = spells("Sinister Strike", "Gouge", "Eviscerate", "Slice and Dice", "Sprint", None, "Vanish", None)
     pw, ph, gap, y = 560, 520, 40, 356
     x0 = (W - 3 * pw - 2 * gap) / 2
     for i, (style, name) in enumerate((("xbox", "Xbox"), ("playstation", "PlayStation"), ("nintendo", "Nintendo"))):
         x = x0 + i * (pw + gap)
         box(canvas, (x, y, x + pw, y + ph), 28, (255, 255, 255, 10), (255, 255, 255, 32))
         text(canvas, (x + pw / 2, y + 64), name, 42, WHITE, "Bold")
-        painter.one_set(canvas, x + pw / 2, y + 236, 0, style, contents, active=True)
+        sets_painter.one_set(canvas, x + pw / 2, y + 236, 0, style, contents, active=True)
         text(canvas, (x + pw / 2, y + 380), "TRIGGERS", 18, DIM, "Bold")
         for n, trigger in enumerate(preview.STYLES[style][1]):
             canvas.alpha_composite(sized(big("Badge-" + trigger), 132, 66), (round(x + pw / 2 - 142 + n * 152), y + 402))
@@ -614,10 +637,10 @@ def controllers():
 # ---------------------------------------------------------------------------
 def controls():
     canvas = backdrop(W, H)
-    painter = Painter(2.25, big)
+    bars = painter(2.25)
     ox, oy = W / 2, 570
     content = {0: [None, None, None, None, ("role", "Interact"), ("pass",), ("role", "Cancel"), ("role", "Jump")]}
-    painter.bar(canvas, ox, oy, 2, "xbox", content)
+    bars.bar(canvas, ox, oy, 2, "xbox", content)
 
     text(canvas, (W / 2, 84), "FreeControl", 66, WHITE, "Black")
     text(canvas, (W / 2, 146), "A controller cross hotbar for the normal interface", 32, SOFT, "Medium")
@@ -626,11 +649,11 @@ def controls():
         text(canvas, (x, y), title, 33, colour, "Bold")
         text(canvas, (x, y + 42), sub, 24, SOFT, "Medium")
 
-    half = LAYOUT["set"][1] * painter.k / 2
-    cx0, cy0 = painter.set_centre(ox, oy, 0)
-    cx1, cy1 = painter.set_centre(ox, oy, 1)
-    cx2, cy2 = painter.set_centre(ox, oy, 2)
-    cx3, cy3 = painter.set_centre(ox, oy, 3)
+    half = LAYOUT["set"][1] * bars.k / 2
+    cx0, cy0 = bars.set_centre(ox, oy, 0)
+    cx1, cy1 = bars.set_centre(ox, oy, 1)
+    cx2, cy2 = bars.set_centre(ox, oy, 2)
+    cx3, cy3 = bars.set_centre(ox, oy, 3)
     callout("No trigger", "4 action slots · Interact · Cancel · Jump · one button left to you", cx0, cy0 - half - 112)
     callout("Hold LT", "8 action slots", cx1, cy1 + half + 76)
     callout("Hold RT", "8 action slots (shown held)", cx2, cy2 + half * 1.2 + 86, GOLD)
@@ -647,7 +670,7 @@ def controls():
 # ---------------------------------------------------------------------------
 def demo_frames():
     w, h = 1200, 452
-    painter = Painter(1.45, big)
+    bars = painter(1.45)
     frames = []
     for held in (0, 1, 3, 2):
         canvas = Image.new("RGBA", (w, h), (24, 28, 40, 255))  # flat, so the 256 colours go to the buttons
@@ -658,8 +681,8 @@ def demo_frames():
             if lit:
                 paste(canvas, sized(preview.tex("Set-Glow"), 250, 120), x + 58, 46, add=True)
             canvas.alpha_composite(preview.faded(sized(big("Badge-" + name), 116, 58), 1.0 if lit else 0.32), (round(x), 17))
-        painter.bar(canvas, w / 2, 258, held, "xbox", CONTENT, STATES, COUNTS)
-        text(canvas, (w / 2, h - 20), "Illustration, not a screenshot. Spell icons are placeholders.", 15, DIM, "Medium")
+        bars.bar(canvas, w / 2, 258, held, "xbox", CONTENT, STATES, COUNTS)
+        text(canvas, (w / 2, h - 20), note(short=True), 15, DIM, "Medium")
         frames.append(canvas.convert("RGB"))
     return frames
 
@@ -701,7 +724,10 @@ PICTURES = {
 }
 
 
-def main(names):
+def main(arguments):
+    global PLACEHOLDERS
+    PLACEHOLDERS = "--placeholders" in arguments
+    names = [name for name in arguments if name != "--placeholders"]
     unknown = [name for name in names if name not in PICTURES]
     if unknown:
         raise SystemExit("unknown picture: %s (known: %s)" % (", ".join(unknown), ", ".join(PICTURES)))
