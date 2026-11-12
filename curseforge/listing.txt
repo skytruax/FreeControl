@@ -1,0 +1,44 @@
+What goes in which field of the CurseForge project form (World of Warcraft > Addons).
+
+Name
+    FreeControl - Controller & Gamepad Cross Hotbar
+
+    CurseForge search matches a project's name, summary and author, not its description, and puts
+    name matches first. The words after the dash are what people type. The game's name and version
+    numbers stay out of it: the naming rule forbids them.
+
+Summary
+    Adds a controller cross hotbar to the normal interface: hold LT, RT or both for 32 buttons, with Gamepad UI mode off. A light alternative to ConsolePort.
+
+    "ConsolePort" is here because the summary is the only honest place for it: it is what puts the
+    project in front of someone searching for that addon. Drop the last sentence to leave it out.
+
+Main category        Action Bars
+Additional category  Combat
+License              MIT License
+Source               https://github.com/skytruax/FreeControl
+Issues               https://github.com/skytruax/FreeControl/issues
+
+Logo
+    curseforge/logo.png (400 x 400)
+
+Description
+    curseforge/description.html, pasted into the editor's source view.
+    It is built from description.md by: python3 tools/make_listing.py description
+
+Images, in this order
+    your own screenshots from the game first, then curseforge/gallery/01-hero.png to 08-controls.png
+
+First file
+    FreeControl-v1.0.0-forever.zip from https://github.com/skytruax/FreeControl/releases/tag/v1.0.0
+    Release type: Release (the CurseForge app only lists projects that have one)
+    Game version: WoW Forever 1.60.1
+    Changelog: the v1.0.0 section of CHANGELOG.md, as Markdown
+
+Relations
+    none. FreeControl needs no other addon. A relation to an addon it merely resembles is not what
+    the field is for.
+
+After approval
+    Put the project id in FreeControl/FreeControl.toc as "## X-Curse-Project-ID: <id>". From then on
+    pushing a version tag uploads the new file by itself.

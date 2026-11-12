@@ -255,7 +255,7 @@ you drop an AddOns folder into. Its site says the files stay in the browser; it 
 **Releasing:** pushing a tag such as `v1.0.1` runs `.github/workflows/release.yml`. The
 [BigWigs packager](https://github.com/BigWigsMods/packager) builds the zip, attaches it to a
 GitHub release with `CHANGELOG.md` as the notes, and uploads it to CurseForge once the project id
-is in `FreeControl.toc`. The listing text and pictures live in [curseforge/](curseforge/).
+is in `FreeControl.toc`. The listing text, form fields and pictures live in [curseforge/](curseforge/).
 
 ## Licence and credits
 

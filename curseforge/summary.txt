@@ -1,1 +1,0 @@
-The controller cross hotbar on its own: hold LT, RT or both for 32 buttons, while the game stays in its normal interface mode.
