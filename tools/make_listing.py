@@ -16,8 +16,10 @@
   docs/banner.png                        the README header
   docs/demo.gif                          the README animation: the four sets, one after the other
   docs/social.png                        for GitHub's Settings > Social preview
+  curseforge/description.html            curseforge/description.md as HTML, for the page editor's
+                                         source view (needs the "markdown" package)
 
-Every one is an illustration built from the addon's own textures and layout numbers, with stand-in
+Every picture is an illustration built from the addon's own textures and layout numbers, with stand-in
 spell icons, and says so on the picture. Screenshots have to come from the game.
 """
 import functools
@@ -672,6 +674,14 @@ def save_gif(frames, path, milliseconds=1150):
     reduced[0].save(path, save_all=True, append_images=reduced[1:], duration=milliseconds, loop=0, optimize=False)
 
 
+def description_html():
+    """The listing text as HTML: CurseForge's editor takes HTML in its source view, not Markdown."""
+    import markdown  # only this output needs it
+
+    with open(os.path.join(OUT, "description.md"), encoding="utf-8") as f:
+        return markdown.markdown(f.read(), extensions=["sane_lists"]) + "\n"
+
+
 # ---------------------------------------------------------------------------
 PICTURES = {
     "logo": (logo, os.path.join(OUT, "logo.png")),
@@ -686,6 +696,7 @@ PICTURES = {
     "banner": (banner, os.path.join(DOCS, "banner.png")),
     "social": (social, os.path.join(DOCS, "social.png")),
     "demo": (demo_frames, os.path.join(DOCS, "demo.gif")),
+    "description": (description_html, os.path.join(OUT, "description.html")),
 }
 
 
@@ -700,6 +711,9 @@ def main(names):
         result = make()
         if name == "demo":
             save_gif(result, path)
+        elif name == "description":
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(result)
         elif name == "logo":
             result.save(path)  # keeps its transparent corners
         else:

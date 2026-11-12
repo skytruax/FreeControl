@@ -1,3 +1,5 @@
+![FreeControl: the cross hotbar, with the right-trigger set selected](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/gallery/01-hero.png)
+
 ## Play Forever with a controller. Keep the rest of your game.
 
 **FreeControl gives you the best part of Forever's controller mode, the trigger-driven cross hotbar, and leaves everything else exactly the way you like it.**
@@ -5,6 +7,8 @@
 Forever's built-in Gamepad UI has a great idea at its heart: hold LT, RT or both, and your D-pad and face buttons become a whole new set of abilities. It is the layout console MMO players know from Final Fantasy XIV, and it feels fantastic on a controller. The catch is that switching Gamepad UI on also takes over your targeting, your menus and your whole interface layout.
 
 FreeControl is that hotbar on its own. The game stays in normal mode. Your targeting stays yours. Your menus stay the ones you know. Pick up the controller and play.
+
+![The bar with no trigger held, then LT, then LT and RT, then RT: the held set grows and lights up](https://raw.githubusercontent.com/skytruax/FreeControl/main/docs/demo.gif)
 
 ## Why you will like it
 
@@ -27,6 +31,13 @@ FreeControl is that hotbar on its own. The game stays in normal mode. Your targe
 
 Type `/fc` for the settings, `/fc unlock` to drag the bar where you want it, and `/fc status` to see what the addon sees, which helps in a bug report.
 
+![The bar with every slot empty, labelled set by set](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/gallery/08-controls.png)
+
+## FreeControl, Gamepad UI mode or ConsolePort?
+
+- **Gamepad UI mode**, built into Forever, is the game's whole controller interface: hotbar, menus, targeting and layout together. FreeControl is only the hotbar. It shows the same action slots and stands down whenever that mode is on, so you can go back and forth without setting anything up twice.
+- **ConsolePort** is a complete controller interface addon, with its own bars, cursor, menus and targeting tools. If you want the whole game built around the gamepad, that is the one to look at. FreeControl is for players who want the stock interface plus a cross hotbar and nothing more. The two have not been tried together, and both bind the controller's buttons, so run one at a time.
+
 ## What it changes in your game
 
 While it is active, FreeControl sets a few console variables, and puts your own values back at logout or when you switch it off:
@@ -48,6 +59,8 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 
 World of Warcraft: Forever and a controller the game recognises. No libraries or other addons needed.
 
+The pictures on this page are illustrations made from the addon's own artwork, with stand-in spell icons. They are not screenshots.
+
 ## Feedback
 
-Found a bug or have an idea? The issue tracker is here: https://github.com/skytruax/FreeControl/issues
+Found a bug or have an idea? The issue tracker and the source are on GitHub: [github.com/skytruax/FreeControl](https://github.com/skytruax/FreeControl)
