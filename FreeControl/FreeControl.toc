@@ -5,6 +5,7 @@
 ## Author: Sky Truax
 ## X-License: MIT
 ## X-Website: https://github.com/skytruax/FreeControl
+## X-Curse-Project-ID: 1800965
 ## IconTexture: Interface\AddOns\FreeControl\Art\Logo
 ## SavedVariables: FreeControlDB
 

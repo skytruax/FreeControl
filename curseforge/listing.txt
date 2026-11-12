@@ -1,5 +1,10 @@
 What goes in which field of the CurseForge project form (World of Warcraft > Addons).
 
+Project
+    id 1800965, slug free-control
+    https://authors.curseforge.com/#/projects/1800965/general
+    public page once a moderator approves it: https://www.curseforge.com/wow/addons/free-control
+
 Name
     FreeControl - Controller & Gamepad Cross Hotbar
 
@@ -8,13 +13,13 @@ Name
     numbers stay out of it: the naming rule forbids them.
 
 Summary
-    FFXIV-style cross hotbar for controller and gamepad play, in the normal interface. Hold LT, RT or both for 32 slots that take any spell, item or macro. Gamepad UI mode stays off, so targeting and menus stay yours. A light alternative to ConsolePort.
+    FFXIV-style cross hotbar for controller and gamepad play in the normal interface, no Gamepad UI mode needed: hold LT, RT or both for 32 slots that take any spell, item or macro, as a light alternative to ConsolePort.
 
-    249 characters; the field takes 256. Search matches the summary, so it carries the words people
-    type: controller, gamepad, cross hotbar, FFXIV, ConsolePort. "ConsolePort" is here because the
-    summary is the only honest place for it: it is what puts the project in front of someone
-    searching for that addon. To leave it out, replace the last sentence with
-    "Xbox, PlayStation and Nintendo labels."
+    216 characters; the field takes 256 and asks for one clear sentence. Search matches the summary,
+    so it carries the words people type: controller, gamepad, cross hotbar, FFXIV, ConsolePort.
+    "ConsolePort" is here because the summary is the only honest place for it: it is what puts the
+    project in front of someone searching for that addon. To leave it out, end the sentence at
+    "macro."
 
 Main category        Action Bars
 Additional category  Combat
@@ -42,6 +47,6 @@ Relations
     none. FreeControl needs no other addon. A relation to an addon it merely resembles is not what
     the field is for.
 
-After approval
-    Put the project id in FreeControl/FreeControl.toc as "## X-Curse-Project-ID: <id>". From then on
-    pushing a version tag uploads the new file by itself.
+Later versions
+    The project id is in FreeControl/FreeControl.toc ("## X-Curse-Project-ID: 1800965"), so pushing
+    a version tag uploads the new file to CurseForge by itself.
