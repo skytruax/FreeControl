@@ -1,4 +1,4 @@
-![FreeControl: the cross hotbar, with the right-trigger set selected](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/gallery/01-hero.png)
+![FreeControl: the cross hotbar, with the right-trigger set selected](https://raw.githubusercontent.com/skytruax/FreeControl/v1.2.0/curseforge/gallery/01-hero.png)
 
 ## Play Forever with a controller. Keep the rest of your game.
 
@@ -8,7 +8,7 @@ Forever's built-in Gamepad UI has a great idea at its heart: hold LT, RT or both
 
 FreeControl is that hotbar on its own. The game stays in normal mode. Your targeting stays yours. Your menus stay the ones you know. Pick up the controller and play.
 
-![The bar with no trigger held, then LT, then LT and RT, then RT: the held set grows and the others fade](https://raw.githubusercontent.com/skytruax/FreeControl/main/docs/demo.gif)
+![The bar with no trigger held, then LT, then LT and RT, then RT: the held set grows and the others fade](https://raw.githubusercontent.com/skytruax/FreeControl/v1.2.0/docs/demo.gif)
 
 ## Why you will like it
 
@@ -32,9 +32,23 @@ FreeControl is that hotbar on its own. The game stays in normal mode. Your targe
 
 Type `/fc` for the settings, `/fc unlock` to drag the bar where you want it, and `/fc status` to see what the addon sees, which helps in a bug report.
 
-![The bar with every slot empty, labelled set by set](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/gallery/08-controls.png)
+![The bar with every slot empty, labelled set by set](https://raw.githubusercontent.com/skytruax/FreeControl/v1.2.0/curseforge/gallery/08-controls.png)
 
-![Mouse mode: Y brings the pointer out, the left stick click is the left mouse button and the right stick click the right](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/gallery/09-mouse-mode.png)
+## Mouse mode: a pointer on your sticks
+
+Some things still want a mouse: a vendor, a quest window, your bags, dragging a spell onto the bar. Mouse mode gives you one without putting the controller down.
+
+![Mouse mode: Y brings the pointer out, the left stick click is the left mouse button and the right stick click the right](https://raw.githubusercontent.com/skytruax/FreeControl/v1.2.0/curseforge/gallery/09-mouse-mode.png)
+
+1. Press **Y** with no trigger held. The mouse pointer comes out, and the Y button on the bar lights up.
+2. Steer the pointer with the **right stick**.
+3. Click the **left stick** to left-click. Hold it while you steer to drag.
+4. Click the **right stick** to right-click: use, sell, loot, talk.
+5. Press Y again, or just move or jump, and the pointer is gone.
+
+The triggers keep choosing your sets the whole time. The two click buttons and the pointer's speed are yours to change under *Mouse mode* on the settings page (`/fc`).
+
+Already playing with FreeControl from before version 1.2? Your Y button is as you left it. Click it on the bar and choose *Mouse cursor on / off*.
 
 ## FreeControl, Gamepad UI mode or ConsolePort?
 
@@ -54,7 +68,7 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 
 ## Good to know
 
-- Mouse mode is the game's own stick pointer. The two click buttons and the pointer's speed are on the settings page, under "Mouse mode". If you set FreeControl up before version 1.2, your Y button is as you left it: click it on the bar and choose "Mouse cursor on / off".
+- Mouse mode is the game's own stick pointer, so the clicks are real mouse clicks. A click button has to be a single button: a trigger combination cannot be one.
 - Spell flyouts (one slot holding a group of spells) open below the button and need the mouse pointer to choose from. Put the individual spells on the bar instead.
 - There is no vehicle or possess bar yet. Use the game's own bar for those.
 - Triggers are hold-to-select. There is no tap-to-toggle yet.
@@ -63,7 +77,7 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 
 World of Warcraft: Forever and a controller the game recognises. No libraries or other addons needed.
 
-The pictures on this page are illustrations built from the addon's own artwork, not screenshots. The spell icons in them are Blizzard's.
+The pictures on this page are illustrations built from the addon's own artwork, not screenshots. The spell icons in them are Blizzard's, and the title lettering is LifeCraft, a typeface by Eliot Truelove.
 
 ## Feedback
 
