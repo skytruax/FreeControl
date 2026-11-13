@@ -6,7 +6,10 @@
 --   * secure snippets run in a restricted environment (no tables, no functions, no addon globals)
 --     against frame handles that only expose what the real restricted environment exposes;
 --   * key presses are routed through override bindings to button clicks the way the client does,
---     honouring RegisterForClicks and delivering both press and release.
+--     honouring RegisterForClicks and delivering both press and release;
+--   * in combat the cooldown API hands addon code sealed ("secret") numbers, which cooldown
+--     frames refuse from addon code, as Blizzard's API documentation says the client does;
+--   * an error the addon reports to the game's error handler fails the test that caused it.
 --
 -- The secure click logic is a port of SecureActionButton_OnClick from Blizzard_FrameXML/
 -- SecureTemplates.lua (build 1.60.1). It is a model of the client, not the client: a pass here
@@ -46,7 +49,9 @@ local M = {
 	lastGamepadSlot = 304, -- three pages of 28 plus five stance bars of 8
 	hasGamepadUI = true,
 	cursorControl = false,
-	native = {},           -- [checkbox] = { slot, cooldown }: buttons the client updates directly
+	secretRestrictions = true, -- the client seals cooldown numbers from addons while in combat
+	cooldownEvents = { "SPELL_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_COOLDOWN" }, -- raised when one starts
+	luaErrors = {},        -- what reached the game's error handler
 	down = {},             -- [key] = true while the key is physically held
 	all = {},              -- every frame, for M.Advance
 	now = 100,             -- seconds on the game's clock
@@ -55,6 +60,53 @@ Mock = M
 
 local function insecure()
 	return M.secure == 0
+end
+
+---------------------------------------------------------------------------
+-- Sealed ("secret") values
+---------------------------------------------------------------------------
+-- While addon restrictions are in force (modelled as: in combat, on a client that has them) the
+-- cooldown API hands addon code sealed numbers. Addon code may store them and pass them on.
+-- Calculating with one, ordering it, indexing it or joining it to a string is an error, as is
+-- handing it to a game function that does not accept sealed values from addon code. (The real
+-- client also refuses == on them and allows joining; Lua 5.1 cannot model the first, and the
+-- addon is held to the stricter rule on the second.)
+local sealedValue = setmetatable({}, { __mode = "k" }) -- [sealed] = what is inside
+local SEALED = {
+	__index = function() error("attempted to index a sealed value", 2) end,
+	__newindex = function() error("attempted to index a sealed value", 2) end,
+	__tostring = function() return "<sealed>" end,
+}
+local function Seal(value)
+	local sealed = setmetatable({}, SEALED)
+	sealedValue[sealed] = value
+	return sealed
+end
+local function IsSealed(value) return type(value) == "table" and getmetatable(value) == SEALED end
+local function Unseal(value)
+	if IsSealed(value) then return sealedValue[value] end
+	return value
+end
+local function restricted() return M.secretRestrictions and M.combat end
+M.Seal, M.Unseal, M.IsSealed = Seal, Unseal, IsSealed
+
+function issecretvalue(value) return IsSealed(value) end
+C_Secrets = {
+	HasSecretRestrictions = function() return M.secretRestrictions end,
+	ShouldCooldownsBeSecret = function() return restricted() and true or false end,
+}
+
+-- Carries a cooldown's timing to a cooldown frame without exposing it. Addon code can do
+-- nothing with one except hand it over.
+local durationTiming = setmetatable({}, { __mode = "k" }) -- [object] = { start, duration, sealed }
+local DURATION = {
+	__index = function(_, key) error("this model's duration objects have no '" .. tostring(key) .. "'", 2) end,
+	__tostring = function() return "LuaDurationObject" end,
+}
+local function NewDuration(start, duration)
+	local object = setmetatable({}, DURATION)
+	durationTiming[object] = { start = start, duration = duration, sealed = restricted() }
+	return object
 end
 
 ---------------------------------------------------------------------------
@@ -138,8 +190,25 @@ function Frame:GetCenter() return self.__center[1], self.__center[2] end
 function Frame:StartMoving() guard(self, "StartMoving"); self.__moving = true end
 function Frame:StopMovingOrSizing() guard(self, "StopMovingOrSizing"); self.__moving = false end
 function Frame:RegisterEvent(event)
+	self:UnregisterEvent(event)
 	M.events[event] = M.events[event] or {}
 	table.insert(M.events[event], self)
+end
+-- Only delivered when the event's first value is this unit.
+function Frame:RegisterUnitEvent(event, unit)
+	self:RegisterEvent(event)
+	self.__unitEvents = self.__unitEvents or {}
+	self.__unitEvents[event] = unit
+end
+function Frame:UnregisterEvent(event)
+	local frames = M.events[event] or {}
+	for i = #frames, 1, -1 do
+		if frames[i] == self then table.remove(frames, i) end
+	end
+	if self.__unitEvents then self.__unitEvents[event] = nil end
+end
+function Frame:UnregisterAllEvents()
+	for event in pairs(M.events) do self:UnregisterEvent(event) end
 end
 function Frame:SetScript(name, fn) self.__scripts[name] = fn; self.__addonScript[name] = fn ~= nil end
 function Frame:GetScript(name) return self.__scripts[name] end
@@ -192,9 +261,45 @@ function Frame:GetButtonState() return self.__state end
 function Frame:SetText(text) self.__text = text end
 function Frame:GetText() return self.__text end
 
--- Cooldown frames
-function Frame:SetCooldown(start, duration, modRate) self.__cooldown = { start, duration, modRate } end
+-- Edit boxes
+for _, name in ipairs({ "SetMultiLine", "SetAutoFocus", "SetFontObject", "SetFocus", "ClearFocus", "HighlightText" }) do
+	Frame[name] = function(self, ...) self.__calls[name] = { ... } end
+end
+
+-- Cooldown frames. Blizzard's documentation marks the setters that take numbers as accepting
+-- sealed ones from Blizzard's own code only (SecretArguments = "AllowedWhenUntainted"), so addon
+-- code has to hand over a duration object instead. A frame that was given sealed timing seals
+-- what it reports about itself from then on. Tests look at __cooldown, which the addon cannot.
+local function refuseSealed(what, ...)
+	if not insecure() then return end
+	for i = 1, select("#", ...) do
+		if IsSealed((select(i, ...))) then
+			error(what .. ": secret values are only allowed during untainted execution for this argument", 3)
+		end
+	end
+end
+function Frame:SetCooldown(start, duration, modRate)
+	assert(self.__kind == "Cooldown", "SetCooldown on something that is not a cooldown frame")
+	refuseSealed("Cooldown:SetCooldown", start, duration, modRate)
+	self.__sealed = self.__sealed or IsSealed(start) or IsSealed(duration)
+	self.__cooldown = { Unseal(start), Unseal(duration), Unseal(modRate) }
+end
+function Frame:SetCooldownFromDurationObject(object, clearIfZero)
+	assert(self.__kind == "Cooldown", "SetCooldownFromDurationObject on something that is not a cooldown frame")
+	local timing = durationTiming[object]
+	if not timing then error("SetCooldownFromDurationObject wants a duration object, got " .. tostring(object), 2) end
+	if timing.duration == 0 and clearIfZero ~= false then
+		return self:Clear()
+	end
+	self.__sealed = self.__sealed or timing.sealed
+	self.__cooldown = { timing.start, timing.duration, 1 }
+end
 function Frame:Clear() self.__cooldown = nil end
+function Frame:GetCooldownDuration() -- milliseconds
+	local duration = self.__cooldown and self.__cooldown[2] * 1000 or 0
+	if self.__sealed and insecure() then return Seal(duration) end
+	return duration
+end
 for _, name in ipairs({ "SetDrawEdge", "SetDrawBling", "SetSwipeColor", "SetSwipeTexture", "SetUseCircularEdge",
 	"SetHideCountdownNumbers", "SetMinimumCountdownDuration" }) do
 	Frame[name] = function(self, ...) self.__calls[name] = { ... } end
@@ -287,28 +392,21 @@ end
 ---------------------------------------------------------------------------
 -- Secure action buttons (port of Blizzard's SecureActionButton_OnClick, type "action" only)
 ---------------------------------------------------------------------------
--- An ability's own cooldown begins. What the client then does, as far as play has shown:
---   * it announces it with SPELL_UPDATE_COOLDOWN, not with ACTIONBAR_UPDATE_COOLDOWN
---     (M.silentCooldowns = true models an announcement that never arrives);
---   * it does not touch the cooldown frame of a button an addon registered with
---     C_ActionBar.RegisterActionUIButton (M.nativePush = true models a client that does).
+-- An ability's own cooldown begins, and the client announces it. Which events it raises for
+-- which kind of cooldown is not something this model knows, so a test can narrow
+-- M.cooldownEvents to check that any one of them is enough.
 function M.StartCooldown(slot, duration)
 	M.actions[slot].cooldown = { M.now, duration }
-	if M.nativePush then
-		M.secure = M.secure + 1
-		for _, entry in pairs(M.native) do
-			if entry.slot == slot then
-				entry.cooldown:SetCooldown(M.now, duration, 1)
-			end
+	local depth = M.secure
+	M.secure = 0 -- event handlers are addon code: they run tainted, whatever raised the event
+	for _, event in ipairs(M.cooldownEvents) do
+		if event == "SPELL_UPDATE_COOLDOWN" then
+			M.Fire(event, M.actions[slot].spell or slot)
+		else
+			M.Fire(event)
 		end
-		M.secure = M.secure - 1
 	end
-	if not M.silentCooldowns then
-		local depth = M.secure
-		M.secure = 0 -- event handlers are addon code: they run tainted, whatever raised the event
-		M.Fire("SPELL_UPDATE_COOLDOWN", M.actions[slot].spell or slot)
-		M.secure = depth
-	end
+	M.secure = depth
 end
 
 function UseAction(slot, unit, button)
@@ -499,8 +597,13 @@ function M.Advance(seconds)
 end
 
 function M.Fire(event, ...)
-	for _, frame in ipairs(M.events[event] or {}) do
-		frame.__scripts.OnEvent(frame, event, ...)
+	local frames = {}
+	for i, frame in ipairs(M.events[event] or {}) do frames[i] = frame end -- handlers may unregister
+	for _, frame in ipairs(frames) do
+		local unit = frame.__unitEvents and frame.__unitEvents[event]
+		if unit == nil or unit == (...) then
+			frame.__scripts.OnEvent(frame, event, ...)
+		end
 	end
 end
 
@@ -596,30 +699,49 @@ local function valid(slot)
 	return M.actions[slot]
 end
 
+local function CooldownInfo(action)
+	local cd = action and action.cooldown
+	local start, duration, modRate = cd and cd[1] or 0, cd and cd[2] or 0, 1
+	if restricted() then
+		start, duration, modRate = Seal(start), Seal(duration), Seal(modRate)
+	end
+	return { startTime = start, duration = duration, modRate = modRate, isActive = cd ~= nil, isEnabled = true }
+end
+
+C_Spell = {
+	-- Nothing at all for a spell the client does not know.
+	GetSpellCooldown = function(spellID)
+		for _, action in pairs(M.actions) do
+			if action.spell == spellID then return CooldownInfo(action) end
+		end
+	end,
+}
+
 C_ActionBar = {
 	GetBonusBarOffset = function() return M.bonusbar end,
 	HasAction = function(slot) return valid(slot) ~= nil end,
 	GetActionTexture = function(slot) local a = valid(slot); return a and a.texture end,
 	IsUsableAction = function(slot) local a = valid(slot); return a and a.usable ~= false or false, a and a.noMana or false end,
-	GetActionCooldown = function(slot)
+	-- SecretWhenCooldownsRestricted: the numbers are sealed, isActive and isEnabled never are.
+	GetActionCooldown = function(slot) return CooldownInfo(valid(slot)) end,
+	GetActionCooldownDuration = function(slot)
 		local a = valid(slot)
 		local cd = a and a.cooldown
-		return { startTime = cd and cd[1] or 0, duration = cd and cd[2] or 0, modRate = 1, isActive = cd ~= nil, isEnabled = true }
+		return NewDuration(cd and cd[1] or 0, cd and cd[2] or 0)
 	end,
-	GetActionDisplayCount = function(slot) local a = valid(slot); return a and a.count or "" end,
+	GetSpell = function(slot) local a = valid(slot); return a and a.spell or 0 end,
+	-- SecretWhenCooldownsRestricted as well: charges are cooldown information.
+	GetActionDisplayCount = function(slot)
+		local a = valid(slot)
+		local count = a and a.count or ""
+		if restricted() then return Seal(count) end
+		return count
+	end,
 	IsCurrentAction = function(slot) local a = valid(slot); return a and a.current or false end,
 	IsAutoRepeatAction = function(slot) valid(slot); return false end,
 	IsEquippedAction = function(slot) local a = valid(slot); return a and a.equipped or false end,
 	UsesActionText = function(slot) local a = valid(slot); return a and a.text ~= nil or false end,
 	GetActionText = function(slot) local a = valid(slot); return a and a.text end,
-	RegisterActionUIButton = function(checkbox, slot, cooldown)
-		valid(slot)
-		assert(checkbox.__kind == "CheckButton", "RegisterActionUIButton wants a CheckButton")
-		assert(cooldown.__kind == "Cooldown", "RegisterActionUIButton wants a Cooldown frame")
-		if M.refuseNative then error(M.refuseNative, 0) end
-		M.native[checkbox] = { slot = slot, cooldown = cooldown }
-	end,
-	UnregisterActionUIButton = function(checkbox) M.native[checkbox] = nil end,
 	EnableActionRangeCheck = function(slot, enable)
 		valid(slot)
 		M.rangeRefs[slot] = (M.rangeRefs[slot] or 0) + (enable and 1 or -1)
@@ -660,6 +782,19 @@ function SetCVar(name, value)
 end
 function GetCVarBool(name) return M.cvars[name] == "1" end
 function GetBuildInfo() return "1.60.1", "70888", "Nov 10 2026", 16001 end
+function GetTime() return M.now end
+
+-- What the addon reports here is what the player would see with errors switched on.
+function geterrorhandler()
+	return function(message) M.luaErrors[#M.luaErrors + 1] = tostring(message) end
+end
+
+-- The client's xpcall hands extra arguments on to the function; plain Lua 5.1's does not.
+local plainXpcall = xpcall
+function xpcall(fn, handler, ...)
+	local count, arguments = select("#", ...), { ... }
+	return plainXpcall(function() return fn(unpack(arguments, 1, count)) end, handler)
+end
 
 C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "test" or nil end }
 Enum = { InputDeviceInterfaceType = { Mkb = 0, Gamepad = 1 } }

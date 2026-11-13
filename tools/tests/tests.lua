@@ -68,7 +68,18 @@ local function Slots(set)
 end
 
 TESTS = {}
-local function test(name, fn) TESTS[#TESTS + 1] = { name = name, fn = fn } end
+-- A scenario also fails if the addon reported an error to the game along the way (the addon
+-- catches errors in its event handlers so that one bad handler cannot stop the rest), unless
+-- the scenario is about exactly that and says so with M.expectErrors.
+local function test(name, fn)
+	TESTS[#TESTS + 1] = { name = name, fn = function()
+		local ok, problem = xpcall(fn, function(e) return debug.traceback(tostring(e), 2) end)
+		if not M.expectErrors and #M.luaErrors > 0 then
+			error("the addon raised an error: " .. M.luaErrors[1] .. (ok and "" or "\nand then: " .. tostring(problem)), 0)
+		end
+		if not ok then error(problem, 0) end
+	end }
+end
 
 ---------------------------------------------------------------------------
 test("loads, builds 32 slots and shows the bar", function()
@@ -142,76 +153,78 @@ test("a key casts on press even with the game's 'cast on key down' switched off"
 	eq(Used(), "182", "nothing more on release")
 end)
 
-test("an ability's own cooldown shows as soon as the game announces it, without an action bar event", function()
+test("in combat the game seals a cooldown's numbers, and the sweep of what was just used still shows at once", function()
 	Load()
 	local cooldown = M.frames.FreeControlButton0_2.fc.cooldown
-	M.actions[182] = { texture = "kick", cooldownOnUse = 10 }
+	M.actions[182] = { texture = "kick", spell = 1766, cooldownOnUse = 10 }
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
 	eq(cooldown.__cooldown, nil, "no cooldown yet")
 	M.EnterCombat()
+	truthy(issecretvalue(C_ActionBar.GetActionCooldown(182).duration), "this model seals the numbers in combat")
 	M.KeyDown("PADDUP")
-	-- The game raised SPELL_UPDATE_COOLDOWN and nothing else; no time has passed.
+	-- No time has passed, and (checked after every test) nothing was refused or raised an error.
 	truthy(cooldown.__cooldown, "cooldown showing at once")
 	eq(cooldown.__cooldown[2], 10, "its duration")
 	M.KeyUp("PADDUP")
 	M.LeaveCombat()
 end)
 
-test("an item's cooldown is picked up from the bag event", function()
-	Load()
-	local cooldown = M.frames.FreeControlButton0_2.fc.cooldown
-	M.actions[182] = { texture = "potion" }
-	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
-	M.actions[182].cooldown = { M.now, 120 }
-	M.Fire("BAG_UPDATE_COOLDOWN")
-	eq(cooldown.__cooldown and cooldown.__cooldown[2], 120, "potion cooldown showing")
-end)
-
-test("even if no event arrives, a press makes the bar read its cooldowns again within a moment", function()
-	M.silentCooldowns = true
+test("a cooldown shows the same way on a client that seals nothing", function()
+	M.secretRestrictions = false
 	Load()
 	local cooldown = M.frames.FreeControlButton0_2.fc.cooldown
 	M.actions[182] = { texture = "kick", cooldownOnUse = 10 }
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
 	M.EnterCombat()
-	M.KeyDown("PADDUP")
-	eq(cooldown.__cooldown, nil, "nothing told the bar")
-	M.Advance(0.016) -- one frame
-	truthy(cooldown.__cooldown, "read again on the next frame")
-	eq(cooldown.__cooldown[2], 10, "its duration")
-	M.KeyUp("PADDUP")
+	M.Tap("PADDUP")
+	eq(cooldown.__cooldown and cooldown.__cooldown[2], 10, "cooldown showing")
 	M.LeaveCombat()
 end)
 
-test("the readings after a press also catch a cooldown that only becomes visible a little later", function()
-	M.silentCooldowns = true
+for _, event in ipairs({ "SPELL_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_COOLDOWN" }) do
+	test("a cooldown shows when " .. event .. " is the only event the game raises for it", function()
+		M.cooldownEvents = { event }
+		Load()
+		local cooldown = M.frames.FreeControlButton0_2.fc.cooldown
+		M.actions[182] = { texture = "gouge", cooldownOnUse = 10 }
+		M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+		M.EnterCombat()
+		M.Tap("PADDUP")
+		eq(cooldown.__cooldown and cooldown.__cooldown[2], 10, "cooldown showing")
+		M.LeaveCombat()
+	end)
+end
+
+test("an item's cooldown is picked up from the bag event", function()
 	Load()
 	local cooldown = M.frames.FreeControlButton0_2.fc.cooldown
-	M.actions[182] = { texture = "gouge" }
+	M.actions[182] = { texture = "potion" }
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
-	M.Tap("PADDUP")
-	M.Advance(0.2)
-	eq(cooldown.__cooldown, nil, "nothing yet")
-	M.actions[182].cooldown = { M.now, 10 } -- the server's answer arrives; still no event
-	M.Advance(0.1)
-	truthy(cooldown.__cooldown, "picked up within a tenth of a second")
-	M.actions[182].cooldown = nil
-	M.Advance(3)
-	truthy(cooldown.__cooldown, "a reading never clears a sweep")
-	M.Fire("SPELL_UPDATE_COOLDOWN", 182)
-	eq(cooldown.__cooldown, nil, "an event does clear it")
-	M.actions[182].cooldown = { M.now, 10 }
-	M.Advance(0.5)
-	eq(cooldown.__cooldown, nil, "and by now the readings have stopped: the bar does not poll")
+	M.EnterCombat()
+	M.actions[182].cooldown = { M.now, 120 }
+	M.Fire("BAG_UPDATE_COOLDOWN")
+	eq(cooldown.__cooldown and cooldown.__cooldown[2], 120, "potion cooldown showing")
+	M.LeaveCombat()
 end)
 
-test("only the pressed button is read again, not the whole bar", function()
-	M.silentCooldowns = true
+test("a cooldown that is reset early comes off the button with the next event, in combat too", function()
 	Load()
-	M.actions[181] = { texture = "sinister strike" }
+	local cooldown = M.frames.FreeControlButton0_2.fc.cooldown
+	M.actions[182] = { texture = "gouge", cooldownOnUse = 10 }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+	M.EnterCombat()
+	M.Tap("PADDUP")
+	truthy(cooldown.__cooldown, "running")
+	M.actions[182].cooldown = nil
+	M.Fire("SPELL_UPDATE_COOLDOWN", 182)
+	eq(cooldown.__cooldown, nil, "cleared")
+	M.LeaveCombat()
+end)
+
+test("the bar does not poll: no cooldown is read unless the game raises an event", function()
+	Load()
 	M.actions[182] = { texture = "kick" }
-	M.actions[183] = { texture = "gouge" }
-	M.Fire("ACTIONBAR_SLOT_CHANGED", 0)
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
 	local readings = 0
 	local read = C_ActionBar.GetActionCooldown
 	C_ActionBar.GetActionCooldown = function(slot)
@@ -219,85 +232,123 @@ test("only the pressed button is read again, not the whole bar", function()
 		return read(slot)
 	end
 	M.Tap("PADDUP")
-	M.Advance(0.016)
 	for _ = 1, 60 do M.Advance(0.05) end -- three seconds
+	eq(readings, 0, "readings with no event")
+	M.Fire("SPELL_UPDATE_COOLDOWN", 182)
 	C_ActionBar.GetActionCooldown = read
-	-- Twenty a second for a second and a half, for one button. Reading every filled slot each
-	-- time would be three times that here, and thirty-two times that on a full bar.
-	truthy(readings >= 25 and readings <= 35, "about thirty readings, got " .. readings)
-	local other = M.frames.FreeControlButton0_3.fc.cooldown
-	M.actions[183].cooldown = { M.now, 10 }
-	M.Tap("PADDUP")
-	M.Advance(0.2)
-	eq(other.__cooldown, nil, "a button that was not pressed waits for its event")
-	M.Fire("SPELL_UPDATE_COOLDOWN", 183)
-	eq(other.__cooldown[2], 10, "which then shows it")
+	eq(readings, 1, "one reading per filled slot per event")
 end)
 
-test("the readings after a press never wipe a sweep the game put on a button itself", function()
+test("a charge count is passed on while it is sealed, never read", function()
 	Load()
-	local button = M.frames.FreeControlButton0_2
-	M.actions[182] = { texture = "icon" }
+	M.actions[182] = { texture = "bandage", count = "5" }
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
-	M.Tap("PADDUP")
-	button.fc.cooldown:SetCooldown(M.now, 10, 1) -- the client, ahead of what the API reports
-	M.Advance(0.5)
-	truthy(button.fc.cooldown.__cooldown, "still there")
-end)
-
-test("slots are registered with the game, and a client that updates registered buttons is not fought", function()
-	M.nativePush, M.silentCooldowns = true, true
-	Load()
-	local button = M.frames.FreeControlButton0_2
-	eq(M.native[button] and M.native[button].slot, 182, "registered with its slot")
-	eq(M.native[button].cooldown, button.fc.cooldown, "and with its cooldown frame")
-	eq(M.native[M.frames.FreeControlButton0_5], nil, "a command button is not an action slot: not registered")
-	M.actions[182] = { texture = "icon", cooldownOnUse = 20 }
-	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
-	M.KeyDown("PADDUP")
-	eq(button.fc.cooldown.__cooldown[2], 20, "the client's sweep")
-	M.KeyUp("PADDUP")
-	M.Advance(1)
-	M.Fire("ACTIONBAR_UPDATE_COOLDOWN")
-	eq(button.fc.cooldown.__cooldown[2], 20, "left alone by the readings and confirmed by the event")
-end)
-
-test("a stance swap in combat registers the buttons with their new slots", function()
-	Load()
-	local set = ns.Layout.GetStanceSet()
-	truthy(set, "a stance set by default")
-	local button = ns.Buttons.action[set][1]
-	local before = ns.Buttons:GetSlot(set, 1)
-	eq(M.native[button].slot, before, "registered with the plain slot")
+	local count = M.frames.FreeControlButton0_2.fc.count
+	eq(count:GetText(), "5", "plain out of combat")
 	M.EnterCombat()
-	M.bonusbar = 1
-	M.RunDrivers()
-	local after = ns.Buttons:GetSlot(set, 1)
-	truthy(after ~= before, "the slot changed with the stance")
-	eq(M.native[button].slot, after, "and the registration followed")
+	M.actions[182].count = "4"
+	M.Fire("BAG_UPDATE")
+	truthy(M.IsSealed(count:GetText()), "handed to the font string still sealed")
+	eq(M.Unseal(count:GetText()), "4", "and it is the new count")
 	M.LeaveCombat()
 end)
 
-test("switching off hands every button back to the game, and switching on registers them again", function()
+test("a button that cannot be drawn is reported, not hidden, and the buttons after it still update", function()
 	Load()
-	truthy(next(M.native), "registered while on")
-	SlashCmdList.FREECONTROL("off")
-	eq(next(M.native), nil, "none registered while off")
-	SlashCmdList.FREECONTROL("on")
-	eq(M.native[M.frames.FreeControlButton0_2].slot, 182, "registered again")
+	M.actions[182] = { texture = "kick" }
+	M.actions[183] = { texture = "gouge" }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 0)
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Errors since login: none"), "status says so while there are none")
+	local read = C_ActionBar.GetActionCooldown
+	C_ActionBar.GetActionCooldown = function(slot)
+		if slot == 182 then error("the game changed its mind about slot 182") end
+		return read(slot)
+	end
+	M.actions[183].cooldown = { M.now, 10 }
+	M.expectErrors = true
+	M.Fire("SPELL_UPDATE_COOLDOWN", 183)
+	M.Fire("SPELL_UPDATE_COOLDOWN", 183)
+	C_ActionBar.GetActionCooldown = read
+	eq(M.frames.FreeControlButton0_3.fc.cooldown.__cooldown[2], 10, "the button after the failing one")
+	eq(#M.luaErrors, 2, "every error reached the game's error handler")
+	truthy(M.luaErrors[1]:find("changed its mind"), "with its text")
+	local said = 0
+	for _, line in ipairs(M.printed) do
+		if line:find("Something went wrong inside FreeControl") then said = said + 1 end
+	end
+	eq(said, 1, "said in chat, once")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("2 time%(s%): .*changed its mind"), "status lists it with how often it happened")
 end)
 
-test("if the game refuses the registration the bar works all the same, and /fc status says why", function()
-	M.refuseNative = "not allowed here"
+test("an error in one event handler does not stop the other handlers of that event", function()
 	Load()
-	eq(Printed("not allowed here"), false, "no complaint in chat at login: there is nothing the player can do")
+	local ran = false
+	ns.On("PLAYER_TARGET_CHANGED", function() error("first handler fails") end)
+	ns.On("PLAYER_TARGET_CHANGED", function() ran = true end)
+	M.expectErrors = true
+	M.Fire("PLAYER_TARGET_CHANGED")
+	truthy(ran, "second handler ran")
+	truthy(M.luaErrors[1]:find("first handler fails"), "and the error was reported")
+end)
+
+test("/fc trace records what the game says about a used ability, and never touches a sealed value", function()
+	Load()
+	M.actions[182] = { texture = "kick", spell = 1766, cooldownOnUse = 10 }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+	SlashCmdList.FREECONTROL("trace")
+	truthy(Printed("Recording for 20 seconds"), "says that it started")
+	M.EnterCombat()
+	M.Advance(0.5)
+	M.KeyDown("PADDUP")
+	M.KeyUp("PADDUP")
+	M.Advance(0.3)
+	M.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", 1766)
+	M.Fire("UNIT_SPELLCAST_SUCCEEDED", "target", M.Seal("Cast-2"), M.Seal(99)) -- someone else's: not asked for
+	M.Fire("UNIT_SPELLCAST_SUCCEEDED", "party1", "Cast-3", 424242)
+	M.Fire("BAG_UPDATE_COOLDOWN")
+	M.Fire("SPELL_UPDATE_COOLDOWN", M.Seal(1766)) -- an event may carry a sealed value too
+	M.LeaveCombat()
+	SlashCmdList.FREECONTROL("trace")
+	local window = M.frames.FreeControlTrace
+	truthy(window and window:IsShown(), "the box is up")
+	local text = window.edit:GetText()
+	local function Has(pattern, what)
+		truthy(text:find(pattern), what .. " in:\n" .. text)
+	end
+	Has("FreeControl test, game interface 16001, out of combat", "the header")
+	Has("seals combat values from addons: yes, but cooldowns are not sealed right now", "what the client says about sealing")
+	Has("PLAYER_REGEN_DISABLED", "combat starting")
+	Has("SPELL_UPDATE_COOLDOWN 1766", "the cooldown event and its spell")
+	Has("ACTIONBAR_UPDATE_COOLDOWN", "the action bar event")
+	Has("USED [^\n]*slot 182, spell 1766, in combat", "the press")
+	Has("slot: running, sealed | spell: running, sealed | sweep: showing, sealed", "what the game and the button said, sealed")
+	Has("UNIT_SPELLCAST_SUCCEEDED 1766", "the player's cast")
+	Has("BAG_UPDATE_COOLDOWN\n[^\n]*SPELL_UPDATE_COOLDOWN sealed", "a sealed event value is written as such")
+	Has("PLAYER_REGEN_ENABLED\n[^\n]*right after: slot: running, 10.0s", "the numbers once the fight is over")
+	eq(text:find("<sealed>", 1, true), nil, "no sealed value was turned into text")
+	eq(select(2, text:gsub("UNIT_SPELLCAST_SUCCEEDED", "")), 1, "nobody else's casts, sealed or not")
+	eq(ns.Trace.active, false, "stopped")
+	eq(#M.events.UNIT_SPELLCAST_SUCCEEDED, 0, "and no longer listening")
+end)
+
+test("/fc trace stops by itself, and does nothing at all while it is off", function()
+	Load()
 	M.actions[182] = { texture = "kick", cooldownOnUse = 10 }
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
 	M.Tap("PADDUP")
-	eq(Used(), "182", "still casts")
-	eq(M.frames.FreeControlButton0_2.fc.cooldown.__cooldown[2], 10, "and still shows the cooldown, from the event")
-	SlashCmdList.FREECONTROL("status")
-	truthy(Printed("refused %(not allowed here%)"), "status reports the reason")
+	eq(M.frames.FreeControlTrace, nil, "no box before it is ever used")
+	eq(M.events.UNIT_SPELLCAST_SENT, nil, "not listening while off")
+	SlashCmdList.FREECONTROL("trace")
+	eq(ns.Trace.active, true, "recording")
+	M.Tap("PADDUP")
+	M.Advance(10)
+	eq(ns.Trace.active, true, "still recording after ten seconds")
+	M.Advance(11)
+	eq(ns.Trace.active, false, "stopped after twenty")
+	truthy(Printed("Trace ready"), "and said so")
+	truthy(M.frames.FreeControlTrace.edit:GetText():find("USED"), "with what it saw")
 end)
 
 test("cooldown numbers are on by default, skip the global cooldown, and can be switched off", function()

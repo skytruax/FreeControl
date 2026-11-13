@@ -7,8 +7,8 @@ local Layout = ns.Layout
 --     drop, tooltip), and
 --   * an invisible "key" button on top of it that the controller is bound to, which acts on press.
 --
--- Cooldowns follow the game's events (the list at the end of this file) and are read again for
--- a moment after every press; see ShowRunningCooldown and StartCatchUp.
+-- Cooldowns follow the game's events (the list at the end of this file) and are drawn without
+-- reading them, because in combat the game seals their numbers; see UpdateCooldown.
 --
 -- Both are plain SecureActionButtonTemplate buttons whose click runs Blizzard's own
 -- SecureActionButton_OnClick and nothing else, so nothing of ours runs before the protected
@@ -54,31 +54,30 @@ local function UpdateUsable(button)
 	end
 end
 
+-- A cooldown is drawn without ever reading it. In combat the game seals when a cooldown started
+-- and how long it is (see "Sealed values" in Core.lua): C_ActionBar.GetActionCooldown still
+-- answers, but startTime, duration and modRate come back sealed, and a cooldown frame refuses
+-- sealed numbers from an addon with an error. Versions up to 1.1.1 handed it exactly those
+-- (Cooldown:SetCooldown), so a sweep could not appear for as long as the numbers stayed sealed.
+--
+-- Two things are never sealed, and they are all a bar needs: isActive, which says whether there
+-- is a cooldown to show, and a duration object, which carries the timing to the frame without
+-- exposing it. The frame then draws the sweep and the countdown number itself.
 local function UpdateCooldown(button)
 	local fc = button.fc
 	if not fc.hasAction then
 		return
 	end
-	-- Same shape as Blizzard's ActionButton_ApplyCooldown: branch on isActive, hand the numbers
-	-- straight to the cooldown frame.
 	local info = C_ActionBar.GetActionCooldown(fc.slot)
 	if info and info.isActive then
-		fc.cooldown:SetCooldown(info.startTime, info.duration, info.modRate)
+		fc.cooldown:SetCooldownFromDurationObject(C_ActionBar.GetActionCooldownDuration(fc.slot))
 	else
 		fc.cooldown:Clear()
 	end
 end
 
--- The same reading, but it only ever starts a sweep. Used for the re-reads after a press, which
--- must not wipe a sweep the client put on the button itself.
-local function ShowRunningCooldown(button)
-	local fc = button.fc
-	local info = C_ActionBar.GetActionCooldown(fc.slot)
-	if info and info.isActive then
-		fc.cooldown:SetCooldown(info.startTime, info.duration, info.modRate)
-	end
-end
-
+-- The count is sealed in combat as well (charges are cooldown information). It is only ever
+-- passed on to the font string, which accepts a sealed text.
 local function UpdateCount(button)
 	local fc = button.fc
 	if fc.hasAction then
@@ -139,10 +138,11 @@ local function Update(button)
 	end
 end
 
+-- Each button on its own: if one cannot be drawn, that is reported and the rest still are.
 local function ForEachWithAction(fn)
 	for _, button in ipairs(all) do
 		if button.fc.hasAction then
-			fn(button)
+			ns.Try(fn, button)
 		end
 	end
 end
@@ -173,41 +173,6 @@ local function SetRangeSlot(button, slot)
 	end
 end
 
--- Blizzard's own action buttons hand themselves to the client (ActionButton.lua, UpdateAction),
--- which then sets a registered button's cooldown sweep and checked state itself. The same is
--- asked for these buttons, but in play it did not make their cooldowns prompt, so nothing here
--- relies on it: the events at the end of this file and the re-reads after a press do the work.
-local nativeProblem -- what the client said, if it ever refused; /fc status shows it
-
-local function SetNativeSlot(button, slot)
-	local fc = button.fc
-	if fc.nativeSlot == slot or not C_ActionBar.RegisterActionUIButton or (slot and nativeProblem) then
-		return
-	end
-	local ok, problem
-	if slot then
-		ok, problem = pcall(C_ActionBar.RegisterActionUIButton, button, slot, fc.cooldown)
-	else
-		ok, problem = pcall(C_ActionBar.UnregisterActionUIButton, button)
-	end
-	if ok then
-		fc.nativeSlot = slot
-		return
-	end
-	-- Not fatal, and nothing the player can act on: the bar works from events either way. The
-	-- reason is kept for /fc status rather than printed at every login.
-	fc.nativeSlot = nil
-	nativeProblem = nativeProblem or tostring(problem)
-end
-
--- For /fc status: "yes", that the client has no such call, or what the client complained about.
-function Buttons:GetNativeStatus()
-	if nativeProblem then
-		return "refused (" .. nativeProblem .. ")"
-	end
-	return C_ActionBar.RegisterActionUIButton and "yes" or "not offered by this client"
-end
-
 local function SetSlot(button, slot)
 	local fc = button.fc
 	if fc.slot ~= slot then
@@ -221,7 +186,6 @@ local function SetSlot(button, slot)
 		end
 	end
 	SetRangeSlot(button, slot)
-	SetNativeSlot(button, slot)
 	Update(button)
 end
 
@@ -303,16 +267,6 @@ local pressed = {}        -- [frame] = true while its key or mouse button is dow
 local releasing = {}      -- [frame] = seconds since it was let go
 local watchRoleKeys = false
 
--- After a press the pressed button reads its cooldown again, twenty times a second for a second
--- and a half. The events should already have delivered it; this is for when one does not
--- arrive, so that the cooldown of what was just used can never go missing for longer than a
--- moment. Only the pressed button is read: each reading makes a small table the game has to
--- collect later, and reading the whole bar came to a few hundred kilobytes per press.
-local CATCH_UP_TIME = 1.5  -- seconds after a press
-local CATCH_UP_STEP = 0.05 -- seconds between readings
-local watching = {}        -- [button] = seconds left to keep reading its cooldown
-local sinceReading = 0
-
 local animator = CreateFrame("Frame")
 animator:Hide()
 
@@ -354,26 +308,7 @@ local function WatchRoleKeys()
 	end
 end
 
-local function StartCatchUp(button)
-	watching[button] = CATCH_UP_TIME
-	sinceReading = CATCH_UP_STEP -- the first reading is on the next frame
-	animator:Show()
-end
-
 animator:SetScript("OnUpdate", function(self, elapsed)
-	if next(watching) then
-		sinceReading = sinceReading + elapsed
-		local reading = sinceReading >= CATCH_UP_STEP
-		if reading then
-			sinceReading = 0
-		end
-		for button, left in pairs(watching) do
-			if reading and button.fc.hasAction then
-				ShowRunningCooldown(button)
-			end
-			watching[button] = left > elapsed and left - elapsed or nil
-		end
-	end
 	for frame, age in pairs(releasing) do
 		age = age + elapsed
 		if age >= RELEASE_TIME then
@@ -387,10 +322,18 @@ animator:SetScript("OnUpdate", function(self, elapsed)
 	end
 	if watchRoleKeys then
 		WatchRoleKeys()
-	elseif not next(watching) and not next(releasing) then
+	elseif not next(releasing) then
 		self:Hide()
 	end
 end)
+
+-- A slot was just used, by key or by mouse. Nothing needs doing for the bar itself: the game's
+-- events bring the cooldown. This only tells /fc trace, when it is recording, which button to watch.
+local function NoteUse(button)
+	if ns.Trace.active then
+		ns.Try(ns.Trace.Press, ns.Trace, button)
+	end
+end
 
 local function OnMouseDown(frame)
 	Press(frame, "mouseDown", true)
@@ -539,7 +482,7 @@ local function CreateActionButton(set, index, parent)
 	button:SetScript("OnReceiveDrag", OnReceiveDrag)
 	button:SetScript("PostClick", function(self)
 		UpdateState(self)
-		StartCatchUp(self)
+		NoteUse(self)
 	end)
 	button:HookScript("OnAttributeChanged", OnAttributeChanged)
 
@@ -563,7 +506,7 @@ local function CreateKeyButton(set, index, button)
 	proxy:SetScript("PostClick", function(_, _, down)
 		Press(button, "keyDown", down)
 		if down then
-			StartCatchUp(button)
+			NoteUse(button)
 		else
 			UpdateState(button)
 		end
@@ -720,11 +663,10 @@ function Buttons:OnSetChanged(set)
 	end
 end
 
--- Out of combat. Used when the bars are switched off: stops the stance drivers, hands the buttons
--- back from the client and stops asking it for range updates. Assign puts all of that back.
+-- Out of combat. Used when the bars are switched off: stops the stance drivers and stops asking
+-- the client for range updates. Assign puts both back.
 function Buttons:Release()
 	watchRoleKeys = false
-	wipe(watching)
 	for frame in pairs(pressed) do
 		frame.fc.mouseDown = nil
 		Press(frame, "keyDown", false)
@@ -734,7 +676,6 @@ function Buttons:Release()
 			UnregisterAttributeDriver(self.action[set][index], "action")
 			UnregisterAttributeDriver(self.proxy[set][index], "action")
 			SetRangeSlot(self.action[set][index], nil)
-			SetNativeSlot(self.action[set][index], nil)
 		end
 	end
 end
@@ -761,12 +702,9 @@ for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_SHAPESHIFT_FORM", "SPE
 	ns.On(event, UpdateAll)
 end
 
--- ACTIONBAR_UPDATE_COOLDOWN on its own is not enough. In play, a sweep driven by it alone came
--- up seconds late for abilities with a cooldown of their own (Kick, Gouge): the game announces
--- those with SPELL_UPDATE_COOLDOWN, and an item's with BAG_UPDATE_COOLDOWN. Blizzard's bars get by
--- without them because the client updates its own registered buttons directly; where one of its
--- controller buttons is not registered, it listens for SPELL_UPDATE_COOLDOWN too
--- (Blizzard_GamepadActionBars, HostileTargetingActionBar.lua).
+-- The game announces a cooldown that starts, ends early or is reset with one or more of these,
+-- depending on whether it belongs to the action bar as a whole, to one spell or to an item.
+-- Every one of them redraws every filled slot; nothing is polled.
 for _, event in ipairs({ "ACTIONBAR_UPDATE_COOLDOWN", "SPELL_UPDATE_COOLDOWN", "BAG_UPDATE_COOLDOWN" }) do
 	ns.On(event, function() ForEachWithAction(UpdateCooldown) end)
 end

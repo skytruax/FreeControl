@@ -108,6 +108,72 @@ function ns.Print(...)
 end
 
 ---------------------------------------------------------------------------
+-- Sealed values
+---------------------------------------------------------------------------
+-- While the game's addon restrictions are in force (in combat, among other times) some of what
+-- it tells an addon comes back sealed: a "secret" value that can be stored and passed on, but not
+-- compared, calculated with or handed to most game functions. Doing any of that is an error on
+-- the spot. Blizzard's interface code marks which answers can be sealed (SecretWhen... in
+-- Blizzard_APIDocumentationGenerated); nothing in this addon may read one of those.
+function ns.IsSealed(value)
+	return issecretvalue ~= nil and issecretvalue(value)
+end
+
+-- For /fc status and /fc trace: "yes", "no", or that this client cannot say.
+function ns.DescribeSealing()
+	local secrets = C_Secrets
+	if not (secrets and secrets.HasSecretRestrictions) then
+		return "this client does not say"
+	end
+	if not secrets.HasSecretRestrictions() then
+		return "no"
+	end
+	return secrets.ShouldCooldownsBeSecret and secrets.ShouldCooldownsBeSecret() and "yes, and cooldowns are sealed right now"
+		or "yes, but cooldowns are not sealed right now"
+end
+
+---------------------------------------------------------------------------
+-- Errors
+---------------------------------------------------------------------------
+-- The game hides addon errors unless the player has switched them on, so an error in the code
+-- that draws the bar would end that update without anyone seeing why. Code run through ns.Try
+-- still hands every error to the game's own error handler, exactly as an uncaught one would be;
+-- on top of that the first one is said in chat and they are kept for /fc status, so a problem
+-- can be reported even with errors hidden. One failing handler or button does not stop the next.
+local MAX_PROBLEMS = 8 -- different errors kept; repeats of a kept one are only counted
+local problems = {}    -- { text = "...", count = n }, in order of first appearance
+local problemByText = {}
+
+local function OnError(message)
+	local text = tostring(message)
+	local problem = problemByText[text]
+	if problem then
+		problem.count = problem.count + 1
+	elseif #problems < MAX_PROBLEMS then
+		problem = { text = text, count = 1 }
+		problems[#problems + 1] = problem
+		problemByText[text] = problem
+		if #problems == 1 then
+			ns.Print("|cffff4040Something went wrong inside FreeControl|r, so part of the bar may not be updating. Type /fc status to see the error.")
+		end
+		if ns.Trace then
+			ns.Trace:Add("ERROR " .. text)
+		end
+	end
+	geterrorhandler()(message)
+	return message
+end
+
+-- Runs fn(...). Returns true and what it returned, or false after reporting what went wrong.
+function ns.Try(fn, ...)
+	return xpcall(fn, OnError, ...)
+end
+
+function ns.GetProblems()
+	return problems
+end
+
+---------------------------------------------------------------------------
 -- Events: modules register handlers here, Core owns the single event frame
 ---------------------------------------------------------------------------
 local eventFrame = CreateFrame("Frame")
@@ -123,7 +189,7 @@ end
 
 eventFrame:SetScript("OnEvent", function(_, event, ...)
 	for _, fn in ipairs(handlers[event]) do
-		fn(event, ...)
+		ns.Try(fn, event, ...)
 	end
 end)
 

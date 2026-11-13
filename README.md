@@ -154,7 +154,8 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc slots bars` | Use the regular Left / Bottom Left / Bottom Right / Right action bar slots instead (`gamepad` to go back). |
 | `/fc numbers off` | Hide the countdown numbers on slots that are on cooldown (`on` to show them again). |
 | `/fc key lt PADLSHOULDER` | Use another button as a trigger (`lt`, `rt`) or for a slot (`1`-`8`). Keyboard keys work too, for Steam Input layouts that send keys. |
-| `/fc status` | What FreeControl sees: controller, slots, keys, and anything that would get in the way. Include this in bug reports. |
+| `/fc status` | What FreeControl sees: controller, slots, keys, anything that would get in the way, and any error it ran into. Include this in bug reports. |
+| `/fc trace` | Records what the game reports about the next abilities you use, for twenty seconds. Type it again to see the result in a box you can copy from. For reports about cooldowns. |
 
 Other settings on the page: how much the held set grows, how far the others fade, button labels
 (Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, and which set swaps
@@ -210,14 +211,20 @@ combat. Each file's header comment explains its part.
 What keeps the bar feeling immediate:
 
 - The keys always act on the press (`useOnKeyDown`), as Blizzard's own controller buttons do.
-- Cooldowns follow `SPELL_UPDATE_COOLDOWN` and `BAG_UPDATE_COOLDOWN` as well as
-  `ACTIONBAR_UPDATE_COOLDOWN`. The last one alone leaves an ability's own cooldown seconds late:
-  the game does not raise it when such a cooldown starts.
-- For a second and a half after a press, the pressed button reads its cooldown again, so the
-  cooldown of what was just used can never go missing for longer than a moment. It only ever
-  starts a sweep that way and never clears one, and it reads that one button, not the whole bar.
-- The slots are also registered with the client (`C_ActionBar.RegisterActionUIButton`), as
-  Blizzard's buttons are. Nothing depends on it.
+- Cooldowns are drawn without being read. In combat the game seals a cooldown's start and length
+  from addons ("secret values"), and a cooldown frame refuses sealed numbers from addon code with
+  an error. So the bar asks only whether a cooldown is running (`isActive`, which is never sealed)
+  and hands the frame the game's duration object (`C_ActionBar.GetActionCooldownDuration`,
+  `Cooldown:SetCooldownFromDurationObject`). The frame draws the sweep and the countdown itself.
+- Cooldowns follow `ACTIONBAR_UPDATE_COOLDOWN`, `SPELL_UPDATE_COOLDOWN` and `BAG_UPDATE_COOLDOWN`.
+  Nothing is polled.
+
+An error while drawing the bar is never silent: it goes to the game's error handler as usual, the
+first one is also said in chat, and `/fc status` lists them. The game hides addon errors by
+default, which is how the bar went on passing sealed numbers to its sweeps up to version 1.1.1.
+[LibActionButton](https://github.com/Nevcairiel/LibActionButton-1.0), the button library behind
+Bartender4 and ConsolePort, draws cooldowns from duration objects on this client; reading how it
+does that is what pointed to the cause.
 
     python3 tools/make_art.py        # redraw FreeControl/Art/*.tga      (Pillow, numpy)
     python3 tools/preview.py         # docs/preview.png: the bar as the addon lays it out
@@ -230,7 +237,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 56 scenarios, runs on every push):
+**Mock client** (fast, 58 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -238,10 +245,11 @@ Forever 1.60.1 client.
 It loads the addon into Lua 5.1 against `tools/tests/wowmock.lua`, a strict stand-in for the
 client set to a fresh Forever install's defaults: protected frames refuse protected calls in
 combat, secure snippets run in a restricted environment, a button standing in for Shift does not
-report being held, and key presses travel through override bindings to button clicks. It is a
-model, so a pass shows the addon is consistent with that model, not that the game agrees.
+report being held, key presses travel through override bindings to button clicks, and in combat
+cooldown numbers come back sealed and are refused by cooldown frames. It is a model, so a pass
+shows the addon is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 22 tests, about six seconds):
+**Simulator** (Blizzard's real interface code, 24 tests, about six seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh
@@ -260,11 +268,12 @@ every API, console variable and event the addon names against the Forever client
 `docs/sim-screenshot.png` is the bar as that run draws it; the simulator has no game art, so
 filled slots are blank there.
 
-What it cannot show: it implements about half of the client's API, has no real key or controller
-input (the tests click the bound button from a secure call stack instead), has no controller-slot
-validity check (so FreeControl falls back to the regular bar slots there unless a test stands in
-for it), and never evaluates stance conditions as true. `tools/sim/lab/run-sim.sh --help` lists
-its options; `tools/sim/tests/` holds the tests and the screenshot scenario.
+What it cannot show: it implements about half of the client's API, does not seal anything in
+combat, has no real key or controller input (the tests click the bound button from a secure call
+stack instead), has no controller-slot validity check (so FreeControl falls back to the regular
+bar slots there unless a test stands in for it), and never evaluates stance conditions as true.
+`tools/sim/lab/run-sim.sh --help` lists its options; `tools/sim/tests/` holds the tests and the
+screenshot scenario.
 
 [UIForever](https://uiforever.com/) is a hosted alternative: a browser simulator for Forever that
 you drop an AddOns folder into. Its site says the files stay in the browser; it was not tried here.

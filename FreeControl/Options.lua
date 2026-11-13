@@ -366,10 +366,10 @@ local function PrintStatus()
 			ns.Print(("  %s: %s"):format(Layout.GetSetName(set), table.concat(slots, " ")))
 		end
 		ns.Print("Secure click handler present: " .. YesNo(not ns.Buttons:IsSecureClickMissing()))
-		ns.Print(("Buttons registered with the game: %s. Cooldown numbers: %s"):format(
-			ns.Buttons:GetNativeStatus(), YesNo(db.cooldownNumbers)))
 		ns.Print("Set held right now: " .. Layout.GetSetName(ns.Bindings:GetActiveSet()))
 	end
+	ns.Print(("Cooldown numbers: %s. The game seals combat values from addons: %s"):format(
+		YesNo(db.cooldownNumbers), ns.DescribeSealing()))
 
 	ns.Print("Keys: " .. table.concat(db.keys, " ") .. " | triggers: " .. table.concat(db.modKeys, " "))
 	for _, problem in ipairs(ns.Bindings:FindProblems()) do
@@ -377,6 +377,14 @@ local function PrintStatus()
 	end
 	for _, line in ipairs(ns.CVars:Describe()) do
 		ns.Print("  " .. line)
+	end
+
+	local problems = ns.GetProblems()
+	if #problems == 0 then
+		ns.Print("Errors since login: none.")
+	end
+	for _, problem in ipairs(problems) do
+		ns.Print(("|cffff4040Error|r since login, %d time(s): %s"):format(problem.count, problem.text))
 	end
 end
 
@@ -394,6 +402,7 @@ local HELP = {
 	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
 	"/fc key <1-8 | lt | rt> <KEY> - use a different key for a slot or trigger (1-4 D-pad left/up/right/down, 5-8 face left/top/right/bottom)",
 	"/fc status - what FreeControl sees, for bug reports",
+	"/fc trace - record what the game reports about the next abilities you use (type it again to see the result)",
 }
 
 local function SetKey(which, key)
@@ -444,6 +453,8 @@ SlashCmdList.FREECONTROL = function(message)
 		ns.Print("Keys: " .. table.concat(ns.db.keys, " ") .. " | triggers: " .. table.concat(ns.db.modKeys, " "))
 	elseif command == "status" then
 		PrintStatus()
+	elseif command == "trace" then
+		ns.Trace:Toggle()
 	else
 		for _, line in ipairs(HELP) do
 			ns.Print(line)
