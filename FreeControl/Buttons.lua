@@ -7,6 +7,9 @@ local Layout = ns.Layout
 --     drop, tooltip), and
 --   * an invisible "key" button on top of it that the controller is bound to, which acts on press.
 --
+-- The visible button is also registered with the client (SetNativeSlot below), which is what
+-- makes its cooldown appear the moment an action is used.
+--
 -- Both are plain SecureActionButtonTemplate buttons whose click runs Blizzard's own
 -- SecureActionButton_OnClick and nothing else, so nothing of ours runs before the protected
 -- call and casting keeps working in combat. Two rules follow from that:
@@ -21,8 +24,9 @@ Buttons.proxy = {}  -- [set][index] = key button
 Buttons.role = {}   -- [index] = stand-in shown for a no-trigger button that is not an action slot
 
 local ART = ns.ART
-local CIRCLE_MASK = ART .. "Round-Mask" -- a white disc: clips round icons and shapes their cooldown sweep
-local ICON_INSET = 3
+local ICON_INSET = 2       -- the icon starts just under the inner edge of the rim
+local ICON_CROP = 0.07     -- trims the built-in border most spell icons have (square buttons)
+local MIN_COUNTDOWN = 1750 -- milliseconds: shorter cooldowns (the global cooldown) show no number
 
 local all = {}     -- every visible action button
 local bySlot = {}  -- [slot] = { [button] = true }, for events that name a slot
@@ -104,14 +108,10 @@ local function Update(button)
 	if fc.hasAction then
 		fc.icon:SetTexture(C_ActionBar.GetActionTexture(slot))
 		ShowIcon(fc, true)
-		fc.cooldown:SetHideCountdownNumbers(not GetCVarBool("countdownForCooldowns"))
+		fc.cooldown:SetHideCountdownNumbers(not ns.db.cooldownNumbers)
 		local text = C_ActionBar.UsesActionText(slot) and C_ActionBar.GetActionText(slot)
 		fc.name:SetText(text or "")
-		if C_ActionBar.IsEquippedAction(slot) then
-			button:GetNormalTexture():SetVertexColor(0.45, 1, 0.45)
-		else
-			button:GetNormalTexture():SetVertexColor(1, 1, 1)
-		end
+		fc.equipped:SetAlpha(C_ActionBar.IsEquippedAction(slot) and 1 or 0)
 		UpdateUsable(button)
 		UpdateCooldown(button)
 		UpdateCount(button)
@@ -120,7 +120,7 @@ local function Update(button)
 		fc.cooldown:Clear()
 		fc.count:SetText("")
 		fc.name:SetText("")
-		button:GetNormalTexture():SetVertexColor(1, 1, 1)
+		fc.equipped:SetAlpha(0)
 	end
 	UpdateState(button)
 	UpdateBadge(button)
@@ -163,6 +163,46 @@ local function SetRangeSlot(button, slot)
 	end
 end
 
+-- Blizzard's own action buttons hand themselves to the client (ActionButton.lua, UpdateAction),
+-- and the client then sets a registered button's cooldown sweep and checked state itself, the
+-- moment the action is used. A button that only listens for ACTIONBAR_UPDATE_COOLDOWN shows the
+-- same thing noticeably later. The event handlers at the end of this file stay: they agree with
+-- the client, and they are all there is on a client that does not offer the call.
+local nativeProblem -- what the client said, if it ever refused
+
+local function SetNativeSlot(button, slot)
+	local fc = button.fc
+	if fc.nativeSlot == slot or not C_ActionBar.RegisterActionUIButton or (slot and nativeProblem) then
+		return
+	end
+	local ok, problem
+	if slot then
+		ok, problem = pcall(C_ActionBar.RegisterActionUIButton, button, slot, fc.cooldown)
+	else
+		ok, problem = pcall(C_ActionBar.UnregisterActionUIButton, button)
+	end
+	if ok then
+		fc.nativeSlot = slot
+		return
+	end
+	-- Not fatal: the bar still works from events, only less promptly. It is said once in chat
+	-- and stays in /fc status, so it does not go unnoticed.
+	fc.nativeSlot = nil
+	if not nativeProblem then
+		nativeProblem = tostring(problem)
+		ns.Print("|cffff4040The game would not link the buttons for instant cooldowns (" .. nativeProblem
+			.. "). They will follow events instead. Please report this with the output of /fc status.|r")
+	end
+end
+
+-- For /fc status: "yes", that the client has no such call, or what the client complained about.
+function Buttons:GetNativeStatus()
+	if nativeProblem then
+		return "refused (" .. nativeProblem .. ")"
+	end
+	return C_ActionBar.RegisterActionUIButton and "yes" or "not offered by this client"
+end
+
 local function SetSlot(button, slot)
 	local fc = button.fc
 	if fc.slot ~= slot then
@@ -176,6 +216,7 @@ local function SetSlot(button, slot)
 		end
 	end
 	SetRangeSlot(button, slot)
+	SetNativeSlot(button, slot)
 	Update(button)
 end
 
@@ -245,6 +286,87 @@ local function OnReceiveDrag(button)
 end
 
 ---------------------------------------------------------------------------
+-- Press feedback
+---------------------------------------------------------------------------
+-- A held button draws its art a little smaller and darker, and springs back when it is let go.
+-- Nothing is resized: the buttons are protected and may not be touched in combat. Each texture
+-- is told to sample a slightly larger area instead, which draws its picture that much smaller
+-- inside the same rectangle (the art has clear edges, so what lies beyond them is empty).
+local PRESS_INSET = 0.045 -- at full press the art is about 8% smaller
+local RELEASE_TIME = 0.12 -- seconds it takes to spring back
+local pressed = {}        -- [frame] = true while its key or mouse button is down
+local releasing = {}      -- [frame] = seconds since it was let go
+local watchRoleKeys = false
+
+local animator = CreateFrame("Frame")
+animator:Hide()
+
+local function ApplyPress(frame, amount)
+	local fc = frame.fc
+	for _, part in ipairs(fc.pressParts) do
+		local crop = part.crop
+		local inset = PRESS_INSET * amount * (1 - 2 * crop)
+		part.texture:SetTexCoord(crop - inset, 1 - crop + inset, crop - inset, 1 - crop + inset)
+	end
+	fc.pressShade:SetAlpha(amount)
+end
+
+-- source is "keyDown" or "mouseDown"; the button looks held while either is.
+local function Press(frame, source, down)
+	local fc = frame.fc
+	fc[source] = down or nil
+	if fc.keyDown or fc.mouseDown then
+		releasing[frame] = nil
+		if not pressed[frame] then
+			pressed[frame] = true
+			ApplyPress(frame, 1) -- at once: the press is the moment that has to feel immediate
+		end
+	elseif pressed[frame] then
+		pressed[frame] = nil
+		releasing[frame] = 0
+		animator:Show()
+	end
+end
+
+-- A button that runs a game command, or is left to the player's own binding, is bound straight
+-- to that command: no click passes through this addon, so the key itself is watched (Blizzard's
+-- ClassActionFlyout watches its own combination the same way).
+local function WatchRoleKeys()
+	for index, widget in pairs(Buttons.role) do
+		if widget:IsShown() then
+			Press(widget, "keyDown", activeSet == 0 and IsKeyDown(ns.db.keys[index]))
+		end
+	end
+end
+
+animator:SetScript("OnUpdate", function(self, elapsed)
+	for frame, age in pairs(releasing) do
+		age = age + elapsed
+		if age >= RELEASE_TIME then
+			releasing[frame] = nil
+			ApplyPress(frame, 0)
+		else
+			releasing[frame] = age
+			local left = 1 - age / RELEASE_TIME
+			ApplyPress(frame, left * left) -- quick at first, settling at the end
+		end
+	end
+	if watchRoleKeys then
+		WatchRoleKeys()
+	elseif not next(releasing) then
+		self:Hide()
+	end
+end)
+
+local function OnMouseDown(frame)
+	Press(frame, "mouseDown", true)
+end
+
+local function OnMouseUp(frame)
+	Press(frame, "mouseDown", false)
+end
+
+---------------------------------------------------------------------------
 -- Building
 ---------------------------------------------------------------------------
 local secureClickMissing = false
@@ -267,6 +389,7 @@ end
 local function AddArt(frame, round)
 	local shape = round and "Round" or "Square"
 	local fc = frame.fc
+	fc.shape = shape
 
 	fc.base = frame:CreateTexture(nil, "BACKGROUND")
 	fc.base:SetAllPoints()
@@ -275,14 +398,13 @@ local function AddArt(frame, round)
 	fc.icon = frame:CreateTexture(nil, "BORDER")
 	fc.icon:SetPoint("TOPLEFT", ICON_INSET, -ICON_INSET)
 	fc.icon:SetPoint("BOTTOMRIGHT", -ICON_INSET, ICON_INSET)
-	if round then
-		local mask = frame:CreateMaskTexture()
-		mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-		mask:SetAllPoints(fc.icon)
-		fc.icon:AddMaskTexture(mask)
-	else
-		fc.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93) -- trims the built-in border most spell icons have
-	end
+	-- A white disc or rounded square: it clips the icon to the shape of the rim, and (below) gives
+	-- the cooldown sweep the same shape, so nothing shows past the rim's rounded corners.
+	fc.maskFile = ART .. shape .. "-Mask"
+	local mask = frame:CreateMaskTexture()
+	mask:SetTexture(fc.maskFile, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	mask:SetAllPoints(fc.icon)
+	fc.icon:AddMaskTexture(mask)
 
 	-- What the button is, shown while the slot is empty.
 	fc.glyph = frame:CreateTexture(nil, "BORDER", nil, 2)
@@ -290,9 +412,26 @@ local function AddArt(frame, round)
 	fc.glyph:SetSize(20, 20)
 	fc.glyph:SetAlpha(GLYPH_ALPHA)
 
+	-- The rim. The pushed texture is the same picture: the held look is drawn by ApplyPress, the
+	-- same way for a key and for the mouse.
 	frame:SetNormalTexture(ART .. shape .. "-Border")
-	frame:SetPushedTexture(ART .. shape .. "-Pushed")
+	frame:SetPushedTexture(ART .. shape .. "-Border")
 	frame:SetHighlightTexture(ART .. shape .. "-Highlight", "ADD")
+
+	-- Darkens the inside of a held button; invisible otherwise.
+	fc.pressShade = frame:CreateTexture(nil, "ARTWORK", nil, 1)
+	fc.pressShade:SetAllPoints()
+	fc.pressShade:SetTexture(ART .. shape .. "-Pushed")
+
+	fc.pressParts = {
+		{ texture = fc.base, crop = 0 },
+		{ texture = fc.icon, crop = round and 0 or ICON_CROP },
+		{ texture = fc.glyph, crop = 0 },
+		{ texture = frame:GetNormalTexture(), crop = 0 },
+		{ texture = frame:GetPushedTexture(), crop = 0 },
+		{ texture = fc.pressShade, crop = 0 },
+	}
+	ApplyPress(frame, 0) -- the resting state, which is also what crops the icon
 end
 
 local function CreateActionButton(set, index, parent)
@@ -313,15 +452,26 @@ local function CreateActionButton(set, index, parent)
 	local fc = { set = set, index = index, round = round, hasAction = false, outOfRange = false }
 	button.fc = fc
 	AddArt(button, round)
-	button:SetCheckedTexture(ART .. (round and "Round" or "Square") .. "-Checked")
+	button:SetCheckedTexture(ART .. fc.shape .. "-Checked")
+
+	-- A green ring for an equipped item, as on the regular bars. Shown by alpha.
+	fc.equipped = button:CreateTexture(nil, "ARTWORK", nil, 2)
+	fc.equipped:SetAllPoints()
+	fc.equipped:SetTexture(ART .. fc.shape .. "-Highlight")
+	fc.equipped:SetVertexColor(0.25, 1, 0.3)
+	fc.equipped:SetAlpha(0)
+
+	fc.pressParts[#fc.pressParts + 1] = { texture = button:GetCheckedTexture(), crop = 0 }
+	fc.pressParts[#fc.pressParts + 1] = { texture = fc.equipped, crop = 0 }
 
 	fc.cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
 	fc.cooldown:SetAllPoints(fc.icon)
 	fc.cooldown:SetDrawEdge(false)
 	fc.cooldown:SetDrawBling(false)
 	fc.cooldown:SetSwipeColor(0, 0, 0, 0.72)
+	fc.cooldown:SetMinimumCountdownDuration(MIN_COUNTDOWN)
+	fc.cooldown:SetSwipeTexture(fc.maskFile)
 	if round then
-		fc.cooldown:SetSwipeTexture(CIRCLE_MASK)
 		fc.cooldown:SetUseCircularEdge(true)
 	end
 
@@ -349,6 +499,9 @@ local function CreateActionButton(set, index, parent)
 	button:HookScript("OnEnter", ShowTooltip)
 	button:HookScript("OnLeave", HideTooltip)
 	button:HookScript("OnDragStart", OnDragStart)
+	button:HookScript("OnDragStart", OnMouseUp) -- a drag carries the action away: the button is no longer held
+	button:HookScript("OnMouseDown", OnMouseDown)
+	button:HookScript("OnMouseUp", OnMouseUp)
 	button:SetScript("OnReceiveDrag", OnReceiveDrag)
 	button:SetScript("PostClick", UpdateState)
 	button:HookScript("OnAttributeChanged", OnAttributeChanged)
@@ -365,11 +518,13 @@ local function CreateKeyButton(set, index, button)
 	proxy:SetAllPoints(button)
 	proxy:EnableMouse(false)
 	proxy:SetAttribute("type", "action")
-	-- No useOnKeyDown here: the key acts on press or on release as the player's own
-	-- "cast on key down" setting says, like the regular action bars.
+	-- Like Blizzard's own controller buttons (GamepadActionBarStandardButtonMixin:OnLoad), the key
+	-- always acts on the press, whatever the player's "cast on key down" setting says: a pad
+	-- button that waits for the release feels late.
+	proxy:SetAttribute("useOnKeyDown", true)
 	proxy:RegisterForClicks("AnyDown", "AnyUp")
 	proxy:SetScript("PostClick", function(_, _, down)
-		button:SetButtonState(down and "PUSHED" or "NORMAL")
+		Press(button, "keyDown", down)
 		if not down then
 			UpdateState(button)
 		end
@@ -405,6 +560,8 @@ local function CreateRoleWidget(index, parent)
 	widget:SetPoint("CENTER", parent, "CENTER", unpack(Layout.BUTTON_OFFSET[index]))
 	widget.fc = { index = index, round = Layout.IsRound(index) }
 	AddArt(widget, widget.fc.round)
+	widget:SetScript("OnMouseDown", OnMouseDown)
+	widget:SetScript("OnMouseUp", OnMouseUp)
 	widget:SetScript("OnEnter", RoleTooltip)
 	widget:SetScript("OnLeave", function()
 		GameTooltip:Hide()
@@ -493,6 +650,10 @@ function Buttons:Assign()
 		end
 	end
 	self:UpdateGlyphs()
+	watchRoleKeys = IsKeyDown ~= nil
+	if watchRoleKeys then
+		animator:Show()
+	end
 end
 
 -- Glyphs follow the controller style (Xbox letters, PlayStation shapes, ...).
@@ -512,20 +673,28 @@ function Buttons:OnSetChanged(set)
 	activeSet = set
 	for _, button in ipairs(all) do
 		UpdateBadge(button)
-		-- The keys now point at another set, so a release may never reach a button that was
-		-- being held; do not leave it looking pressed.
-		button:SetButtonState("NORMAL")
+	end
+	-- The keys now point at another set, so a release may never reach a button that was being
+	-- held; do not leave it looking pressed.
+	for frame in pairs(pressed) do
+		Press(frame, "keyDown", false)
 	end
 end
 
--- Out of combat. Used when the bars are switched off: stops the stance drivers and stops asking
--- the client for range updates. Assign puts both back.
+-- Out of combat. Used when the bars are switched off: stops the stance drivers, hands the buttons
+-- back from the client and stops asking it for range updates. Assign puts all of that back.
 function Buttons:Release()
+	watchRoleKeys = false
+	for frame in pairs(pressed) do
+		frame.fc.mouseDown = nil
+		Press(frame, "keyDown", false)
+	end
 	for _, set in ipairs(Layout.SETS) do
 		for index = 1, 8 do
 			UnregisterAttributeDriver(self.action[set][index], "action")
 			UnregisterAttributeDriver(self.proxy[set][index], "action")
 			SetRangeSlot(self.action[set][index], nil)
+			SetNativeSlot(self.action[set][index], nil)
 		end
 	end
 end

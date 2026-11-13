@@ -8,16 +8,16 @@ Forever's built-in Gamepad UI has a great idea at its heart: hold LT, RT or both
 
 FreeControl is that hotbar on its own. The game stays in normal mode. Your targeting stays yours. Your menus stay the ones you know. Pick up the controller and play.
 
-![The bar with no trigger held, then LT, then LT and RT, then RT: the held set grows and lights up](https://raw.githubusercontent.com/skytruax/FreeControl/main/docs/demo.gif)
+![The bar with no trigger held, then LT, then LT and RT, then RT: the held set grows and the others fade](https://raw.githubusercontent.com/skytruax/FreeControl/main/docs/demo.gif)
 
 ## Why you will like it
 
-- **32 buttons under your thumbs.** Four sets of eight on the D-pad and face buttons: one with no trigger, one for LT, one for RT, one for both. The set you are holding grows and lights up, so you always know where you are.
-- **Drop anything, anywhere.** Drag spells, items and macros straight from your spellbook and bags onto any slot. Cooldowns, item counts, range and out-of-mana colouring all show, just like a normal action bar.
+- **32 buttons under your thumbs.** Four sets of eight on the D-pad and face buttons: one with no trigger, one for LT, one for RT, one for both. The set you are holding grows and the others step back, so you always know where you are.
+- **Drop anything, anywhere.** Drag spells, items and macros straight from your spellbook and bags onto any slot. Cooldowns with a countdown, item counts, range and out-of-mana colouring all show, just like a normal action bar.
 - **Nothing to rebuild.** FreeControl uses the same slots as Blizzard's controller bars, so whatever you already set up in Gamepad UI mode is waiting for you. Your regular action bars are never touched.
 - **One button for the world.** Interact loots the corpse next to you, talks to the NPC in front of you, opens the chest, and attacks your target when there is nothing else to do.
 - **Target your way.** Bumpers, stick clicks and every button FreeControl does not use are yours. Bind them in the normal Key Bindings screen, to whatever targeting you prefer.
-- **Made for combat.** Sets switch and abilities fire on the press, in the middle of a fight.
+- **Made for combat.** Sets switch and abilities fire on the press, in the middle of a fight. The button sinks under your thumb and its cooldown starts at once.
 - **Stances and forms covered.** One set can swap to different slots for each stance or form.
 - **Speaks your controller.** Xbox, PlayStation and Nintendo button labels, matched to the controller you plug in.
 - **Leaves no mess.** Every game setting it touches is put back when you log out or switch it off.

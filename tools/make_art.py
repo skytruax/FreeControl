@@ -25,11 +25,12 @@ FONT_CANDIDATES = [
 ]
 
 # Palette
-BRONZE_LIGHT = (226, 200, 138)
-BRONZE_MID = (168, 132, 74)
+BRONZE_LIGHT = (226, 200, 138)  # the addon-list icon's frame
 BRONZE_DARK = (84, 62, 32)
-GOLD = (255, 214, 96)
-INK = (10, 9, 8)
+RIM_TOP = (58, 60, 68)          # a button's rim is nearly black; its upper edge catches a little light
+RIM_BOTTOM = (10, 10, 13)
+GOLD = (255, 214, 96)           # the ring around the action in progress
+INK = (6, 6, 8)
 SLOT_TOP = (22, 26, 36)
 SLOT_BOTTOM = (9, 11, 16)
 DISC = (17, 19, 26)
@@ -155,9 +156,9 @@ def line(d, points, width, fill):
 # Button frames: 128 x 128, drawn for a button that is 36 units across in game
 # ---------------------------------------------------------------------------
 B = 128
-RING_OUT = 3      # the ring's outer edge, inside the texture
-RING_W = 9        # ring thickness; the icon starts 10.7 px in, just under its inner edge
-R_OUT, R_IN = 21, 13  # corner radii of the square ring
+RING_OUT = 3      # the rim's outer edge, inside the texture
+RING_W = 5.5      # rim thickness, about a pixel and a half on screen; the icon starts 7.1 px in, just under its inner edge
+R_OUT, R_IN = 21, 16  # corner radii of the square rim
 
 
 def ring_masks(shape):
@@ -166,22 +167,15 @@ def ring_masks(shape):
     return outer, inner, subtract(outer, inner)
 
 
-def metal(shape, light, mid, dark):
-    """A bevelled metal ring: lit from above, with a dark line on both edges."""
+def rim(shape, top, bottom, glint=0.2):
+    """A button's rim: shaded from top to bottom, a dark line on both edges, a little light on its upper edge."""
     outer, inner, ring = ring_masks(shape)
-    body = layer(vgradient(B, B, light, dark, 0.05, 0.95), ring)
-    # A band of mid-tone through the middle keeps the ring from looking like a flat gradient.
-    band = subtract(shape_mask(B, B, shape, RING_OUT + 3, R_OUT - 3), shape_mask(B, B, shape, RING_OUT + 6, R_IN + 3))
-    body = over(body, layer(mid, band, 0.55))
-    # Edge lines.
-    outer_line = subtract(outer, shape_mask(B, B, shape, RING_OUT + 1.4, R_OUT - 1.4))
-    inner_line = subtract(shape_mask(B, B, shape, RING_OUT + RING_W - 1.6, R_IN + 1.6), inner)
-    body = over(body, layer(INK, outer_line, 0.9), layer(INK, inner_line, 0.75))
-    # Highlight along the upper edge.
-    top = vgradient(B, B, (255, 255, 255), (0, 0, 0), 0.0, 0.42).convert("L")
-    glint = ImageChops.multiply(subtract(shape_mask(B, B, shape, RING_OUT + 1.4, R_OUT - 1.4),
-                                         shape_mask(B, B, shape, RING_OUT + 3.2, R_OUT - 3.2)), top)
-    return over(body, layer(WHITE, glint, 0.5))
+    body = layer(vgradient(B, B, top, bottom, 0.05, 0.95), ring)
+    within = subtract(shape_mask(B, B, shape, RING_OUT + 1.2, R_OUT - 1.2),
+                      shape_mask(B, B, shape, RING_OUT + RING_W - 1.2, R_IN + 1.2))
+    body = over(body, layer(INK, subtract(ring, within), 0.8))
+    upper = vgradient(B, B, (255, 255, 255), (0, 0, 0), 0.0, 0.42).convert("L")
+    return over(body, layer(WHITE, ImageChops.multiply(within, upper), glint))
 
 
 def round_mask():
@@ -189,6 +183,14 @@ def round_mask():
     where it clips the icon to a circle and gives the cooldown sweep its shape."""
     disc = shape_mask(B, B, "round", 0.5)
     return layer(WHITE, disc)
+
+
+def square_mask():
+    """The same for a square button: a white rounded square. Its corners follow the rim's, so
+    neither the icon nor the cooldown sweep shows past the rim's rounded corners. The icon area
+    starts 7.1 px inside the 128 px button, where a corner concentric with the rim has a radius
+    of 16.9 px; stretched over this texture that is 19 px."""
+    return layer(WHITE, shape_mask(B, B, "square", 0.5, 19))
 
 
 def button_art(shape):
@@ -201,20 +203,20 @@ def button_art(shape):
     shade = blur(subtract(well, shape_mask(B, B, shape, RING_OUT + RING_W + 6, R_IN - 4)), 3)
     base = over(base, layer((0, 0, 0), ImageChops.multiply(shade, well), 0.6))
 
-    border = metal(shape, BRONZE_LIGHT, BRONZE_MID, BRONZE_DARK)
+    border = rim(shape, RIM_TOP, RIM_BOTTOM)
 
-    # Pushed: the same ring in shadow, and the icon darkened from the top as if pressed in.
-    pressed = metal(shape, (150, 124, 80), (104, 80, 44), (46, 34, 18))
-    dip = ImageChops.multiply(vgradient(B, B, (255, 255, 255), (60, 60, 60)).convert("L"), inner)
-    pressed = over(layer((0, 0, 0), dip, 0.5), pressed, layer(GOLD, subtract(
-        shape_mask(B, B, shape, RING_OUT + RING_W - 1.6, R_IN + 1.6), shape_mask(B, B, shape, RING_OUT + RING_W + 0.6, R_IN - 0.6)), 0.55))
+    # Pushed: laid over a held button. The inside darkens from the top, with a shadow line under
+    # the rim, as if the button had sunk into its frame.
+    dip = ImageChops.multiply(vgradient(B, B, (255, 255, 255), (70, 70, 70)).convert("L"), inner)
+    sunk = subtract(inner, shape_mask(B, B, shape, RING_OUT + RING_W + 2.4, R_IN - 2.4))
+    pressed = over(layer((0, 0, 0), dip, 0.5), layer((0, 0, 0), sunk, 0.45))
 
-    # Highlight: drawn additively on mouse-over.
-    glow = over(layer((255, 240, 200), ring, 0.55), layer((255, 250, 235), inner, 0.14))
+    # Highlight: drawn additively on mouse-over; tinted green, it also marks an equipped item.
+    glow = over(layer((255, 244, 214), ring, 0.5), layer((255, 250, 235), inner, 0.12))
 
-    # Checked: a gold ring with a soft halo, for the action in progress.
+    # Checked: a gold rim with a soft halo, for the action in progress.
     halo = blur(ring, 2.2)
-    checked = over(layer(GOLD, halo, 0.7), metal(shape, (255, 244, 190), GOLD, (190, 132, 30)))
+    checked = over(layer(GOLD, halo, 0.45), rim(shape, (255, 244, 190), (196, 138, 34), 0.45))
     return {"Base": base, "Border": border, "Pushed": pressed, "Highlight": glow, "Checked": checked}
 
 
@@ -275,8 +277,8 @@ def badge(text):
     m = mask(w, h)
     ImageDraw.Draw(m).rounded_rectangle(s(2, 3, w - 2, h - 3), radius=9 * SS, fill=255)
     inner = mask(w, h)
-    ImageDraw.Draw(inner).rounded_rectangle(s(4.2, 5.2, w - 4.2, h - 5.2), radius=7 * SS, fill=255)
-    img = over(layer(vgradient(w, h, BRONZE_LIGHT, BRONZE_DARK), m), layer(vgradient(w, h, (36, 40, 52), DISC), inner))
+    ImageDraw.Draw(inner).rounded_rectangle(s(3.6, 4.6, w - 3.6, h - 4.6), radius=7.4 * SS, fill=255)
+    img = over(layer(vgradient(w, h, RIM_TOP, RIM_BOTTOM), m), layer(vgradient(w, h, (50, 54, 66), (26, 28, 36)), inner))
     centered_text(ImageDraw.Draw(img), w / 2, h / 2 + 0.5, text, 17, (244, 240, 228, 255))
     return img
 
@@ -380,16 +382,15 @@ ROLES = {
 
 
 # ---------------------------------------------------------------------------
-# Glow behind the held set, and the addon icon
+# Shade behind the held set, and the addon icon
 # ---------------------------------------------------------------------------
-def set_glow():
+def set_shade():
+    """A soft patch drawn behind the held set: black and almost transparent, meant to go unnoticed."""
     w, h = 256, 128
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
     dist = np.sqrt(((x - w / 2 + 0.5) / (w / 2)) ** 2 + ((y - h / 2 + 0.5) / (h / 2)) ** 2)
-    alpha = np.clip(1 - dist, 0, 1) ** 1.7 * 0.5
     rgba = np.zeros((h, w, 4), dtype=np.float32)
-    rgba[..., :3] = (255, 226, 164)
-    rgba[..., 3] = alpha * 255
+    rgba[..., 3] = np.clip(1 - dist, 0, 1) ** 1.5 * 0.22 * 255
     return Image.fromarray(rgba.astype(np.uint8), "RGBA")
 
 
@@ -423,6 +424,7 @@ def _drawings():
         for part, img in button_art(shape).items():
             out[prefix + "-" + part] = (img, B, B)
     out["Round-Mask"] = (round_mask(), B, B)
+    out["Square-Mask"] = (square_mask(), B, B)
     for letter in "ABXY":
         out["Glyph-" + letter] = (glyph_letter(letter), G, G)
     for name in ("Cross", "Circle", "Square", "Triangle"):
@@ -441,7 +443,7 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     for name, (img, w, h) in drawings().items():
         save_tga(finish(img, w, h), name)
-    save_tga(set_glow(), "Set-Glow")  # computed at its final size, so there is nothing to scale
+    save_tga(set_shade(), "Set-Shade")  # computed at its final size, so there is nothing to scale
     print("wrote %d textures to %s" % (len([f for f in os.listdir(OUT) if f.endswith(".tga")]), OUT))
 
 

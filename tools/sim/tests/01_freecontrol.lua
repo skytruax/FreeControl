@@ -105,7 +105,7 @@ test("holding a trigger moves the keys to its set and grows it; letting go puts 
 	Near(1.2, FreeControlSet1:GetScale())
 	Near(1, FreeControlSet0:GetScale())
 	Near(ns.db.inactiveAlpha, FreeControlSet0:GetAlpha())
-	assertTrue(ns.Bars.deco[1].glow:IsShown())
+	assertTrue(ns.Bars.deco[1].shade:IsShown())
 
 	SimInput.PressKey("PAD1")
 	assertTableEquals({ 68 }, used)
@@ -159,6 +159,56 @@ test("in combat: sets still switch, keys still cast, and nothing of ours is refu
 	assertEquals("TARGETNEARESTENEMY", Bound("PAD4"))
 	ns.db.roles[6] = "pass"
 	ns.RequestRefresh()
+	NothingRefused()
+end)
+
+test("a key casts on the press even when the game's 'cast on key down' is off", function()
+	Reset()
+	A_Admin.SetActionSlot(38, SPELL)
+	A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", 38)
+	SetCVar("ActionButtonUseKeyDown", "0")
+	assertTrue((SimInput.KeyDown("PADDUP")))
+	assertTableEquals({ 38 }, used) -- Blizzard's own click handler ran it on the way down
+	SimInput.KeyUp("PADDUP")
+	assertTableEquals({ 38 }, used)
+	SetCVar("ActionButtonUseKeyDown", "1")
+	NothingRefused()
+end)
+
+async_test("in combat a held key makes its button look pressed, then it springs back; nothing of ours is refused", function(done)
+	Reset()
+	A_Admin.SetActionSlot(38, SPELL)
+	A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", 38)
+	local fc = FreeControlButton0_2.fc
+	A_Admin.SetInCombat(true)
+	SimInput.KeyDown("PADDUP")
+	local held = fc.pressShade:GetAlpha()
+	local heldLeft = fc.base:GetTexCoord()
+	SimInput.KeyUp("PADDUP")
+	SimInput.AfterTicks(15, function() -- about a quarter of a second: twice the time it takes to spring back
+		local rest = fc.pressShade:GetAlpha()
+		local restLeft = fc.base:GetTexCoord()
+		A_Admin.SetInCombat(false)
+		done(function()
+			Near(1, held)
+			assertTrue(heldLeft < 0) -- sampled wider while held, so the art draws smaller
+			Near(0, rest)
+			Near(0, restLeft)
+			NothingRefused()
+		end)
+	end)
+end)
+
+test("the buttons are handed to the client for instant cooldowns, and the numbers option works", function()
+	Reset()
+	-- "yes" where the client offers the call; on a client without it the bar says so instead of failing.
+	local status = ns.Buttons:GetNativeStatus()
+	assertTrue(status == "yes" or status == "not offered by this client", status)
+	assertTrue(ns.db.cooldownNumbers)
+	SlashCmdList.FREECONTROL("numbers off")
+	assertFalse(ns.db.cooldownNumbers)
+	SlashCmdList.FREECONTROL("numbers on")
+	assertTrue(ns.db.cooldownNumbers)
 	NothingRefused()
 end)
 

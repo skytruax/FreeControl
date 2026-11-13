@@ -27,6 +27,7 @@ ART = os.path.join(ROOT, "FreeControl", "Art")
 DOCS = os.path.join(ROOT, "docs")
 
 ACTIVE_SCALE, INACTIVE_ALPHA = 1.2, 0.8  # the addon's defaults (Core.lua)
+ICON_INSET = 2  # bar units between a button's edge and its icon (Buttons.lua)
 STYLES = {  # face buttons left, top, right, bottom, then the two triggers; as in Layout.lua
     "xbox": (["X", "Y", "B", "A"], ["LT", "RT"]),
     "playstation": (["Square", "Triangle", "Circle", "Cross"], ["L2", "R2"]),
@@ -139,8 +140,12 @@ class Painter:
         """One button. index is 1-4 for the D-pad (square) and 5-8 for the face buttons (round).
 
         content: None or ("pass",) for an empty slot, ("icon", ability) or ("role", name).
-        state: normal, cooldown, unusable, nomana, range, checked, pushed or hover.
+        state: normal, cooldown, unusable, nomana, range, checked, pushed or hover; or
+        ("cooldown", "14") to print the seconds left as the addon's cooldown numbers do.
         """
+        countdown = None
+        if isinstance(state, tuple):
+            state, countdown = state
         k = self.k * scale
         round_shape = index > 4
         shape = "Round" if round_shape else "Square"
@@ -154,13 +159,14 @@ class Painter:
         elif content and content[0] == "role":
             icon = self.textures("Role-" + content[1])
         if icon is not None:
-            inner = round(size - 2 * 3 * k)
+            inner = round(size - 2 * ICON_INSET * k)
+            clip = self.tex(shape + "-Mask", inner, inner).getchannel("A")
             if round_shape:
                 icon = sized(icon, inner, inner)
-                icon.putalpha(self.tex("Round-Mask", inner, inner).getchannel("A"))
             else:
                 w = icon.width
                 icon = sized(icon.crop((round(w * 0.07), round(w * 0.07), round(w * 0.93), round(w * 0.93))), inner, inner)
+            icon.putalpha(Image.fromarray(np.minimum(np.asarray(icon.getchannel("A")), np.asarray(clip))))
             if state in TINTS:
                 bands = icon.split()
                 icon = Image.merge("RGBA", [band.point(lambda v, m=m: int(v * m)) for band, m in zip(bands, TINTS[state])]
@@ -169,15 +175,18 @@ class Painter:
             if state == "cooldown":
                 sweep = Image.new("RGBA", (inner, inner), (0, 0, 0, 0))
                 ImageDraw.Draw(sweep).pieslice((-inner, -inner, inner * 2, inner * 2), -90, 150, fill=(0, 0, 0, 184))
-                if round_shape:
-                    clip = self.tex("Round-Mask", inner, inner).getchannel("A")
-                    sweep.putalpha(Image.fromarray(np.minimum(np.asarray(sweep.getchannel("A")), np.asarray(clip))))
+                sweep.putalpha(Image.fromarray(np.minimum(np.asarray(sweep.getchannel("A")), np.asarray(clip))))
                 paste(canvas, sweep, cx, cy, alpha)
         else:
             paste(canvas, self.tex(glyph, 20 * k, 20 * k), cx, cy, alpha * 0.5)
 
-        ring = "-Pushed" if state == "pushed" else "-Border"
-        paste(canvas, self.tex(shape + ring, size, size), cx, cy, alpha)
+        paste(canvas, self.tex(shape + "-Border", size, size), cx, cy, alpha)
+        if state == "pushed":
+            paste(canvas, self.tex(shape + "-Pushed", size, size), cx, cy, alpha)
+        if countdown is not None:
+            ImageDraw.Draw(canvas).text((cx, cy), countdown, anchor="mm", font=FONT(round(15 * k), "Bold"),
+                                        fill=(255, 255, 255, round(255 * alpha)), stroke_width=max(1, round(0.9 * k)),
+                                        stroke_fill=(0, 0, 0, round(255 * alpha)))
         if state == "checked":
             paste(canvas, self.tex(shape + "-Checked", size, size), cx, cy, alpha)
         if state == "hover":
@@ -202,8 +211,8 @@ class Painter:
         scale, alpha = (ACTIVE_SCALE, 1.0) if active else (1.0, INACTIVE_ALPHA)
         k = self.k * scale
         lx, ly = LAYOUT["label_offset"]
-        if active and glow:
-            paste(canvas, self.tex("Set-Glow", (LAYOUT["set"][0] + 88) * k, (LAYOUT["set"][1] + 68) * k), cx, cy, add=True)
+        if active and glow:  # the faint dark patch behind the held set
+            paste(canvas, self.tex("Set-Shade", (LAYOUT["set"][0] + 88) * k, (LAYOUT["set"][1] + 68) * k), cx, cy)
         badges = {1: [(0, triggers[0])], 2: [(0, triggers[1])], 3: [(-23, triggers[0]), (23, triggers[1])]}.get(set_id, [])
         for dx, name in badges:
             paste(canvas, self.tex("Badge-" + name, 34 * k, 17 * k), cx + (lx + dx) * k, cy - ly * k, alpha)
@@ -248,7 +257,7 @@ CONTENT = {
     3: spells("Sap", "Distract", None, "Pick Pocket", "Instant Poison", "Bandage", "Mount", None),
 }
 # Kidney Shot and Sprint on cooldown; Ambush dark, as it is out of stealth.
-STATES = {(2, 2): "cooldown", (1, 5): "cooldown", (2, 3): "unusable"}
+STATES = {(2, 2): ("cooldown", "14"), (1, 5): ("cooldown", "38"), (2, 3): "unusable"}
 COUNTS = {(0, 2): "5", (3, 6): "12"}
 
 

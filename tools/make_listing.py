@@ -159,7 +159,7 @@ def pills(canvas, cx, cy, labels, size=28, height=58, fill=(255, 255, 255, 18), 
 def big_art():
     """The addon's textures drawn at three times their shipped size, for the large pictures."""
     out = {name: img.resize((w * 3, h * 3), Image.LANCZOS) for name, (img, w, h) in make_art.drawings(12).items()}
-    out["Set-Glow"] = preview.tex("Set-Glow")  # a smooth gradient; nothing to gain from redrawing it
+    out["Set-Shade"] = preview.tex("Set-Shade")  # a smooth gradient; nothing to gain from redrawing it
     return out
 
 
@@ -394,7 +394,7 @@ def hold_label(canvas, x, y, label, badges, size=30):
 
 def sets():
     canvas = slide([("Hold a trigger. ", WHITE), ("Get a new set.", GOLD)],
-                   "Four sets of eight on the D-pad and face buttons. The one you hold grows and lights up.")
+                   "Four sets of eight on the D-pad and face buttons. The one you hold grows; the others step back.")
     bars = painter(1.08)
     panels = [(0, "No trigger", [], "4 action slots, Interact, Cancel and Jump"), (1, "Hold", ["LT"], "8 action slots"),
               (2, "Hold", ["RT"], "8 action slots"), (3, "Hold", ["LT", "RT"], "8 action slots")]
@@ -595,7 +595,7 @@ def normal_mode():
 def combat():
     canvas = slide([("Made for ", WHITE), ("combat.", GOLD)],
                    "Every slot shows what a normal action bar shows, and your abilities fire on the press.")
-    shown = [(1, "Kidney Shot", "cooldown", None, "Cooldowns", "the familiar sweep"),
+    shown = [(1, "Kidney Shot", ("cooldown", "14"), None, "Cooldowns", "sweep and countdown"),
              (5, "Sinister Strike", "range", None, "Out of range", "turns red"),
              (2, "Eviscerate", "nomana", None, "Not enough energy", "turns blue"),
              (6, "Ambush", "unusable", None, "Not usable yet", "goes dark"),
@@ -678,8 +678,6 @@ def demo_frames():
         for side, name in ((1, "LT"), (2, "RT")):
             x = w / 2 - 128 + (side - 1) * 132
             lit = held in (side, 3)
-            if lit:
-                paste(canvas, sized(preview.tex("Set-Glow"), 250, 120), x + 58, 46, add=True)
             canvas.alpha_composite(preview.faded(sized(big("Badge-" + name), 116, 58), 1.0 if lit else 0.32), (round(x), 17))
         bars.bar(canvas, w / 2, 258, held, "xbox", CONTENT, STATES, COUNTS)
         text(canvas, (w / 2, h - 20), note(short=True), 15, DIM, "Medium")

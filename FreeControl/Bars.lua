@@ -2,7 +2,7 @@ local _, ns = ...
 local Layout = ns.Layout
 
 -- The frames the buttons live in: one bar, four sets, plus the decoration around each set
--- (glow, trigger labels) and the handle for dragging the bar.
+-- (a faint shade, trigger labels) and the handle for dragging the bar.
 --
 -- The sets are protected frames, because they hold protected buttons. In combat only the secure
 -- code in Bindings.lua may resize them; everything in here that runs in combat touches the
@@ -11,7 +11,7 @@ local Bars = {}
 ns.Bars = Bars
 
 Bars.sets = {} -- [set] = protected frame holding that set's buttons
-Bars.deco = {} -- [set] = unprotected frame behind it: glow and trigger label
+Bars.deco = {} -- [set] = unprotected frame behind it: shade and trigger label
 
 local ART = ns.ART
 local LABEL_SIZE = { 34, 17 }
@@ -33,12 +33,13 @@ local function CreateDecoration(root, anchor, set)
 	deco:SetPoint("CENTER", anchor, "CENTER")
 	deco:SetFrameLevel(root:GetFrameLevel() + 1)
 
-	deco.glow = deco:CreateTexture(nil, "BACKGROUND")
-	deco.glow:SetTexture(ART .. "Set-Glow")
-	deco.glow:SetBlendMode("ADD")
-	deco.glow:SetPoint("TOPLEFT", -44, 34)
-	deco.glow:SetPoint("BOTTOMRIGHT", 44, -34)
-	deco.glow:Hide()
+	-- A dark, almost transparent patch behind the held set: enough to lift it off a busy
+	-- background, not enough to draw the eye.
+	deco.shade = deco:CreateTexture(nil, "BACKGROUND")
+	deco.shade:SetTexture(ART .. "Set-Shade")
+	deco.shade:SetPoint("TOPLEFT", -44, 34)
+	deco.shade:SetPoint("BOTTOMRIGHT", 44, -34)
+	deco.shade:Hide()
 
 	deco.labels = {}
 	if set == Layout.SET_LT then
@@ -180,7 +181,7 @@ function Bars:OnSetChanged(set)
 		local active = id == set
 		deco:SetScale(active and db.activeScale or 1)
 		deco:SetAlpha(active and 1 or db.inactiveAlpha)
-		deco.glow:SetShown(active)
+		deco.shade:SetShown(active)
 	end
 	ns.Buttons:OnSetChanged(set)
 end

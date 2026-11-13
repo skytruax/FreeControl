@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.0
+
+- Cooldowns start the moment you press. Every slot is now registered with the game the way Blizzard's own action buttons are, so the game starts the sweep itself instead of the bar waiting for an update.
+- Controller buttons always act on the press, even with "cast on key down" switched off in the game options.
+- Buttons sink in when you press them and spring back when you let go.
+- New option: a countdown on every slot that is on cooldown. It is on by default; untick "Cooldown numbers" on the settings page or type `/fc numbers off`.
+- Quieter look: thinner, near-black button rims instead of gold, and only a faint dark shade behind the held set instead of the glow.
+- An equipped item is marked with a green ring.
+
 ## v1.0.1
 
 First version published on CurseForge. The addon itself is the same as v1.0.0.

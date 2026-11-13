@@ -109,24 +109,154 @@ test("default bindings: D-pad slots, Interact / Cancel / Jump, Y left alone", fu
 	eq(Binding("PAD1"), "cmd:JUMP", "A = jump")
 end)
 
-test("a key casts once, on press, and shows the button pushed while held", function()
+test("a key casts once, on press; the button looks held meanwhile and springs back, in combat too", function()
 	Load()
 	M.actions[182] = { texture = "icon" }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+	local fc = M.frames.FreeControlButton0_2.fc
+	eq(fc.pressShade:GetAlpha(), 0, "not held to begin with")
+	eq(fc.icon.calls.SetTexCoord[1], 0.07, "a square icon is cropped at rest")
+	M.EnterCombat()
 	M.KeyDown("PADDUP")
 	eq(Used(), "182", "cast on press")
-	eq(M.frames.FreeControlButton0_2:GetButtonState(), "PUSHED", "pushed while held")
+	eq(fc.pressShade:GetAlpha(), 1, "held look, at once")
+	truthy(fc.base.calls.SetTexCoord[1] < 0, "art drawn smaller while held")
+	truthy(fc.icon.calls.SetTexCoord[1] < 0.07, "icon drawn smaller while held")
 	M.KeyUp("PADDUP")
 	eq(Used(), "182", "no second cast on release")
-	eq(M.frames.FreeControlButton0_2:GetButtonState(), "NORMAL", "released")
+	M.Advance(0.05)
+	truthy(fc.pressShade:GetAlpha() > 0 and fc.pressShade:GetAlpha() < 1, "springing back")
+	M.Advance(0.2)
+	eq(fc.pressShade:GetAlpha(), 0, "back to rest")
+	eq(fc.base.calls.SetTexCoord[1], 0, "art back to full size")
+	eq(fc.icon.calls.SetTexCoord[1], 0.07, "icon back to its crop")
+	M.LeaveCombat()
 end)
 
-test("a key casts on release when the player turned 'cast on key down' off", function()
+test("a key casts on press even with the game's 'cast on key down' switched off", function()
 	M.cvars.ActionButtonUseKeyDown = "0"
 	Load()
 	M.KeyDown("PADDUP")
-	eq(Used(), "", "nothing on press")
+	eq(Used(), "182", "cast on press, like Blizzard's own controller buttons")
 	M.KeyUp("PADDUP")
-	eq(Used(), "182", "cast on release")
+	eq(Used(), "182", "nothing more on release")
+end)
+
+test("slots are handed to the game, so a cooldown shows the moment an action is used", function()
+	Load()
+	local button = M.frames.FreeControlButton0_2
+	eq(M.native[button] and M.native[button].slot, 182, "registered with its slot")
+	eq(M.native[button].cooldown, button.fc.cooldown, "and with its cooldown frame")
+	eq(M.native[M.frames.FreeControlButton0_5], nil, "a command button is not an action slot: not registered")
+	M.actions[182] = { texture = "icon", cooldownOnUse = 20 }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+	eq(button.fc.cooldown.__cooldown, nil, "no cooldown yet")
+	M.KeyDown("PADDUP")
+	-- No event has been fired: the sweep is there because the game set it on the registered frame.
+	truthy(button.fc.cooldown.__cooldown, "cooldown showing before any event")
+	eq(button.fc.cooldown.__cooldown[2], 20, "its duration")
+	M.KeyUp("PADDUP")
+	M.Fire("ACTIONBAR_UPDATE_COOLDOWN")
+	eq(button.fc.cooldown.__cooldown[2], 20, "the event, when it comes, agrees")
+end)
+
+test("a stance swap in combat registers the buttons with their new slots", function()
+	Load()
+	local set = ns.Layout.GetStanceSet()
+	truthy(set, "a stance set by default")
+	local button = ns.Buttons.action[set][1]
+	local before = ns.Buttons:GetSlot(set, 1)
+	eq(M.native[button].slot, before, "registered with the plain slot")
+	M.EnterCombat()
+	M.bonusbar = 1
+	M.RunDrivers()
+	local after = ns.Buttons:GetSlot(set, 1)
+	truthy(after ~= before, "the slot changed with the stance")
+	eq(M.native[button].slot, after, "and the registration followed")
+	M.LeaveCombat()
+end)
+
+test("switching off hands every button back to the game, and switching on registers them again", function()
+	Load()
+	truthy(next(M.native), "registered while on")
+	SlashCmdList.FREECONTROL("off")
+	eq(next(M.native), nil, "none registered while off")
+	SlashCmdList.FREECONTROL("on")
+	eq(M.native[M.frames.FreeControlButton0_2].slot, 182, "registered again")
+end)
+
+test("if the game refuses to link the buttons the bar still casts, and says so once", function()
+	M.refuseNative = "not allowed here"
+	Load()
+	local said = 0
+	for _, line in ipairs(M.printed) do
+		if line:find("would not link") then said = said + 1 end
+	end
+	eq(said, 1, "reported once, not once per button")
+	M.actions[182] = { texture = "icon" }
+	M.Tap("PADDUP")
+	eq(Used(), "182", "still casts")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("refused %(not allowed here%)"), "and /fc status keeps saying it")
+end)
+
+test("cooldown numbers are on by default, skip the global cooldown, and can be switched off", function()
+	Load()
+	M.actions[182] = { texture = "icon" }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+	local cooldown = M.frames.FreeControlButton0_2.fc.cooldown
+	eq(cooldown.__calls.SetHideCountdownNumbers[1], false, "numbers shown")
+	truthy(cooldown.__calls.SetMinimumCountdownDuration[1] > 1500, "not for a 1.5 second global cooldown")
+	SlashCmdList.FREECONTROL("numbers off")
+	eq(ns.db.cooldownNumbers, false, "saved")
+	eq(cooldown.__calls.SetHideCountdownNumbers[1], true, "numbers hidden")
+	SlashCmdList.FREECONTROL("numbers on")
+	eq(cooldown.__calls.SetHideCountdownNumbers[1], false, "and back")
+end)
+
+test("a held button does not stay looking pressed when its key moves to another set", function()
+	Load()
+	M.actions[182] = { texture = "icon" }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+	local fc = M.frames.FreeControlButton0_2.fc
+	M.KeyDown("PADDUP")
+	eq(fc.pressShade:GetAlpha(), 1, "held")
+	M.KeyDown("PADLTRIGGER") -- the D-pad now belongs to the left set
+	M.Advance(0.3)
+	eq(fc.pressShade:GetAlpha(), 0, "let go")
+	M.KeyUp("PADDUP")
+	M.KeyUp("PADLTRIGGER")
+end)
+
+test("command buttons look held while their key is down, but only with no trigger held", function()
+	Load()
+	local jump = ns.Buttons.role[8].fc
+	M.KeyDown("PAD1")
+	M.Advance(0.016)
+	eq(jump.pressShade:GetAlpha(), 1, "held")
+	M.KeyUp("PAD1")
+	M.Advance(0.016)
+	M.Advance(0.3)
+	eq(jump.pressShade:GetAlpha(), 0, "released")
+	M.KeyDown("PADRTRIGGER")
+	M.KeyDown("PAD1") -- A now belongs to the right set
+	M.Advance(0.016)
+	eq(jump.pressShade:GetAlpha(), 0, "the Jump button is not what was pressed")
+	eq(M.frames.FreeControlButton2_8.fc.pressShade:GetAlpha(), 1, "the right set's button is")
+	M.KeyUp("PAD1")
+	M.KeyUp("PADRTRIGGER")
+end)
+
+test("an equipped item gets a green ring", function()
+	Load()
+	M.actions[182] = { texture = "icon", equipped = true }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+	local ring = M.frames.FreeControlButton0_2.fc.equipped
+	eq(ring:GetAlpha(), 1, "ring shown")
+	M.actions[182].equipped = false
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 182)
+	eq(ring:GetAlpha(), 0, "ring hidden")
 end)
 
 test("triggers switch sets in combat without a protected-call error", function()
@@ -168,8 +298,8 @@ test("the held set grows and the others fade, in combat too", function()
 	eq(M.frames.FreeControlSet2:GetAlpha(), 1, "held set alpha")
 	eq(M.frames.FreeControlSet0:GetScale(), 1, "other set scale")
 	eq(M.frames.FreeControlSet0:GetAlpha(), 0.8, "other set alpha")
-	truthy(ns.Bars.deco[2].glow:IsShown(), "glow on the held set")
-	eq(ns.Bars.deco[0].glow:IsShown(), false, "no glow elsewhere")
+	truthy(ns.Bars.deco[2].shade:IsShown(), "faint shade behind the held set")
+	eq(ns.Bars.deco[0].shade:IsShown(), false, "none elsewhere")
 	M.KeyUp("PADRTRIGGER")
 	eq(M.frames.FreeControlSet0:GetScale(), 1.2, "no-trigger set grows back")
 	M.LeaveCombat()

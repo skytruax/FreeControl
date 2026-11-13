@@ -34,7 +34,7 @@ XIV. Switching that mode on also takes over your targeting, your menus and your 
 controller and play.
 
 <p align="center">
-  <img src="docs/demo.gif" alt="The bar with no trigger held, then LT, then LT and RT, then RT. The held set grows and lights up." width="900">
+  <img src="docs/demo.gif" alt="The bar with no trigger held, then LT, then LT and RT, then RT. The held set grows and the others fade." width="900">
 </p>
 
 ## What you get
@@ -44,12 +44,12 @@ controller and play.
     <td width="50%" valign="top">
       <img src="curseforge/gallery/02-sets.png" alt="The four sets: no trigger, LT, RT, and LT with RT">
       <b>32 buttons under your thumbs.</b> Four sets of eight on the D-pad and face buttons: no
-      trigger, LT, RT, and both. The set you are holding grows and lights up.
+      trigger, LT, RT, and both. The set you are holding grows, and the others step back.
     </td>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/03-drop.png" alt="A spell being dragged onto an empty slot of the bar">
       <b>Drop anything, anywhere.</b> Spells, items and macros go on any slot by drag and drop, and
-      show cooldowns, counts and range like a normal action bar.
+      show cooldowns with a countdown, counts and range like a normal action bar.
     </td>
   </tr>
   <tr>
@@ -67,8 +67,8 @@ controller and play.
   <tr>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/06-combat.png" alt="Slots showing a cooldown, out of range, not enough mana, not usable, an item count and an action in progress">
-      <b>Made for combat.</b> Sets switch and abilities fire on the press, in the middle of a fight.
-      One set can follow your stance or form.
+      <b>Made for combat.</b> Sets switch and abilities fire on the press, the button sinks under
+      your thumb, and its cooldown starts at once. One set can follow your stance or form.
     </td>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/07-controllers.png" alt="The same set with Xbox, PlayStation and Nintendo labels">
@@ -150,12 +150,13 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc reset` | Put the bar back where it started. |
 | `/fc page 2` | Show another of Blizzard's three controller-bar pages. |
 | `/fc slots bars` | Use the regular Left / Bottom Left / Bottom Right / Right action bar slots instead (`gamepad` to go back). |
+| `/fc numbers off` | Hide the countdown numbers on slots that are on cooldown (`on` to show them again). |
 | `/fc key lt PADLSHOULDER` | Use another button as a trigger (`lt`, `rt`) or for a slot (`1`-`8`). Keyboard keys work too, for Steam Input layouts that send keys. |
 | `/fc status` | What FreeControl sees: controller, slots, keys, and anything that would get in the way. Include this in bug reports. |
 
 Other settings on the page: how much the held set grows, how far the others fade, button labels
-(Xbox, PlayStation, Nintendo, or matched to your controller), and which set swaps with your stance
-or form (it follows **Options > Gamepad > Stance bar** unless you choose otherwise).
+(Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, and which set swaps
+with your stance or form (it follows **Options > Gamepad > Stance bar** unless you choose otherwise).
 
 ## What it changes, and puts back
 
@@ -204,6 +205,11 @@ tooling. `Layout.lua` holds the fixed facts (sets, geometry, which action slot e
 that rebinds the eight slot keys when a trigger is pressed, which is what lets the sets switch in
 combat. Each file's header comment explains its part.
 
+Two things keep the bar feeling immediate, both taken from Blizzard's own controller buttons: the
+keys always act on the press (`useOnKeyDown`), and every slot is registered with the client
+(`C_ActionBar.RegisterActionUIButton`), which then starts the button's cooldown itself the moment
+the action is used instead of leaving it to an event.
+
     python3 tools/make_art.py        # redraw FreeControl/Art/*.tga      (Pillow, numpy)
     python3 tools/preview.py         # docs/preview.png: the bar as the addon lays it out
     python3 tools/make_listing.py    # the README and CurseForge pictures (uses the Inter font if installed)
@@ -215,7 +221,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 42 scenarios, runs on every push):
+**Mock client** (fast, 50 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -226,7 +232,7 @@ combat, secure snippets run in a restricted environment, a button standing in fo
 report being held, and key presses travel through override bindings to button clicks. It is a
 model, so a pass shows the addon is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 18 tests, about six seconds):
+**Simulator** (Blizzard's real interface code, 21 tests, about six seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh

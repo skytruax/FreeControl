@@ -46,6 +46,10 @@ local M = {
 	lastGamepadSlot = 304, -- three pages of 28 plus five stance bars of 8
 	hasGamepadUI = true,
 	cursorControl = false,
+	native = {},           -- [checkbox] = { slot, cooldown }: buttons the client updates directly
+	down = {},             -- [key] = true while the key is physically held
+	all = {},              -- every frame, for M.Advance
+	now = 100,             -- seconds on the game's clock
 }
 Mock = M
 
@@ -176,9 +180,11 @@ function Frame:RegisterForClicks(...)
 end
 function Frame:SetNormalTexture(texture) self.__normal = NewRegion("Texture"); self.__normal.texture = texture end
 function Frame:GetNormalTexture() return self.__normal end
-function Frame:SetPushedTexture(texture) self.__pushed = texture end
+function Frame:SetPushedTexture(texture) self.__pushed = NewRegion("Texture"); self.__pushed.texture = texture end
+function Frame:GetPushedTexture() return self.__pushed end
 function Frame:SetHighlightTexture(texture, mode) self.__highlight = texture end
-function Frame:SetCheckedTexture(texture) self.__checkedTexture = texture end
+function Frame:SetCheckedTexture(texture) self.__checkedTexture = NewRegion("Texture"); self.__checkedTexture.texture = texture end
+function Frame:GetCheckedTexture() return self.__checkedTexture end
 function Frame:SetChecked(checked) self.__checked = checked and true or false end
 function Frame:GetChecked() return self.__checked end
 function Frame:SetButtonState(state) self.__state = state end
@@ -189,7 +195,8 @@ function Frame:GetText() return self.__text end
 -- Cooldown frames
 function Frame:SetCooldown(start, duration, modRate) self.__cooldown = { start, duration, modRate } end
 function Frame:Clear() self.__cooldown = nil end
-for _, name in ipairs({ "SetDrawEdge", "SetDrawBling", "SetSwipeColor", "SetSwipeTexture", "SetUseCircularEdge", "SetHideCountdownNumbers" }) do
+for _, name in ipairs({ "SetDrawEdge", "SetDrawBling", "SetSwipeColor", "SetSwipeTexture", "SetUseCircularEdge",
+	"SetHideCountdownNumbers", "SetMinimumCountdownDuration" }) do
 	Frame[name] = function(self, ...) self.__calls[name] = { ... } end
 end
 
@@ -280,6 +287,20 @@ end
 ---------------------------------------------------------------------------
 -- Secure action buttons (port of Blizzard's SecureActionButton_OnClick, type "action" only)
 ---------------------------------------------------------------------------
+-- What the client does for buttons registered with C_ActionBar.RegisterActionUIButton: it sets
+-- their cooldown frame itself, at once, with no event reaching Lua. ACTIONBAR_UPDATE_COOLDOWN is
+-- a separate thing, which a test fires when it wants the event to arrive.
+function M.StartCooldown(slot, duration)
+	M.actions[slot].cooldown = { M.now, duration }
+	M.secure = M.secure + 1
+	for _, entry in pairs(M.native) do
+		if entry.slot == slot then
+			entry.cooldown:SetCooldown(M.now, duration, 1)
+		end
+	end
+	M.secure = M.secure - 1
+end
+
 function UseAction(slot, unit, button)
 	slot = tonumber(slot)
 	if M.combat and insecure() then error("BLOCKED: UseAction from tainted code in combat", 2) end
@@ -289,6 +310,10 @@ function UseAction(slot, unit, button)
 		return
 	end
 	M.used[#M.used + 1] = { slot = slot, unit = unit, button = button }
+	local action = M.actions[slot]
+	if action and action.cooldownOnUse then
+		M.StartCooldown(slot, action.cooldownOnUse)
+	end
 end
 
 function SecureActionButton_OnClick(self, inputButton, down, isKeyPress, isSecureAction)
@@ -362,6 +387,7 @@ function CreateFrame(kind, name, parent, templates)
 		end
 		markAncestors(frame)
 	end
+	M.all[#M.all + 1] = frame
 	if name then
 		assert(not M.frames[name], "duplicate frame name " .. name)
 		M.frames[name] = frame
@@ -417,6 +443,7 @@ local function isModifierStandIn(key)
 end
 
 function M.KeyDown(key)
+	M.down[key] = true
 	if isModifierStandIn(key) then
 		M.held[key] = false
 		return "modifier"
@@ -433,6 +460,7 @@ end
 
 -- The release goes to whatever the key was bound to when it was pressed.
 function M.KeyUp(key)
+	M.down[key] = nil
 	local binding = M.held[key]
 	M.held[key] = nil
 	if not binding then return "unbound" end
@@ -447,6 +475,17 @@ function M.Tap(key)
 	local result = M.KeyDown(key)
 	M.KeyUp(key)
 	return result
+end
+
+function IsKeyDown(key) return M.down[key] or false end
+
+-- Lets time pass: runs the OnUpdate script of every visible frame that has one.
+function M.Advance(seconds)
+	M.now = M.now + seconds
+	for _, frame in ipairs(M.all) do
+		local fn = frame.__scripts.OnUpdate
+		if fn and frame:IsVisible() then fn(frame, seconds) end
+	end
 end
 
 function M.Fire(event, ...)
@@ -563,6 +602,14 @@ C_ActionBar = {
 	IsEquippedAction = function(slot) local a = valid(slot); return a and a.equipped or false end,
 	UsesActionText = function(slot) local a = valid(slot); return a and a.text ~= nil or false end,
 	GetActionText = function(slot) local a = valid(slot); return a and a.text end,
+	RegisterActionUIButton = function(checkbox, slot, cooldown)
+		valid(slot)
+		assert(checkbox.__kind == "CheckButton", "RegisterActionUIButton wants a CheckButton")
+		assert(cooldown.__kind == "Cooldown", "RegisterActionUIButton wants a Cooldown frame")
+		if M.refuseNative then error(M.refuseNative, 0) end
+		M.native[checkbox] = { slot = slot, cooldown = cooldown }
+	end,
+	UnregisterActionUIButton = function(checkbox) M.native[checkbox] = nil end,
 	EnableActionRangeCheck = function(slot, enable)
 		valid(slot)
 		M.rangeRefs[slot] = (M.rangeRefs[slot] or 0) + (enable and 1 or -1)

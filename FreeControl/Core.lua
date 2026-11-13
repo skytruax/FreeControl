@@ -21,6 +21,7 @@ local DEFAULTS = {
 	point = { 0, 270 },    -- centre of the bar, measured from the bottom-centre of the screen
 	activeScale = 1.2,     -- the set you are holding grows by this much
 	inactiveAlpha = 0.8,   -- the other sets fade to this
+	cooldownNumbers = true, -- count down the seconds left on a slot that is on cooldown
 	labelStyle = "auto",   -- auto | xbox | playstation | nintendo
 	slotSource = "gamepad", -- gamepad (Blizzard's controller-bar slots) | bars (regular action bar slots)
 	page = 1,              -- which of Blizzard's three controller-bar pages to show (gamepad source only)

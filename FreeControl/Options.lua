@@ -236,6 +236,7 @@ local function Build(panel)
 	y = Stepper(panel, left, y, "Other sets", "How visible the sets you are not holding stay.", "inactiveAlpha", 0.3, 1, 0.05)
 	y = Choice(panel, left, y, "Button labels", "Which names and symbols are printed on the buttons.", LABEL_STYLES,
 		function() return ns.db.labelStyle end, function(value) Set("labelStyle", value) end)
+	y = Check(panel, left, y, "Cooldown numbers", "Counts down the seconds left on every slot that is on cooldown. Untick it if another addon already draws them.", "cooldownNumbers")
 	y = Action(panel, left, y, "Reset position", "Puts the bar back where it started, at normal size.", function()
 		ns.db.point = CopyTable(ns.DEFAULTS.point)
 		Set("scale", ns.DEFAULTS.scale)
@@ -365,6 +366,8 @@ local function PrintStatus()
 			ns.Print(("  %s: %s"):format(Layout.GetSetName(set), table.concat(slots, " ")))
 		end
 		ns.Print("Secure click handler present: " .. YesNo(not ns.Buttons:IsSecureClickMissing()))
+		ns.Print(("Buttons linked to the game for instant cooldowns: %s. Cooldown numbers: %s"):format(
+			ns.Buttons:GetNativeStatus(), YesNo(db.cooldownNumbers)))
 		ns.Print("Set held right now: " .. Layout.GetSetName(ns.Bindings:GetActiveSet()))
 	end
 
@@ -388,6 +391,7 @@ local HELP = {
 	"/fc reset - put the bar back where it started",
 	"/fc page <1-3> - which controller-bar page to show",
 	"/fc slots gamepad | bars - where the slots are stored",
+	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
 	"/fc key <1-8 | lt | rt> <KEY> - use a different key for a slot or trigger (1-4 D-pad left/up/right/down, 5-8 face left/top/right/bottom)",
 	"/fc status - what FreeControl sees, for bug reports",
 }
@@ -434,6 +438,8 @@ SlashCmdList.FREECONTROL = function(message)
 		Set("page", tonumber(first))
 	elseif command == "slots" and ns.IsOneOf(first, "gamepad", "bars") then
 		Set("slotSource", first)
+	elseif command == "numbers" and ns.IsOneOf(first, "on", "off") then
+		Set("cooldownNumbers", first == "on")
 	elseif command == "key" and SetKey(first, second) then
 		ns.Print("Keys: " .. table.concat(ns.db.keys, " ") .. " | triggers: " .. table.concat(ns.db.modKeys, " "))
 	elseif command == "status" then
