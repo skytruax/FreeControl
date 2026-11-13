@@ -33,6 +33,9 @@ Logo
 Description
     curseforge/description.html, pasted into the editor's source view.
     It is built from description.md by: python3 tools/make_listing.py description
+    Its pictures are the nine gallery pictures at a smaller size (curseforge/web/, loaded from
+    GitHub), so there is nothing to upload for them. The "?v=" on each link is there so that a
+    changed picture is fetched afresh: raise it in description.md when the pictures change.
 
 Images, in this order
     your own screenshots from the game first, then curseforge/gallery/01-hero.png to 09-mouse-mode.png

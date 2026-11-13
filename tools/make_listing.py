@@ -15,6 +15,8 @@
   curseforge/gallery/07-controllers.png  Xbox, PlayStation and Nintendo labels
   curseforge/gallery/08-controls.png     a labelled diagram of the empty bar
   curseforge/gallery/09-mouse-mode.png   the mouse cursor and the buttons that click
+  curseforge/web/*.jpg                   the same nine at 1280 x 720, a seventh of the size: what
+                                         the description page loads, so it opens quickly
   docs/banner.png                        the README header
   docs/demo.gif                          the README animation: the four sets, one after the other
   docs/social.png                        for GitHub's Settings > Social preview
@@ -42,6 +44,7 @@ from preview import CONTENT, COUNTS, LAYOUT, STATES, Painter, paste, sized, spel
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "curseforge")
 GALLERY = os.path.join(OUT, "gallery")
+WEB = os.path.join(OUT, "web")  # smaller copies of the gallery pictures, for the description page
 DOCS = os.path.join(ROOT, "docs")
 
 W, H = 1920, 1080
@@ -908,6 +911,20 @@ def description_html():
         return markdown.markdown(f.read(), extensions=["sane_lists"]) + "\n"
 
 
+def web_copy(path):
+    """Writes the 1280 x 720 JPEG copy of one gallery picture and returns where it went. The
+    colour is kept at full resolution so the lettering stays crisp."""
+    os.makedirs(WEB, exist_ok=True)
+    out = os.path.join(WEB, os.path.splitext(os.path.basename(path))[0] + ".jpg")
+    Image.open(path).convert("RGB").resize((1280, 720), Image.LANCZOS).save(out, quality=88, subsampling=0, optimize=True)
+    return out
+
+
+def web_copies():
+    """The web copy of every gallery picture there is, without drawing any of them again."""
+    return [web_copy(os.path.join(GALLERY, name)) for name in sorted(os.listdir(GALLERY)) if name.endswith(".png")]
+
+
 # ---------------------------------------------------------------------------
 PICTURES = {
     "logo": (logo, os.path.join(OUT, "logo.png")),
@@ -923,6 +940,7 @@ PICTURES = {
     "banner": (banner, os.path.join(DOCS, "banner.png")),
     "social": (social, os.path.join(DOCS, "social.png")),
     "demo": (demo_frames, os.path.join(DOCS, "demo.gif")),
+    "web": (web_copies, WEB),
     "description": (description_html, os.path.join(OUT, "description.html")),
 }
 
@@ -941,6 +959,10 @@ def main(arguments):
         result = make()
         if name == "demo":
             save_gif(result, path)
+        elif name == "web":
+            for copy in result:
+                print("wrote %s (%d KB)" % (os.path.relpath(copy, ROOT), os.path.getsize(copy) // 1024))
+            continue
         elif name == "description":
             with open(path, "w", encoding="utf-8") as f:
                 f.write(result)
@@ -948,6 +970,8 @@ def main(arguments):
             result.save(path)  # keeps its transparent corners
         else:
             result.convert("RGB").save(path, optimize=True)
+            if os.path.dirname(path) == GALLERY:
+                web_copy(path)
         print("wrote %s (%d KB)" % (os.path.relpath(path, ROOT), os.path.getsize(path) // 1024))
 
 
