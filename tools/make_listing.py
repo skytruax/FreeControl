@@ -14,6 +14,7 @@
   curseforge/gallery/06-combat.png       what a slot shows in combat
   curseforge/gallery/07-controllers.png  Xbox, PlayStation and Nintendo labels
   curseforge/gallery/08-controls.png     a labelled diagram of the empty bar
+  curseforge/gallery/09-mouse-mode.png   the mouse cursor and the buttons that click
   docs/banner.png                        the README header
   docs/demo.gif                          the README animation: the four sets, one after the other
   docs/social.png                        for GitHub's Settings > Social preview
@@ -80,6 +81,62 @@ def font(size, weight="Bold"):
         if os.path.exists(path):
             return ImageFont.truetype(path, round(size))
     raise FileNotFoundError("no font found; add one to font() in tools/make_listing.py")
+
+
+# The title on the big pictures is set in LifeCraft, Eliot Truelove's Warcraft-style typeface. It
+# is donationware (free to use; its author asks for a donation) and is somebody else's work, so
+# the file is never committed: it is fetched once into tools/.font-cache/ (git-ignored).
+TITLE_FONT_ZIP = "https://dl.dafont.com/dl/?f=lifecraft"
+TITLE_FONT_FILE = "LifeCraft_Font.ttf"
+FONT_CACHE = os.path.join(ROOT, "tools", ".font-cache")
+
+
+@functools.lru_cache(maxsize=None)
+def title_font_path():
+    """Where the title typeface is, fetching it the first time; None if it cannot be had, in
+    which case the title falls back to the ordinary typeface."""
+    path = os.path.join(FONT_CACHE, TITLE_FONT_FILE)
+    if not os.path.exists(path):
+        import io
+        import urllib.request
+        import zipfile
+        try:
+            request = urllib.request.Request(TITLE_FONT_ZIP, headers={"User-Agent": "Mozilla/5.0 (picture build)"})
+            with urllib.request.urlopen(request, timeout=40) as response:
+                archive = zipfile.ZipFile(io.BytesIO(response.read()))
+            names = [n for n in archive.namelist() if n.lower().endswith(".ttf")]
+            os.makedirs(FONT_CACHE, exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(archive.read(names[0]))
+        except Exception as problem:  # no network, or the site has moved: say so and carry on plainer
+            print("could not fetch the title typeface (%s); using the ordinary one" % problem)
+            return None
+    return path
+
+
+def title_text(canvas, xy, string, size):
+    """The big title: Warcraft-style letters, cream running to gold, with a dark edge and a soft
+    shadow. Falls back to the ordinary bold typeface if the title one is not to be had."""
+    path = title_font_path()
+    if not path:
+        shadow_text(canvas, xy, string, size * 0.86, WHITE, "Black")
+        return
+    face = ImageFont.truetype(path, round(size))
+    edge_w = max(2, round(size * 0.030))
+    fill = Image.new("L", canvas.size, 0)
+    ImageDraw.Draw(fill).text(xy, string, font=face, fill=255, anchor="mm")
+    edge = Image.new("L", canvas.size, 0)
+    ImageDraw.Draw(edge).text(xy, string, font=face, fill=255, anchor="mm", stroke_width=edge_w)
+    shadow = ImageChops.offset(edge.filter(ImageFilter.GaussianBlur(size * 0.045)), 0, round(size * 0.035))
+    canvas.alpha_composite(masked((6, 26, 60), shadow, 0.70))
+    canvas.alpha_composite(masked((48, 30, 14), edge))
+    box_ = fill.getbbox() or (0, 0, canvas.width, canvas.height)
+    tint = Image.new("RGB", canvas.size, (255, 250, 236))
+    tint.paste(vertical((canvas.width, max(1, box_[3] - box_[1])), (255, 252, 240), (244, 206, 132)), (0, box_[1]))
+    canvas.alpha_composite(masked(tint, fill))
+    # A hairline of light along the top of the letters, as on an embossed sign.
+    lip = ImageChops.subtract(fill, ImageChops.offset(fill, 0, max(1, round(size * 0.012))))
+    canvas.alpha_composite(masked((255, 255, 255), lip, 0.55))
 
 
 def vertical(size, top, bottom):
@@ -172,79 +229,8 @@ def big(name):
 # ---------------------------------------------------------------------------
 @functools.lru_cache(maxsize=None)
 def logo():
-    ss, n = 4, 400
-    size = (n * ss, n * ss)
-
-    def shape(kind, rect, radius=0):
-        m = Image.new("L", size, 0)
-        d = ImageDraw.Draw(m)
-        rect = [v * ss for v in rect]
-        if kind == "round":
-            d.ellipse(rect, fill=255)
-        else:
-            d.rounded_rectangle(rect, radius=radius * ss, fill=255)
-        return m
-
-    def blur(img, radius):
-        return img.filter(ImageFilter.GaussianBlur(radius * ss))
-
-    def ring(kind, rect, width, radius=0, light=BRONZE_LIGHT, dark=BRONZE_DARK):
-        x0, y0, x1, y1 = rect
-        outer = shape(kind, rect, radius)
-        inner = shape(kind, (x0 + width, y0 + width, x1 - width, y1 - width), max(radius - width, 0))
-        band = ImageChops.subtract(outer, inner)
-        # Shade over the ring's own height, so every ring is lit the same way.
-        grad = Image.new("RGB", size, dark)
-        grad.paste(vertical((size[0], int((y1 - y0) * ss)), light, dark), (0, int(y0 * ss)))
-        body = masked(grad, band)
-        edge = ImageChops.subtract(outer, shape(kind, (x0 + 1.5, y0 + 1.5, x1 - 1.5, y1 - 1.5), max(radius - 1.5, 0)))
-        inner_edge = ImageChops.subtract(
-            shape(kind, (x0 + width - 1.5, y0 + width - 1.5, x1 - width + 1.5, y1 - width + 1.5), max(radius - width + 1.5, 0)), inner)
-        return Image.alpha_composite(Image.alpha_composite(body, masked(INK, edge, 0.85)), masked(INK, inner_edge, 0.7)), inner
-
-    # Plate: dark slate with grain and a warm light from the lit button, inside a bronze frame.
-    plate_mask = shape("square", (6, 6, n - 6, n - 6), 74)
-    base = np.asarray(vertical(size, (46, 52, 70), (12, 14, 22))).astype(np.float32) + noise(size, 5, 3)
-    img = masked(Image.fromarray(np.clip(base, 0, 255).astype(np.uint8), "RGB"), plate_mask)
-
-    centre, reach, radius = (200, 214), 82, 56
-    spots = {"top": (0, -reach), "left": (-reach, 0), "right": (reach, 0), "bottom": (0, reach)}
-    lit = "left"
-
-    lx, ly = centre[0] + spots[lit][0], centre[1] + spots[lit][1]
-    glow = blur(shape("round", (lx - 96, ly - 96, lx + 96, ly + 96)), 34)
-    img = Image.alpha_composite(img, masked((255, 196, 96), ImageChops.multiply(glow, plate_mask), 0.5))
-
-    for name, (dx, dy) in spots.items():
-        cx, cy = centre[0] + dx, centre[1] + dy
-        rect = (cx - radius, cy - radius, cx + radius, cy + radius)
-        shadow = blur(shape("round", (rect[0] - 4, rect[1] + 2, rect[2] + 4, rect[3] + 12)), 7)
-        img = Image.alpha_composite(img, masked((0, 0, 0), ImageChops.multiply(shadow, plate_mask), 0.6))
-        if name == lit:
-            band, well = ring("round", rect, 13, light=(255, 246, 198), dark=(196, 138, 34))
-            fill = vertical(size, (255, 226, 130), (214, 140, 30))
-        else:
-            band, well = ring("round", rect, 13)
-            fill = vertical(size, (40, 46, 62), (14, 16, 24))
-        img = Image.alpha_composite(img, masked(fill, well))
-        # A soft shade inside the rim gives the well some depth.
-        rim = blur(ImageChops.subtract(well, shape("round", (rect[0] + 26, rect[1] + 30, rect[2] - 26, rect[3] - 18))), 5)
-        img = Image.alpha_composite(img, masked((0, 0, 0), ImageChops.multiply(rim, well), 0.4 if name == lit else 0.55))
-        img = Image.alpha_composite(img, band)
-
-    # The two triggers, as pills above the buttons; the left one is held.
-    for side, x in (("left", 62), ("right", 226)):
-        rect = (x, 54, x + 112, 100)
-        held = side == "left"
-        shadow = blur(shape("square", (rect[0] - 3, rect[1] + 2, rect[2] + 3, rect[3] + 9), 23), 5)
-        img = Image.alpha_composite(img, masked((0, 0, 0), ImageChops.multiply(shadow, plate_mask), 0.55))
-        band, well = ring("square", rect, 9, 23, *(((255, 246, 198), (196, 138, 34)) if held else (BRONZE_LIGHT, BRONZE_DARK)))
-        fill = vertical(size, (255, 226, 130), (214, 140, 30)) if held else vertical(size, (40, 46, 62), (14, 16, 24))
-        img = Image.alpha_composite(Image.alpha_composite(img, masked(fill, well)), band)
-
-    frame, _ = ring("square", (6, 6, n - 6, n - 6), 12, 74)
-    img = Image.alpha_composite(img, frame)
-    return img.resize((n, n), Image.LANCZOS)
+    """The project avatar: the addon's emblem, at the 400 x 400 CurseForge asks for."""
+    return make_art.ring_logo(400, 4)
 
 
 # ---------------------------------------------------------------------------
@@ -281,71 +267,232 @@ def ridge(w, rng, sharp):
     return total / total.max()
 
 
+def cloud(w, h, rng, grain):
+    """Soft blotches from 0 to 1: a small field of random numbers stretched over the picture.
+    grain is how many blotches fit across its width."""
+    small = rng.uniform(0, 1, (max(2, round(grain * h / w)), grain)).astype(np.float32)
+    field = np.asarray(Image.fromarray(small).resize((w, h), Image.BICUBIC))
+    return np.clip(field, 0, 1)
+
+
 def landscape(w, h, seed=4):
-    """A flat, stylised dusk: sky, stars and five lines of hills. It stands in for the game world
-    behind the bar and is plainly a drawing."""
+    """A sunny city of white stone and blue roofs under a bright sky: a keep and a cathedral
+    among lesser towers, gold on the spires, banners on the gate. It is a drawing of our own of
+    the kind of city the game's humans live in, stands in for the game world behind the bar,
+    and is plainly not a screenshot."""
     rng = np.random.default_rng(seed)
-    stops = [(0.0, (8, 11, 28)), (0.30, (22, 25, 62)), (0.50, (66, 46, 100)), (0.62, (166, 88, 104)),
-             (0.72, (240, 152, 98)), (1.0, (240, 152, 98))]
-    rows = np.linspace(0, 1, h, dtype=np.float32)
-    sky = np.stack([np.interp(rows, [p for p, _ in stops], [c[i] for _, c in stops]) for i in range(3)], axis=-1)
-    sky = np.broadcast_to(sky[:, None, :], (h, w, 3)).astype(np.float32)
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
-    sun = np.clip(1 - np.hypot((x - 0.66 * w) / (0.42 * w), (y - 0.62 * h) / (0.36 * h)), 0, 1)[..., None] ** 2
-    img = Image.fromarray(np.clip(sky + np.array((255, 176, 110), np.float32) * sun * 0.45, 0, 255).astype(np.uint8),
-                          "RGB").convert("RGBA")
+    sky_top, sky_low = np.array((22, 112, 188), np.float32), np.array((170, 226, 242), np.float32)
+    air = np.array((176, 222, 240), np.float32)  # what distance fades things towards
+    stone, shade, roof, roof_dark = (242, 236, 222), (204, 204, 212), (48, 108, 186), (30, 74, 140)
+    gold, glass = (250, 204, 86), (52, 84, 128)
 
-    stars = Image.new("RGBA", (w * 2, h * 2), (0, 0, 0, 0))
-    d = ImageDraw.Draw(stars)
-    for _ in range(int(w * h / 8000)):
-        sx, sy = rng.uniform(0, w), rng.uniform(0, h * 0.46)
-        alpha = rng.uniform(0.25, 1.0) * (1 - sy / (h * 0.46)) ** 1.3
-        r = rng.choice([0.8, 1.0, 1.0, 1.7])
-        d.ellipse([(sx - r) * 2, (sy - r) * 2, (sx + r) * 2, (sy + r) * 2], fill=(255, 250, 240, int(255 * alpha)))
-    img.alpha_composite(stars.resize((w, h), Image.LANCZOS))
+    def mix(a, b, amount):
+        return np.asarray(a, np.float32) * (1 - amount) + np.asarray(b, np.float32) * amount
 
-    haze = np.array((196, 128, 140), np.float32)
-    # base line and height as fractions of the picture, colour, pointed peaks, haze, number of trees
-    layers = [(0.66, 0.21, (98, 80, 132), True, 0.40, 0), (0.71, 0.15, (70, 62, 114), True, 0.34, 0),
-              (0.77, 0.11, (46, 48, 92), False, 0.26, 0), (0.84, 0.08, (27, 32, 64), False, 0.14, 50),
-              (0.93, 0.07, (13, 17, 36), False, 0.0, 80)]
-    for base, amp, colour, sharp, mist, trees in layers:
-        top = base * h - amp * h * ridge(w, rng, sharp)
-        alpha = np.clip(y - top[None, :] + 0.5, 0, 1)
-        t = np.clip((y - (base - amp) * h) / ((amp + 0.07) * h), 0, 1)[..., None] * mist
-        fill = np.array(colour, np.float32) * (1 - t) + haze * t  # mistier lower down, where the next line begins
-        layer = Image.fromarray(np.concatenate([fill, alpha[..., None] * 255], axis=-1).clip(0, 255).astype(np.uint8), "RGBA")
-        if trees:
-            forest = Image.new("RGBA", (w * 2, h * 2), (0, 0, 0, 0))
-            d = ImageDraw.Draw(forest)
-            for _ in range(trees):
-                tx = rng.uniform(0, w - 1)
-                ty, th = top[int(tx)] + 3, rng.uniform(0.022, 0.05) * h
-                d.polygon([(tx * 2, (ty - th) * 2), ((tx - th * 0.21) * 2, ty * 2), ((tx + th * 0.21) * 2, ty * 2)],
-                          fill=colour + (255,))
-            layer = Image.alpha_composite(forest.resize((w, h), Image.LANCZOS), layer)
-        img.alpha_composite(layer)
+    def far(colour, depth):
+        """A colour as it looks `depth` of the way from the horizon (0) to the near wall (1)."""
+        return tuple(int(v) for v in mix(air, colour, 0.30 + 0.70 * depth)) + (255,)
+
+    # Sky: a deep clear blue overhead, paling to the horizon, the sun off to the upper right.
+    rows = np.clip(y / (0.80 * h), 0, 1)[..., None] ** 0.85
+    sky = mix(sky_top, sky_low, rows)
+    sun = np.clip(1 - np.hypot((x - 0.84 * w) / (0.50 * w), (y - 0.16 * h) / (0.46 * h)), 0, 1)[..., None] ** 2
+    img = Image.fromarray(np.clip(mix(sky, (255, 252, 236), sun * 0.55), 0, 255).astype(np.uint8), "RGB").convert("RGBA")
+
+    # Fair-weather clouds, kept to the sides so the title has clear sky behind it.
+    clouds = Image.new("RGBA", (w * 2, h * 2), (0, 0, 0, 0))
+    d = ImageDraw.Draw(clouds)
+    for cx, cy, size in ((0.09, 0.30, 1.0), (0.26, 0.42, 0.62), (0.93, 0.36, 0.9), (0.76, 0.46, 0.55), (0.50, 0.50, 0.42)):
+        puffs = [(dx, rng.uniform(0.55, 1.0)) for dx in np.linspace(-1, 1, 7)]
+        for layer_colour, drop in (((196, 224, 242, 255), 0.012), ((255, 255, 255, 255), 0.0)):  # the shaded underside first
+            for dx, big_r in puffs:
+                r = 0.036 * h * size * big_r * (1 - 0.45 * abs(dx))
+                px, py = (cx + dx * 0.075 * size) * w, (cy + drop) * h - r * 0.55
+                d.ellipse([(px - r * 1.5) * 2, (py - r) * 2, (px + r * 1.5) * 2, (py + r) * 2], fill=layer_colour)
+            d.rounded_rectangle([(cx - 0.085 * size) * w * 2, (cy + drop - 0.012 * size) * h * 2, (cx + 0.085 * size) * w * 2,
+                                 (cy + drop + 0.012 * size) * h * 2], radius=0.012 * size * h * 2, fill=layer_colour)
+    img.alpha_composite(clouds.resize((w, h), Image.LANCZOS).filter(ImageFilter.GaussianBlur(1.2)))
+
+    # The mountains behind the city, blue with distance.
+    for base, amp, colour, alpha in ((0.60, 0.22, (120, 176, 220), 255), (0.66, 0.14, (104, 168, 206), 255)):
+        crest = (base - amp * ridge(w, rng, True)) * h
+        sink = np.clip((y - crest[None, :]) / (0.20 * h), 0, 1)[..., None]
+        fill = mix(np.array(colour, np.float32), air, sink * 0.7)
+        hills = np.concatenate([fill, (np.clip(y - crest[None, :] + 0.5, 0, 1) * alpha)[..., None]], axis=-1)
+        img.alpha_composite(Image.fromarray(hills.clip(0, 255).astype(np.uint8), "RGBA"))
+
+    ss = 2
+    row = Image.new("RGBA", (w * ss, h * ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(row)
+
+    def box(x0, top, x1, bottom, fill):
+        d.rectangle([x0 * ss, top * ss, x1 * ss, bottom * ss], fill=fill)
+
+    def tri(points, fill):
+        d.polygon([(px * ss, py * ss) for px, py in points], fill=fill)
+
+    def spire(cx, foot, wide, body, roof_h, depth, flag=False, lit=True):
+        """A round tower: a pale shaft with its shaded side, a collar, a blue cone with its dark
+        side, a gold ball on the point, and now and then a banner."""
+        top = foot - body
+        box(cx - wide / 2, top, cx + wide / 2, foot, far(stone, depth))
+        box(cx + wide * 0.14, top, cx + wide / 2, foot, far(shade, depth))
+        box(cx - wide * 0.64, top - wide * 0.16, cx + wide * 0.64, top + wide * 0.08, far(shade, depth))
+        eave, tip = top - wide * 0.14, top - wide * 0.14 - roof_h
+        tri([(cx - wide * 0.74, eave), (cx + wide * 0.74, eave), (cx, tip)], far(roof, depth))
+        tri([(cx + wide * 0.10, eave), (cx + wide * 0.74, eave), (cx, tip)], far(roof_dark, depth))
+        if lit and wide > 0.008 * w:
+            for level in range(1, 1 + int(body / (wide * 1.6))):
+                wy = top + level * wide * 1.5
+                if wy + wide * 0.5 < foot:
+                    box(cx - wide * 0.10, wy, cx + wide * 0.06, wy + wide * 0.42, far(glass, depth))
+        r = max(1.0, wide * 0.12)
+        d.ellipse([(cx - r) * ss, (tip - r) * ss, (cx + r) * ss, (tip + r) * ss], fill=far(gold, depth))
+        if flag:
+            mast = tip - wide * 0.62
+            d.line([(cx * ss, tip * ss), (cx * ss, mast * ss)], fill=far(shade, depth), width=max(2, round(wide * 0.07 * ss)))
+            tri([(cx, mast), (cx + wide * 0.70, mast + wide * 0.16), (cx, mast + wide * 0.34)], far(gold, depth))
+
+    def house(cx, foot, half, body, depth, blue):
+        box(cx - half, foot - body, cx + half, foot, far(stone if blue else (232, 220, 200), depth))
+        tri([(cx - half * 1.18, foot - body), (cx + half * 1.18, foot - body), (cx, foot - body - half * 1.25)],
+            far(roof if blue else (156, 96, 76), depth))
+        tri([(cx, foot - body), (cx + half * 1.18, foot - body), (cx, foot - body - half * 1.25)],
+            far(roof_dark if blue else (124, 72, 60), depth))
+
+    def wall(x0, x1, top, foot, depth, tooth):
+        box(x0, top, x1, foot, far(stone, depth))
+        box(x0, top + (foot - top) * 0.10, x1, top + (foot - top) * 0.16, far(shade, depth))  # a string course
+        at = x0
+        while at < x1:
+            box(at, top - tooth * 0.8, min(x1, at + tooth), top, far(stone, depth))
+            at += tooth * 2
+
+    def trees(foot, count, depth, x0=0.0, x1=1.0):
+        for _ in range(count):
+            tx, r = rng.uniform(x0, x1) * w, rng.uniform(0.010, 0.020) * h * (0.6 + 0.6 * depth)
+            green = (rng.integers(70, 104), rng.integers(150, 182), rng.integers(84, 112))
+            d.ellipse([(tx - r * 1.2) * ss, (foot - r * 1.9) * ss, (tx + r * 1.2) * ss, (foot + r * 0.3) * ss], fill=far(green, depth))
+
+    def settle(centre=None, strength=0.0):
+        """Puts the row just drawn on the picture, then a breath of haze over its feet."""
+        nonlocal row, d
+        img.alpha_composite(row.resize((w, h), Image.LANCZOS))
+        row = Image.new("RGBA", (w * ss, h * ss), (0, 0, 0, 0))
+        d = ImageDraw.Draw(row)
+        if centre:
+            band = np.exp(-((y - centre * h) / (0.03 * h)) ** 2) * (0.6 + 0.4 * cloud(w, h, rng, 6)) * strength
+            fog = np.concatenate([np.full((h, w, 3), (236, 246, 250), np.float32), band[..., None] * 255], axis=-1)
+            img.alpha_composite(Image.fromarray(fog.clip(0, 255).astype(np.uint8), "RGBA"))
+
+    # The far quarter: a crowd of roofs and small towers, pale with distance.
+    foot = 0.725 * h
+    for _ in range(40):
+        wide = rng.uniform(0.007, 0.012) * w
+        spire(rng.uniform(0.02, 0.98) * w, foot, wide, rng.uniform(0.03, 0.09) * h, wide * rng.uniform(1.5, 2.4), 0.18, lit=False)
+    for _ in range(90):
+        house(rng.uniform(0, 1) * w, foot, rng.uniform(0.006, 0.011) * w, rng.uniform(0.012, 0.030) * h, 0.18, rng.uniform() < 0.8)
+    box(0, foot - 0.004 * h, w, foot + 0.06 * h, far(stone, 0.18))
+    settle(0.725, 0.5)
+
+    # The keep and the cathedral, one to each side of the middle, with the town between.
+    foot = 0.815 * h
+    depth = 0.62
+    kx = 0.225 * w  # the keep: a tall hall crowded with spires, the highest in the middle
+    box(kx - 0.088 * w, foot - 0.125 * h, kx + 0.088 * w, foot, far(stone, depth))
+    box(kx + 0.030 * w, foot - 0.125 * h, kx + 0.088 * w, foot, far(shade, depth))
+    wall(kx - 0.108 * w, kx + 0.108 * w, foot - 0.062 * h, foot, depth, 0.006 * w)
+    for dx, wide, body, roof_h, flag in ((0, 0.032, 0.300, 0.115, True), (-0.042, 0.020, 0.215, 0.078, False), (0.042, 0.020, 0.215, 0.078, False),
+                                         (-0.076, 0.016, 0.160, 0.060, True), (0.076, 0.016, 0.160, 0.060, True),
+                                         (-0.103, 0.014, 0.105, 0.046, False), (0.103, 0.014, 0.105, 0.046, False)):
+        spire(kx + dx * w, foot, wide * w, body * h, roof_h * h, depth, flag)
+    cx = 0.780 * w  # the cathedral: a long nave under a blue roof, two west towers, a spire over the crossing
+    box(cx - 0.072 * w, foot - 0.108 * h, cx + 0.072 * w, foot, far(stone, depth))
+    tri([(cx - 0.078 * w, foot - 0.108 * h), (cx + 0.078 * w, foot - 0.108 * h), (cx + 0.062 * w, foot - 0.156 * h),
+         (cx - 0.062 * w, foot - 0.156 * h)], far(roof, depth))
+    for nx in np.linspace(-0.058, 0.058, 7):  # the nave's tall windows
+        box(cx + nx * w - 0.003 * w, foot - 0.085 * h, cx + nx * w + 0.003 * w, foot - 0.030 * h, far(glass, depth))
+    for dx, wide, body, roof_h, flag in ((0.014, 0.023, 0.235, 0.140, True), (-0.060, 0.018, 0.178, 0.072, False), (-0.031, 0.018, 0.178, 0.072, False),
+                                         (0.068, 0.013, 0.132, 0.052, False)):
+        spire(cx + dx * w, foot, wide * w, body * h, roof_h * h, depth, flag)
+    mx = 0.515 * w  # the mages' tower: taller and thinner than its neighbours, violet-roofed, on a green mound
+    d.ellipse([(mx - 0.050 * w) * ss, (foot - 0.045 * h) * ss, (mx + 0.050 * w) * ss, (foot + 0.045 * h) * ss], fill=far((96, 170, 104), depth))
+    box(mx - 0.007 * w, foot - 0.230 * h, mx + 0.007 * w, foot - 0.030 * h, far(stone, depth))
+    box(mx + 0.002 * w, foot - 0.230 * h, mx + 0.007 * w, foot - 0.030 * h, far(shade, depth))
+    for ring_y, ring_w in ((0.090, 0.012), (0.150, 0.011), (0.205, 0.010)):
+        box(mx - ring_w * w, foot - ring_y * h, mx + ring_w * w, foot - ring_y * h + 0.008 * h, far(shade, depth))
+    tri([(mx - 0.013 * w, foot - 0.230 * h), (mx + 0.013 * w, foot - 0.230 * h), (mx, foot - 0.300 * h)], far((122, 92, 190), depth))
+    tri([(mx + 0.002 * w, foot - 0.230 * h), (mx + 0.013 * w, foot - 0.230 * h), (mx, foot - 0.300 * h)], far((88, 62, 150), depth))
+    d.ellipse([(mx - 0.003 * w) * ss, (foot - 0.300 * h - 0.003 * w) * ss, (mx + 0.003 * w) * ss, (foot - 0.300 * h + 0.003 * w) * ss],
+              fill=far(gold, depth))
+    for _ in range(12):  # lesser towers of the same quarter
+        tx = rng.choice([rng.uniform(0.02, 0.10), rng.uniform(0.36, 0.65), rng.uniform(0.90, 0.99)]) * w
+        wide = rng.uniform(0.010, 0.016) * w
+        spire(tx, foot, wide, rng.uniform(0.06, 0.13) * h, wide * rng.uniform(1.7, 2.6), depth, rng.uniform() < 0.3)
+    for _ in range(70):
+        house(rng.uniform(0, 1) * w, foot, rng.uniform(0.007, 0.013) * w, rng.uniform(0.016, 0.042) * h, depth, rng.uniform() < 0.75)
+    trees(foot, 34, depth)
+    box(0, foot - 0.004 * h, w, foot + 0.07 * h, far(stone, depth))
+    settle(0.815, 0.42)
+
+    # The outer wall, nearest and brightest: towers along it, and the great gate with its banners.
+    depth = 1.0
+    foot, top = 1.02 * h, 0.905 * h
+    trees(top + 0.004 * h, 46, 0.9)
+    wall(0, w, top, foot, depth, 0.009 * w)
+    for tx in (0.035, 0.165, 0.335, 0.665, 0.835, 0.965):
+        spire(tx * w, foot, 0.032 * w, foot - top + 0.050 * h, 0.066 * h, depth, tx in (0.165, 0.835))
+    box(0.445 * w, top - 0.034 * h, 0.555 * w, foot, far(stone, depth))  # the gatehouse
+    for side in (-1, 1):
+        spire((0.5 + side * 0.062) * w, foot, 0.044 * w, foot - top + 0.090 * h, 0.092 * h, depth, True)
+        bx = (0.5 + side * 0.030) * w  # a blue banner with a gold band to each side of the arch
+        box(bx - 0.007 * w, top - 0.018 * h, bx + 0.007 * w, top + 0.046 * h, far((40, 92, 172), depth))
+        box(bx - 0.007 * w, top + 0.006 * h, bx + 0.007 * w, top + 0.014 * h, far(gold, depth))
+    d.rectangle([0.479 * w * ss, 0.936 * h * ss, 0.521 * w * ss, h * ss], fill=far((56, 84, 124), depth))  # the archway
+    d.pieslice([0.479 * w * ss, (0.936 * h - 0.021 * w) * ss, 0.521 * w * ss, (0.936 * h + 0.021 * w) * ss], 180, 360,
+               fill=far((56, 84, 124), depth))
+    settle()
 
     rgb = np.asarray(img.convert("RGB")).astype(np.float32)
-    dist = np.hypot((x - w / 2) / (w / 2), (y - h / 2) / (h / 2))
-    rgb = rgb * np.clip(1.06 - 0.26 * dist ** 2, 0, 1.06)[..., None] + noise((w, h), 2.0, seed)
+    rgb = mix(rgb, (22, 150, 186), 0.08)  # a breath of the game's own blue-green over everything, no more
+    edge = np.hypot((x - w / 2) / (w / 2), (y - h / 2) / (h / 2))
+    rgb = rgb * np.clip(1.03 - 0.16 * edge ** 2, 0, 1.03)[..., None] + noise((w, h), 1.6, seed)
     return Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), "RGB").convert("RGBA")
 
 
 # ---------------------------------------------------------------------------
 # Title pictures: the bar over the landscape
 # ---------------------------------------------------------------------------
-def hero(w=W, h=H, k=2.2, title_y=150, title_size=150, tagline_size=46, bar_y=650, chips=(), note_size=18):
-    canvas = landscape(w, h)
+def hero(w=W, h=H, k=2.0, title_y=128, title_size=150, tagline_size=46, bar_y=478, chips=(), note_size=18, city=0.70):
+    """The title, the bar in open sky, and the city along the bottom. `city` is how much of the
+    picture's height the drawn scene takes; the rest, above it, is more of its sky."""
+    scene = landscape(w, round(h * city))
+    gap = h - scene.height
+    canvas = Image.new("RGBA", (w, h), (0, 0, 0, 255))
+    if gap > 0:
+        # Carry the scene's top edge upward, smoothed sideways so its grain does not streak, and
+        # a little deeper towards the top of the picture.
+        strip = scene.convert("RGB").crop((0, 0, w, 8)).resize((max(2, w // 48), 1), Image.BOX).resize((w, 1), Image.BICUBIC)
+        sky = np.asarray(strip.resize((w, gap), Image.NEAREST)).astype(np.float32)
+        deepen = np.linspace(0.84, 1.0, gap, dtype=np.float32)[:, None, None]
+        sky = sky * deepen + noise((w, gap), 1.6, 5)
+        canvas.paste(Image.fromarray(np.clip(sky, 0, 255).astype(np.uint8), "RGB"), (0, 0))
+    canvas.alpha_composite(scene, (0, gap))
+
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
-    shade = np.clip(1 - np.hypot((x - w / 2) / (0.62 * w), (y - bar_y) / (0.44 * h)), 0, 1) ** 1.2 * 0.52
+    shade = np.clip(1 - np.hypot((x - w / 2) / (0.62 * w), (y - bar_y) / (0.40 * h)), 0, 1) ** 1.2 * 0.36
     scrim = np.zeros((h, w, 4), np.float32)
-    scrim[..., :3] = (6, 8, 18)
+    scrim[..., :3] = (8, 30, 70)
     scrim[..., 3] = shade * 255
     canvas.alpha_composite(Image.fromarray(scrim.astype(np.uint8), "RGBA"))  # keeps the bar readable
+    foot = np.zeros((h, w, 4), np.float32)  # and a darker strip along the bottom, for the small print
+    foot[..., :3] = (8, 30, 70)
+    foot[..., 3] = np.clip((y - (h - 0.13 * h)) / (0.13 * h), 0, 1) ** 1.4 * 0.80 * 255
+    canvas.alpha_composite(Image.fromarray(foot.astype(np.uint8), "RGBA"))
 
     painter(k).bar(canvas, w / 2, bar_y, 2, "xbox", CONTENT, STATES, COUNTS)
-    shadow_text(canvas, (w / 2, title_y), "FreeControl", title_size, WHITE, "Black")
+    title_text(canvas, (w / 2, title_y), "FreeControl", title_size * 1.22)
     shadow_text(canvas, (w / 2, title_y + title_size * 0.76), TAGLINE, tagline_size, (238, 240, 248, 255), "SemiBold", spread=7)
     if chips:
         pills(canvas, w / 2, h - 96, chips, 28, 58, (8, 10, 20, 150), (255, 255, 255, 76))
@@ -358,11 +505,11 @@ def gallery_hero():
 
 
 def banner():
-    return hero(1600, 600, 1.5, 84, 96, 31, 388, note_size=15)
+    return hero(1600, 600, 1.35, 74, 92, 29, 318, note_size=15, city=0.56)
 
 
 def social():
-    return hero(1280, 640, 1.28, 96, 104, 31, 420, note_size=14)
+    return hero(1280, 640, 1.2, 84, 100, 30, 350, note_size=14, city=0.56)
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +543,7 @@ def sets():
     canvas = slide([("Hold a trigger. ", WHITE), ("Get a new set.", GOLD)],
                    "Four sets of eight on the D-pad and face buttons. The one you hold grows; the others step back.")
     bars = painter(1.08)
-    panels = [(0, "No trigger", [], "4 action slots, Interact, Cancel and Jump"), (1, "Hold", ["LT"], "8 action slots"),
+    panels = [(0, "No trigger", [], "4 action slots, Interact, Mouse, Cancel and Jump"), (1, "Hold", ["LT"], "8 action slots"),
               (2, "Hold", ["RT"], "8 action slots"), (3, "Hold", ["LT", "RT"], "8 action slots")]
     pw, ph, gap = 880, 320, 32
     x0 = (W - 2 * pw - gap) / 2
@@ -529,6 +676,63 @@ def interact():
     return canvas
 
 
+def stick_tile(letter=None, size=112):
+    """A drawn tile for a thumbstick seen from above: a ring and a cap, with the stick's letter on
+    the cap or, with no letter, four arrows around it for "move"."""
+    def paint(d, s):
+        c = size * s / 2
+        d.rounded_rectangle((0, 0, size * s - 1, size * s - 1), radius=20 * s, fill=(30, 35, 50, 255),
+                            outline=(8, 9, 14, 255), width=3 * s)
+        d.ellipse((c - 41 * s, c - 41 * s, c + 41 * s, c + 41 * s), outline=(196, 204, 222, 255), width=5 * s)
+        d.ellipse((c - 25 * s, c - 25 * s, c + 25 * s, c + 25 * s), fill=(226, 104, 178, 255) if letter else (196, 204, 222, 255))
+        if letter:
+            d.text((c, c), letter, font=font(34 * s, "Black"), fill=(255, 255, 255, 255), anchor="mm")
+        else:
+            for dx, dy in ((0, -1), (1, 0), (0, 1), (-1, 0)):
+                tip, back, wide = 37 * s, 29 * s, 7 * s
+                d.polygon([(c + dx * tip, c + dy * tip), (c + dx * back - dy * wide, c + dy * back + dx * wide),
+                           (c + dx * back + dy * wide, c + dy * back - dx * wide)], fill=(246, 246, 250, 255))
+    return drawn(size, size, paint)
+
+
+def fitted(canvas, xy, string, size, width, fill, weight):
+    """Left-aligned text, set smaller until it is no wider than `width`."""
+    d = ImageDraw.Draw(canvas)
+    while size > 12 and d.textlength(string, font=font(size, weight)) > width:
+        size -= 1
+    text(canvas, xy, string, size, fill, weight, "lm")
+
+
+def mouse_mode():
+    bx, by = 430, 630
+    canvas = slide([("A mouse ", WHITE), ("on your sticks.", GOLD)],
+                   "Press the mouse button and the right stick steers the pointer. The two stick clicks are the two mouse buttons.",
+                   glows=[(bx, by, 520, 420, 0.42)], spell_icons=False)  # everything here is drawn, none of it the game's
+    painter(7.4).button(canvas, bx, by, 6, preview.STYLES["xbox"][0], ("role", "Cursor"), state="checked")
+    canvas.alpha_composite(sized(big("Glyph-Y"), 64, 64), (bx - 196, by + 168))
+    text(canvas, (bx - 118, by + 200), "Mouse cursor", 46, WHITE, "Black", "lm")
+    text(canvas, (bx, by + 258), "the top face button, with no trigger held", 23, SOFT, "Medium")
+    text(canvas, (bx, by + 292), "lit while the pointer is out", 23, SOFT, "Medium")
+
+    arrow = np.array([(bx + 178 + i, by) for i in range(0, 121, 4)], dtype=np.float64)
+    dashed(canvas, arrow, GOLD, 6, 1000, 0)
+
+    cards = [(stick_tile("L"), "Left stick click", "Left click. Hold it to drag."),
+             (stick_tile("R"), "Right stick click", "Right click: use, sell, loot."),
+             (stick_tile(), "Right stick", "Moves the pointer."),
+             (rounded_icon(big("Role-Run"), 112, 20), "Move or jump", "Puts the pointer away again.")]
+    cw, ch, gap, x0, y0 = 536, 184, 24, 772, 430
+    for i, (tile, title, sub) in enumerate(cards):
+        x, y = x0 + (i % 2) * (cw + gap), y0 + (i // 2) * (ch + gap)
+        box(canvas, (x, y, x + cw, y + ch), 26, (255, 255, 255, 12), (255, 255, 255, 34))
+        canvas.alpha_composite(tile, (x + 36, y + (ch - 112) // 2))
+        fitted(canvas, (x + 180, y + ch / 2 - 22), title, 40, cw - 180 - 28, WHITE, "Bold")
+        fitted(canvas, (x + 180, y + ch / 2 + 26), sub, 24, cw - 180 - 28, SOFT, "Medium")
+    text(canvas, (W / 2, 978), "The game's own controller mouse, so the clicks are real ones. The buttons and the pointer's speed are in the settings.",
+         24, DIM, "Medium")
+    return canvas
+
+
 def tick(size=48):
     return drawn(size, size, lambda d, s: (
         d.ellipse((0, 0, size * s - 1, size * s - 1), fill=GOLD),
@@ -539,7 +743,7 @@ def normal_mode():
     canvas = slide([("Your game stays ", WHITE), ("in normal mode.", GOLD)],
                    "FreeControl adds one bar. Gamepad UI mode stays off, and everything else stays the way you set it up.")
     rows = [("Targeting stays yours", "Bind bumpers and stick clicks in the usual Key Bindings."),
-            ("The menus you know", "Bags, map, character sheet, vendors: the regular windows."),
+            ("The menus you know", "The regular windows, with a mouse pointer on your stick for the clicks."),
             ("Your layout and addons", "Nothing is moved, hidden or replaced."),
             ("Your action bars", "Untouched. FreeControl uses the controller bars' own slots."),
             ("Your settings", "The few it changes are put back when you log out.")]
@@ -594,7 +798,7 @@ def normal_mode():
 
 def combat():
     canvas = slide([("Made for ", WHITE), ("combat.", GOLD)],
-                   "Every slot shows what a normal action bar shows, and your abilities fire on the press.")
+                   "Every slot shows what a normal action bar shows, at a glance, in the middle of a fight.")
     shown = [(1, "Kidney Shot", ("cooldown", "14"), None, "Cooldowns", "sweep and countdown"),
              (5, "Sinister Strike", "range", None, "Out of range", "turns red"),
              (2, "Eviscerate", "nomana", None, "Not enough energy", "turns blue"),
@@ -607,7 +811,7 @@ def combat():
         buttons.button(canvas, x, 560, index, face, ("icon", ability), state=state, count=count)
         text(canvas, (x, 694), title, 29, WHITE, "Bold")
         text(canvas, (x, 732), sub, 22, SOFT, "Medium")
-    pills(canvas, W / 2, 880, ["Abilities fire on the press", "Sets switch in the middle of a fight",
+    pills(canvas, W / 2, 880, ["Cooldowns show the moment they start", "Sets switch in the middle of a fight",
                                "One set can follow your stance or form"], 28, 62)
     return canvas
 
@@ -639,7 +843,7 @@ def controls():
     canvas = backdrop(W, H)
     bars = painter(2.25)
     ox, oy = W / 2, 570
-    content = {0: [None, None, None, None, ("role", "Interact"), ("pass",), ("role", "Cancel"), ("role", "Jump")]}
+    content = {0: [None, None, None, None, ("role", "Interact"), ("role", "Cursor"), ("role", "Cancel"), ("role", "Jump")]}
     bars.bar(canvas, ox, oy, 2, "xbox", content)
 
     text(canvas, (W / 2, 84), "FreeControl", 66, WHITE, "Black")
@@ -654,7 +858,7 @@ def controls():
     cx1, cy1 = bars.set_centre(ox, oy, 1)
     cx2, cy2 = bars.set_centre(ox, oy, 2)
     cx3, cy3 = bars.set_centre(ox, oy, 3)
-    callout("No trigger", "4 action slots · Interact · Cancel · Jump · one button left to you", cx0, cy0 - half - 112)
+    callout("No trigger", "4 action slots · Interact · Mouse cursor · Cancel · Jump", cx0, cy0 - half - 112)
     callout("Hold LT", "8 action slots", cx1, cy1 + half + 76)
     callout("Hold RT", "8 action slots (shown held)", cx2, cy2 + half * 1.2 + 86, GOLD)
     callout("Hold LT + RT", "8 action slots", cx3, cy3 + half + 76)
@@ -715,6 +919,7 @@ PICTURES = {
     "combat": (combat, os.path.join(GALLERY, "06-combat.png")),
     "controllers": (controllers, os.path.join(GALLERY, "07-controllers.png")),
     "controls": (controls, os.path.join(GALLERY, "08-controls.png")),
+    "mouse": (mouse_mode, os.path.join(GALLERY, "09-mouse-mode.png")),
     "banner": (banner, os.path.join(DOCS, "banner.png")),
     "social": (social, os.path.join(DOCS, "social.png")),
     "demo": (demo_frames, os.path.join(DOCS, "demo.gif")),

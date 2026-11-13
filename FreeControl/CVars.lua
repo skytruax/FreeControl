@@ -35,6 +35,12 @@ local function IsOurKey(button)
 			return true
 		end
 	end
+	for side = 1, 2 do
+		local key = ns.Mouse:GetManagedKey(side)
+		if key and key:upper() == button then
+			return true
+		end
+	end
 	return false
 end
 
@@ -48,6 +54,20 @@ local function WithoutStandIn(name)
 	end
 end
 
+-- How fast the stick moves the mouse cursor. The client has three settings for it: the speed it
+-- starts at, how quickly it picks up, and where it tops out. Multiplying all three by the same
+-- amount makes the cursor that much faster or slower without changing how it handles. At 100%
+-- they are left exactly as the player has them.
+local function PointerSpeed(name)
+	return function(db)
+		local own = tonumber(OwnValue(name))
+		if db.cursorSpeed == 1 or not own then
+			return nil
+		end
+		return ("%.3f"):format(own * db.cursorSpeed)
+	end
+end
+
 -- { name, function(db) returning the value wanted, or nil to leave the variable alone }
 local MANAGED = {
 	-- Lets the client read the controller at all. This is not Gamepad UI mode.
@@ -55,6 +75,13 @@ local MANAGED = {
 	{ "GamePadEmulateShift", WithoutStandIn("GamePadEmulateShift") },
 	{ "GamePadEmulateCtrl", WithoutStandIn("GamePadEmulateCtrl") },
 	{ "GamePadEmulateAlt", WithoutStandIn("GamePadEmulateAlt") },
+	-- The two buttons the client turns into mouse clicks while its stick cursor is out. It starts
+	-- with RT and RB, and RT is a trigger here; see Mouse.lua.
+	{ "GamePadCursorLeftClick", function() return ns.Mouse:GetManagedKey(1) end },
+	{ "GamePadCursorRightClick", function() return ns.Mouse:GetManagedKey(2) end },
+	{ "GamePadCursorSpeedStart", PointerSpeed("GamePadCursorSpeedStart") },
+	{ "GamePadCursorSpeedAccel", PointerSpeed("GamePadCursorSpeedAccel") },
+	{ "GamePadCursorSpeedMax", PointerSpeed("GamePadCursorSpeedMax") },
 	{ "SoftTargetInteract", function(db) return db.softInteract and SOFT_TARGET_ANY or nil end },
 	-- The reach the Gamepad UI uses (Blizzard_Gamepad/Core.lua): in front of you, out to 20 yards,
 	-- and with the interact icon on objects as well as creatures.

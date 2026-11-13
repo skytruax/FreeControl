@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.0
+
+- New: mouse mode with a way to click. Press Y (the top face button, with no trigger held) and the right stick steers the mouse pointer. Click the left stick for the left mouse button, and hold it to drag; click the right stick for the right mouse button. Press Y again, or move or jump, to put the pointer away. The Y button on the bar shows a pointer and is lit while the pointer is out.
+- If you set FreeControl up before this version, your Y button is left as you had it. Click it on the bar and choose "Mouse cursor on / off", or keep using the key binding.
+- The two click buttons can be changed on the settings page, under the new "Mouse mode" heading: stick clicks, bumpers, Y or paddles. A click button you can hold while your right thumb steers is what makes dragging possible.
+- New: pointer speed, on the settings page and as `/fc pointer <50-300>`.
+- RT no longer turns into the left mouse button whenever the game brings its pointer out. FreeControl now points the game's two click settings at the stick clicks while it is active and puts yours back when you log out.
+- `/fc mouse` brings the pointer out or puts it away, `/fc click left|right <button>` changes a click button, and `/fc status` shows the click buttons and what they are bound to.
+- New emblem.
+
 ## v1.1.2
 
 - Cooldowns in a fight: the sweep of an ability such as Kick or Gouge could be missing until the fight was over. In combat the game hides a cooldown's exact numbers from addons, and the bar was handing those numbers to the sweep, which the game refuses without showing an error. The bar now hands the sweep the game's own timer object instead, which is how addons are meant to show cooldowns in combat. Versions 1.1.0 and 1.1.1 changed other things for this and did not help.

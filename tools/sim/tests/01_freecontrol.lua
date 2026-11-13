@@ -49,7 +49,16 @@ local function SweepIs(expected, cooldown)
 	assertAlmostEquals(expected, cooldown:GetCooldownDuration(), 1)
 end
 
+-- The simulator has SetGamePadCursorControl but no IsGamePadCursorControlEnabled, so FreeControl
+-- would take it for a client without a stick cursor. These two stand in for the pair. What the
+-- mouse tests below are about is the secure button and the bindings around it, which are
+-- Blizzard's own code here; whether the real client then clicks cannot be seen in a simulator.
+local cursorOut = false
+SetGamePadCursorControl = function(enabled) cursorOut = enabled and true or false end
+IsGamePadCursorControlEnabled = function() return cursorOut end
+
 test("the bar is built on Blizzard's templates and the secure click handler survived", function()
+	ns.Refresh() -- with the stick cursor now there, so that Y gets the secure mouse button
 	assertTrue(ns.IsActive())
 	assertTrue(ns.IsBuilt())
 	assertTrue(FreeControlBar:IsShown())
@@ -82,7 +91,7 @@ test("login bound the triggers, the D-pad slots and the three commands", functio
 	assertEquals("INTERACTTARGET", Bound("PAD3"))
 	assertEquals("TOGGLEGAMEMENU", Bound("PAD2"))
 	assertEquals("JUMP", Bound("PAD1"))
-	assertEquals("", Bound("PAD4"))
+	assertEquals("CLICK FreeControlMouse:LeftButton", Bound("PAD4"))
 	assertEquals(0, ns.Bindings:GetActiveSet())
 	Near(1.2, FreeControlSet0:GetScale())
 	Near(1, FreeControlSet1:GetScale())
@@ -119,7 +128,7 @@ test("holding a trigger moves the keys to its set and grows it; letting go puts 
 	assertTrue((SimInput.KeyUp("PADLTRIGGER")))
 	assertEquals(0, ns.Bindings:GetActiveSet())
 	assertEquals("JUMP", Bound("PAD1"))
-	assertEquals("", Bound("PAD4"))
+	assertEquals("CLICK FreeControlMouse:LeftButton", Bound("PAD4"))
 	Near(1, FreeControlSet1:GetScale())
 	NothingRefused()
 end)
@@ -159,11 +168,14 @@ test("in combat: sets still switch, keys still cast, and nothing of ours is refu
 	-- a setting changed mid-fight is held back, not applied half-way
 	ns.db.roles[6] = "cmd:TARGETNEARESTENEMY"
 	assertFalse(ns.RequestRefresh())
-	assertEquals("", Bound("PAD4"))
+	assertEquals("CLICK FreeControlMouse:LeftButton", Bound("PAD4"))
 
 	A_Admin.SetInCombat(false)
 	assertEquals("TARGETNEARESTENEMY", Bound("PAD4"))
 	ns.db.roles[6] = "pass"
+	ns.RequestRefresh()
+	assertEquals("", Bound("PAD4"))
+	ns.db.roles[6] = "cmd:FREECONTROL_TOGGLECURSOR"
 	ns.RequestRefresh()
 	NothingRefused()
 end)
@@ -337,6 +349,80 @@ test("/fc trace records a key press against Blizzard's own interface code and sh
 	assertTrue(text:find("sweep: ", 1, true) ~= nil, text)
 	FreeControlTrace:Hide()
 	assertEquals(0, #ns.GetProblems())
+	NothingRefused()
+end)
+
+test("the mouse button is Blizzard's secure click handler, and a press brings the cursor out and binds the stick clicks", function()
+	Reset()
+	local protected, explicit = FreeControlMouse:IsProtected()
+	assertTrue(protected)
+	assertTrue(explicit)
+	local leftBefore, rightBefore = Bound("PADLSTICK"), Bound("PADRSTICK")
+	assertFalse(cursorOut)
+	SimInput.PressKey("PAD4")
+	assertTrue(cursorOut)
+	assertEquals("CAMERAORSELECTORMOVE", Bound("PADLSTICK"))
+	assertEquals("TURNORACTION", Bound("PADRSTICK"))
+	SimInput.PressKey("PAD4")
+	assertFalse(cursorOut)
+	assertEquals(leftBefore, Bound("PADLSTICK"))
+	assertEquals(rightBefore, Bound("PADRSTICK"))
+	assertEquals(0, #ns.GetProblems())
+	NothingRefused()
+end)
+
+test("in combat the mouse button still works, the clicks survive a set change, and nothing of ours is refused", function()
+	Reset()
+	local leftBefore = Bound("PADLSTICK")
+	A_Admin.SetInCombat(true)
+	SimInput.PressKey("PAD4")
+	assertTrue(cursorOut)
+	assertEquals("CAMERAORSELECTORMOVE", Bound("PADLSTICK"))
+	SimInput.KeyDown("PADRTRIGGER")
+	assertEquals(2, ns.Bindings:GetActiveSet())
+	assertEquals("TURNORACTION", Bound("PADRSTICK"))
+	SimInput.KeyUp("PADRTRIGGER")
+	SimInput.PressKey("PAD4")
+	assertFalse(cursorOut)
+	assertEquals(leftBefore, Bound("PADLSTICK"))
+	A_Admin.SetInCombat(false)
+	assertEquals(0, #ns.GetProblems())
+	NothingRefused()
+end)
+
+async_test("when the cursor comes out or goes away by itself the stick clicks follow, and the button on the bar lights up", function(done)
+	Reset()
+	local rightBefore = Bound("PADRSTICK")
+	local lit = ns.Buttons.role[6].fc.lit
+	cursorOut = true -- the game brought it out: a window opened
+	SimInput.AfterTicks(5, function()
+		assertEquals("TURNORACTION", Bound("PADRSTICK"))
+		Near(1, lit:GetAlpha())
+		cursorOut = false -- the character moved
+		SimInput.AfterTicks(5, function()
+			assertEquals(rightBefore, Bound("PADRSTICK"))
+			Near(0, lit:GetAlpha())
+			assertEquals(0, #ns.GetProblems())
+			NothingRefused()
+			done()
+		end)
+	end)
+end)
+
+test("the click buttons are the stick clicks where the client has the settings, and can be changed", function()
+	Reset()
+	if GetCVar("GamePadCursorLeftClick") ~= nil then
+		assertEquals("PADLSTICK", GetCVar("GamePadCursorLeftClick"))
+		assertEquals("PADRSTICK", GetCVar("GamePadCursorRightClick"))
+	end
+	SlashCmdList.FREECONTROL("click left padlshoulder")
+	assertEquals("PADLSHOULDER", ns.db.clickLeft)
+	SlashCmdList.FREECONTROL("click left padlstick")
+	assertEquals("PADLSTICK", ns.db.clickLeft)
+	SlashCmdList.FREECONTROL("mouse")
+	assertTrue(cursorOut)
+	SlashCmdList.FREECONTROL("mouse")
+	assertFalse(cursorOut)
 	NothingRefused()
 end)
 

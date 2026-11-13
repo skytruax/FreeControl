@@ -251,7 +251,7 @@ def spells(*names):
 # D-pad left, up, right, down, then the face buttons left, top, right, bottom.
 CONTENT = {
     0: spells("Sinister Strike", "Healing Potion", "Eviscerate", "Slice and Dice")
-       + [("role", "Interact"), ("pass",), ("role", "Cancel"), ("role", "Jump")],
+       + [("role", "Interact"), ("role", "Cursor"), ("role", "Cancel"), ("role", "Jump")],
     1: spells("Backstab", "Gouge", "Kick", "Feint", "Sprint", "Evasion", None, "Vanish"),
     2: spells("Cheap Shot", "Kidney Shot", "Ambush", "Garrote", "Rupture", "Expose Armor", "Blind", "Stealth"),
     3: spells("Sap", "Distract", None, "Pick Pocket", "Instant Poison", "Bandage", "Mount", None),

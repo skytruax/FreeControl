@@ -524,6 +524,9 @@ local function RoleTooltip(widget)
 	GameTooltip:SetText(Layout.GetButtonName(0, index), 0.37, 0.84, 1)
 	if kind == "cmd" then
 		GameTooltip:AddLine(Layout.GetCommandInfo(command), 1, 1, 1, true)
+		if command == Layout.CURSOR_COMMAND then
+			GameTooltip:AddLine(("The right stick moves the cursor; %s."):format(ns.Mouse:DescribeClicks()), 0.8, 0.8, 0.8, true)
+		end
 	else
 		local bound = GetBindingAction(ns.db.keys[index], true)
 		if bound and bound ~= "" then
@@ -542,6 +545,13 @@ local function CreateRoleWidget(index, parent)
 	widget:SetPoint("CENTER", parent, "CENTER", unpack(Layout.BUTTON_OFFSET[index]))
 	widget.fc = { index = index, round = Layout.IsRound(index) }
 	AddArt(widget, widget.fc.round)
+	-- A bright ring while what the button switches is on: the mouse cursor being out.
+	local lit = widget:CreateTexture(nil, "ARTWORK", nil, 2)
+	lit:SetAllPoints()
+	lit:SetTexture(ART .. widget.fc.shape .. "-Checked")
+	lit:SetAlpha(0)
+	widget.fc.lit = lit
+	widget.fc.pressParts[#widget.fc.pressParts + 1] = { texture = lit, crop = 0 }
 	widget:SetScript("OnMouseDown", OnMouseDown)
 	widget:SetScript("OnMouseUp", OnMouseUp)
 	widget:SetScript("OnEnter", RoleTooltip)
@@ -554,6 +564,8 @@ local function CreateRoleWidget(index, parent)
 	return widget
 end
 
+local mouseLit = false -- the controller's mouse cursor is out
+
 local function UpdateRoleWidget(widget)
 	local fc = widget.fc
 	local kind, command = Layout.ParseRole(ns.db.roles[fc.index])
@@ -562,6 +574,15 @@ local function UpdateRoleWidget(widget)
 		fc.icon:SetTexture(ART .. art)
 	end
 	ShowIcon(fc, kind == "cmd")
+	fc.lit:SetAlpha(mouseLit and kind == "cmd" and command == Layout.CURSOR_COMMAND and 1 or 0)
+end
+
+-- Called by Mouse.lua (in combat too) when the mouse cursor comes out or goes away. Alpha only.
+function Buttons:SetMouseLit(out)
+	mouseLit = out
+	for _, widget in pairs(self.role) do
+		UpdateRoleWidget(widget)
+	end
 end
 
 ---------------------------------------------------------------------------

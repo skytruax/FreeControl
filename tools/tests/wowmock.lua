@@ -9,7 +9,9 @@
 --     honouring RegisterForClicks and delivering both press and release;
 --   * in combat the cooldown API hands addon code sealed ("secret") numbers, which cooldown
 --     frames refuse from addon code, as Blizzard's API documentation says the client does;
---   * an error the addon reports to the game's error handler fails the test that caused it.
+--   * an error the addon reports to the game's error handler fails the test that caused it;
+--   * while the stick cursor is out, the two buttons named by the click console variables are
+--     mouse buttons: a real click over the interface, the button's own binding over the world.
 --
 -- The secure click logic is a port of SecureActionButton_OnClick from Blizzard_FrameXML/
 -- SecureTemplates.lua (build 1.60.1). It is a model of the client, not the client: a pass here
@@ -29,6 +31,7 @@ local M = {
 		SoftTargetInteractRange = "10.000000", SoftTargetIconGameObject = "0",
 		ActionButtonUseKeyDown = "1", countdownForCooldowns = "0", GamepadStanceBarOverride = "3",
 		GamePadCursorLeftClick = "PADRTRIGGER", GamePadCursorRightClick = "PADRSHOULDER",
+		GamePadCursorSpeedStart = "0.1", GamePadCursorSpeedAccel = "2", GamePadCursorSpeedMax = "1",
 		GamePadEmulateShift = "PADLTRIGGER", GamePadEmulateCtrl = "PADLSHOULDER", GamePadEmulateAlt = "none",
 	},
 	floatCVars = { SoftTargetInteractRange = true }, -- the client stores these as "20.000000"
@@ -48,7 +51,9 @@ local M = {
 	firstGamepadSlot = 181,
 	lastGamepadSlot = 304, -- three pages of 28 plus five stance bars of 8
 	hasGamepadUI = true,
-	cursorControl = false,
+	cursorControl = false, -- the client's stick-driven mouse cursor is out
+	cursorOver = "interface", -- what the pointer is over while it is out: "interface" or "world"
+	clicks = {},           -- mouse clicks the client made out of controller buttons: { button, "down" | "up" }
 	secretRestrictions = true, -- the client seals cooldown numbers from addons while in combat
 	cooldownEvents = { "SPELL_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_COOLDOWN" }, -- raised when one starts
 	luaErrors = {},        -- what reached the game's error handler
@@ -235,7 +240,12 @@ end
 function Frame:GetAttribute(name) return self.__attrs[name] end
 function Frame:CreateTexture() return NewRegion("Texture") end
 function Frame:CreateMaskTexture() return NewRegion("MaskTexture") end
-function Frame:CreateFontString() return NewRegion("FontString") end
+function Frame:CreateFontString()
+	local region = NewRegion("FontString")
+	self.__texts = self.__texts or {}
+	self.__texts[#self.__texts + 1] = region
+	return region
+end
 
 -- Buttons
 function Frame:RegisterForClicks(...)
@@ -550,11 +560,28 @@ local function isModifierStandIn(key)
 	return false
 end
 
+-- The client's own mouse emulation, as ConsolePort describes it to its users (not confirmed in
+-- play): while the stick cursor is out, the buttons named by GamePadCursorLeftClick and
+-- GamePadCursorRightClick are the mouse buttons. Over the interface a press becomes a real mouse
+-- click and the button's binding does not run. Over the world it goes to the binding as usual,
+-- which is why a button has to be bound to the mouse commands to click things there.
+local function clickButton(key)
+	if not M.cursorControl or M.cursorOver ~= "interface" then return nil end
+	if M.cvars.GamePadCursorLeftClick:upper() == key then return "LeftButton" end
+	if M.cvars.GamePadCursorRightClick:upper() == key then return "RightButton" end
+end
+
 function M.KeyDown(key)
 	M.down[key] = true
 	if isModifierStandIn(key) then
 		M.held[key] = false
 		return "modifier"
+	end
+	local mouseButton = clickButton(key)
+	if mouseButton then
+		M.held[key] = { kind = "mouse", target = mouseButton }
+		M.clicks[#M.clicks + 1] = { mouseButton, "down" }
+		return "mouse"
 	end
 	local binding = M.bindings[key]
 	M.held[key] = binding or false
@@ -572,7 +599,9 @@ function M.KeyUp(key)
 	local binding = M.held[key]
 	M.held[key] = nil
 	if not binding then return "unbound" end
-	if binding.kind == "click" then
+	if binding.kind == "mouse" then
+		M.clicks[#M.clicks + 1] = { binding.target, "up" }
+	elseif binding.kind == "click" then
 		M.Click(M.frames[binding.target], binding.button or "LeftButton", false)
 	else
 		M.commands[#M.commands + 1] = { binding.target, "up" }
@@ -643,7 +672,14 @@ function ClearOverrideBindings(owner)
 	end
 end
 
-function GetBindingAction(key) return M.userBindings and M.userBindings[key] or "" end
+-- With checkOverride, an override binding on the key wins over the player's own.
+function GetBindingAction(key, checkOverride)
+	local override = checkOverride and M.bindings[key]
+	if override then
+		return override.kind == "cmd" and override.target or ("CLICK " .. override.target .. ":" .. (override.button or "LeftButton"))
+	end
+	return M.userBindings and M.userBindings[key] or ""
+end
 function GetBindingName(command) return "<" .. command .. ">" end
 
 ---------------------------------------------------------------------------

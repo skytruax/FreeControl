@@ -16,8 +16,9 @@ FreeControl is that hotbar on its own. The game stays in normal mode. Your targe
 - **Drop anything, anywhere.** Drag spells, items and macros straight from your spellbook and bags onto any slot. Cooldowns with a countdown, item counts, range and out-of-mana colouring all show, just like a normal action bar.
 - **Nothing to rebuild.** FreeControl uses the same slots as Blizzard's controller bars, so whatever you already set up in Gamepad UI mode is waiting for you. Your regular action bars are never touched.
 - **One button for the world.** Interact loots the corpse next to you, talks to the NPC in front of you, opens the chest, and attacks your target when there is nothing else to do.
+- **A mouse on your sticks.** Press Y and the right stick steers the mouse pointer. Click the left stick to left-click, and hold it to drag a spell onto the bar; click the right stick to right-click. Move or jump and the pointer is gone again.
 - **Target your way.** Bumpers, stick clicks and every button FreeControl does not use are yours. Bind them in the normal Key Bindings screen, to whatever targeting you prefer.
-- **Made for combat.** Sets switch and abilities fire on the press, in the middle of a fight. The button sinks under your thumb and its cooldown starts at once.
+- **Made for combat.** Sets switch in the middle of a fight, the button sinks under your thumb, and its cooldown shows the moment it starts.
 - **Stances and forms covered.** One set can swap to different slots for each stance or form.
 - **Speaks your controller.** Xbox, PlayStation and Nintendo button labels, matched to the controller you plug in.
 - **Leaves no mess.** Every game setting it touches is put back when you log out or switch it off.
@@ -27,11 +28,13 @@ FreeControl is that hotbar on its own. The game stays in normal mode. Your targe
 1. Leave *Options > Gamepad > Enable Gamepad UI* **off**. FreeControl stands down while that mode is on.
 2. Log in with your controller connected. The bar appears above your action bars.
 3. Drag your spells onto the slots. Hold LT, RT or both to reach the other sets.
-4. With no trigger held, the D-pad is four more action slots, X is Interact, B is Cancel / game menu, A is Jump, and Y is left for you to bind. Click any of them on the bar to change what it does.
+4. With no trigger held, the D-pad is four more action slots, X is Interact, Y brings out the mouse pointer, B is Cancel / game menu, and A is Jump. Click any of them on the bar to change what it does.
 
 Type `/fc` for the settings, `/fc unlock` to drag the bar where you want it, and `/fc status` to see what the addon sees, which helps in a bug report.
 
 ![The bar with every slot empty, labelled set by set](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/gallery/08-controls.png)
+
+![Mouse mode: Y brings the pointer out, the left stick click is the left mouse button and the right stick click the right](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/gallery/09-mouse-mode.png)
 
 ## FreeControl, Gamepad UI mode or ConsolePort?
 
@@ -44,14 +47,15 @@ While it is active, FreeControl sets a few console variables, and puts your own 
 
 - controller input is turned on, if it was off (this is not Gamepad UI mode);
 - the Interact key behaviour is turned on, with the reach Gamepad UI mode uses;
-- the left trigger stops standing in for Shift, which is the game's default and would keep it from registering as held.
+- the left trigger stops standing in for Shift, which is the game's default and would keep it from registering as held;
+- the game's two mouse-click buttons for its stick pointer are set to the stick clicks (the game starts with RT and RB, and RT is a hotbar trigger).
 
 It binds the D-pad, the face buttons and the triggers with override bindings. Those sit on top of your saved key bindings without changing them.
 
 ## Good to know
 
-- While the game's stick-driven mouse cursor is out, the right trigger is the left mouse button. That is a game default: it clicks in menus and selects the right set in play. `/fc status` mentions it, and the readme explains how to move it.
-- Spell flyouts (one slot holding a group of spells) open below the button and need the mouse to choose from. Put the individual spells on the bar instead.
+- Mouse mode is the game's own stick pointer. The two click buttons and the pointer's speed are on the settings page, under "Mouse mode". If you set FreeControl up before version 1.2, your Y button is as you left it: click it on the bar and choose "Mouse cursor on / off".
+- Spell flyouts (one slot holding a group of spells) open below the button and need the mouse pointer to choose from. Put the individual spells on the bar instead.
 - There is no vehicle or possess bar yet. Use the game's own bar for those.
 - Triggers are hold-to-select. There is no tap-to-toggle yet.
 

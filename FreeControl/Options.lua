@@ -40,6 +40,17 @@ local TRIGGER_KEYS = {
 	{ "PADPADDLE4", "Paddle 4" },
 }
 
+-- Buttons offered for the two mouse clicks. The stick clicks and bumpers can be held while the
+-- right thumb steers, which dragging needs; the top face button and paddles are there for taste.
+local function ClickChoices()
+	local choices = {}
+	for _, key in ipairs({ "PADLSTICK", "PADRSTICK", "PADLSHOULDER", "PADRSHOULDER", ns.db.keys[6], "PADPADDLE1", "PADPADDLE2" }) do
+		choices[#choices + 1] = { key, Layout.GetKeyName(key) }
+	end
+	choices[#choices + 1] = { "game", "Leave to the game" }
+	return choices
+end
+
 local function RoleChoices()
 	local choices = {
 		{ "action", "Action slot" },
@@ -92,6 +103,24 @@ local function Choose(owner, choices, get, onPick)
 		end
 	end
 	onPick(choices[position % #choices + 1][1])
+end
+
+-- side 1 is the left click, 2 the right. Returns false, having said why, if the button cannot be used.
+local function SetClick(side, value)
+	local db = ns.db
+	local mine, other = side == 1 and "clickLeft" or "clickRight", side == 1 and "clickRight" or "clickLeft"
+	if value ~= "game" then
+		if value == db.modKeys[1] or value == db.modKeys[2] then
+			ns.Print(("%s is a trigger, so it cannot also be a mouse click."):format(Layout.GetKeyName(value)))
+			return false
+		end
+		if db[other] == value then
+			db[other] = db[mine] -- choosing the other click's button swaps the two
+		end
+	end
+	db[mine] = value
+	ns.RequestRefresh()
+	return true
 end
 
 function Options:OpenRoleMenu(owner, index)
@@ -250,6 +279,25 @@ local function Build(panel)
 	y = Choice(panel, left, y, "Stance set", "The set that swaps to different slots in each stance or form.", STANCE_SETS,
 		function() return ns.db.stanceSet end, function(value) Set("stanceSet", value) end)
 
+	y = Heading(panel, "Mouse mode", left, y - 8)
+	local mouseNote = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	mouseNote:SetPoint("TOPLEFT", left + 4, y - 2)
+	mouseNote:SetWidth(296)
+	mouseNote:SetJustifyH("LEFT")
+	mouseNote.Sync = function(self)
+		local button = ns.Mouse:GetBarButtonName()
+		local how = button and (button .. " on the bar brings the mouse cursor out and puts it away.")
+			or "No bar button brings the mouse cursor out yet. Give one \"Mouse cursor on / off\" on the right, or bind it in Key Bindings."
+		self:SetText(how .. " While it is out, the right stick moves it and these two buttons click.")
+	end
+	controls[#controls + 1] = mouseNote
+	y = y - 52
+	y = Choice(panel, left, y, "Left click", "The left mouse button while the mouse cursor is out. Pick a button you can hold while your right thumb steers, such as a stick click or a bumper, so you can drag spells and items. The rest of the time the button does whatever you bound it to.", ClickChoices,
+		function() return ns.db.clickLeft end, function(value) SetClick(1, value) end)
+	y = Choice(panel, left, y, "Right click", "The right mouse button while the mouse cursor is out. The rest of the time the button does whatever you bound it to.", ClickChoices,
+		function() return ns.db.clickRight end, function(value) SetClick(2, value) end)
+	y = Stepper(panel, left, y, "Pointer speed", "How fast the right stick moves the mouse cursor. 100% is the game's own speed, or whatever you had set it to.", "cursorSpeed", 0.5, 3, 0.25)
+
 	y = -78
 	y = Heading(panel, "Controller", right, y)
 	y = Check(panel, right, y, "Turn on controller input", "Sets GamePadEnable while FreeControl is active so the game reads your controller. This is not Gamepad UI mode. Untick it if a tool such as Steam Input already turns your controller into key presses.", "manageGamepad")
@@ -301,18 +349,6 @@ end
 
 function Options:Open()
 	Settings.OpenToCategory(self.category:GetID())
-end
-
----------------------------------------------------------------------------
--- Controller mouse cursor (the "mouse cursor on / off" command and key binding)
----------------------------------------------------------------------------
--- The client can steer the mouse cursor with a stick by itself; this only switches that on and off.
-function ns.ToggleCursor()
-	if not (SetGamePadCursorControl and IsGamePadCursorControlEnabled) then
-		ns.Print("This client has no controller mouse cursor.")
-		return
-	end
-	SetGamePadCursorControl(not IsGamePadCursorControlEnabled())
 end
 
 ---------------------------------------------------------------------------
@@ -371,6 +407,19 @@ local function PrintStatus()
 	ns.Print(("Cooldown numbers: %s. The game seals combat values from addons: %s"):format(
 		YesNo(db.cooldownNumbers), ns.DescribeSealing()))
 
+	if ns.Mouse:IsAvailable() then
+		ns.Print(("Mouse cursor: %s. Button on the bar: %s. Pointer speed: %d%%"):format(ns.Mouse:IsOut() and "out" or "away",
+			ns.Mouse:GetBarButtonName() or "none", db.cursorSpeed * 100 + 0.5))
+		for side, setting in ipairs({ "clickLeft", "clickRight" }) do
+			local key = GetCVar(side == 1 and "GamePadCursorLeftClick" or "GamePadCursorRightClick") or ""
+			local bound = key ~= "" and GetBindingAction(key, true) or ""
+			ns.Print(("  %s click: %s (setting: %s), bound right now to: %s"):format(side == 1 and "Left" or "Right",
+				key ~= "" and key or "none", db[setting], bound ~= "" and bound or "nothing"))
+		end
+	else
+		ns.Print("Mouse cursor: this client has no controller mouse cursor.")
+	end
+
 	ns.Print("Keys: " .. table.concat(db.keys, " ") .. " | triggers: " .. table.concat(db.modKeys, " "))
 	for _, problem in ipairs(ns.Bindings:FindProblems()) do
 		ns.Print("|cffffd100Note:|r " .. problem)
@@ -401,6 +450,9 @@ local HELP = {
 	"/fc slots gamepad | bars - where the slots are stored",
 	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
 	"/fc key <1-8 | lt | rt> <KEY> - use a different key for a slot or trigger (1-4 D-pad left/up/right/down, 5-8 face left/top/right/bottom)",
+	"/fc mouse - bring the controller's mouse cursor out or put it away",
+	"/fc click left | right <BUTTON> - the button that clicks while the mouse cursor is out (game = leave it to the game)",
+	"/fc pointer <50-300> - how fast the stick moves the mouse cursor, in percent",
 	"/fc status - what FreeControl sees, for bug reports",
 	"/fc trace - record what the game reports about the next abilities you use (type it again to see the result)",
 }
@@ -451,6 +503,15 @@ SlashCmdList.FREECONTROL = function(message)
 		Set("cooldownNumbers", first == "on")
 	elseif command == "key" and SetKey(first, second) then
 		ns.Print("Keys: " .. table.concat(ns.db.keys, " ") .. " | triggers: " .. table.concat(ns.db.modKeys, " "))
+	elseif command == "mouse" then
+		ns.Mouse:Toggle()
+	elseif command == "pointer" and tonumber(first) then
+		Set("cursorSpeed", math.max(0.5, math.min(3, tonumber(first) / 100)))
+	elseif command == "click" and ns.IsOneOf(first, "left", "right") and second and second ~= "" then
+		-- In combat the change waits for the fight to end, and RequestRefresh has said so.
+		if SetClick(first == "left" and 1 or 2, second == "game" and "game" or second:upper()) and not InCombatLockdown() then
+			ns.Print(("Mouse clicks: %s."):format(ns.Mouse:DescribeClicks()))
+		end
 	elseif command == "status" then
 		PrintStatus()
 	elseif command == "trace" then

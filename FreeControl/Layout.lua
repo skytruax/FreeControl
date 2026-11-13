@@ -52,14 +52,17 @@ local STYLES = {
 	xbox = {
 		face = { "X", "Y", "B", "A" },         -- left, top, right, bottom
 		triggers = { "LT", "RT" },
+		bumpers = { "LB", "RB" },
 	},
 	playstation = {
 		face = { "Square", "Triangle", "Circle", "Cross" },
 		triggers = { "L2", "R2" },
+		bumpers = { "L1", "R1" },
 	},
 	nintendo = {
 		face = { "Y", "X", "A", "B" },
 		triggers = { "ZL", "ZR" },
+		bumpers = { "L", "R" },
 	},
 }
 local DPAD = { "DpadLeft", "DpadUp", "DpadRight", "DpadDown" }
@@ -115,6 +118,31 @@ function Layout.GetButtonName(set, index)
 	return name
 end
 
+-- Name of any controller button as text, by the name the game gives the button ("PADLSTICK").
+-- A key this does not know, such as a keyboard key, is shown as it is.
+local FACE_POSITION = { PAD3 = 1, PAD4 = 2, PAD2 = 3, PAD1 = 4 } -- place in a style's face list
+local KEY_NAME = {
+	PADLSTICK = "Left stick click", PADRSTICK = "Right stick click",
+	PADDLEFT = DPAD_NAME[1], PADDUP = DPAD_NAME[2], PADDRIGHT = DPAD_NAME[3], PADDDOWN = DPAD_NAME[4],
+	PADPADDLE1 = "Paddle 1", PADPADDLE2 = "Paddle 2", PADPADDLE3 = "Paddle 3", PADPADDLE4 = "Paddle 4",
+}
+
+function Layout.GetKeyName(key)
+	local style = STYLES[Layout.GetStyleKey()]
+	if FACE_POSITION[key] then
+		return style.face[FACE_POSITION[key]]
+	elseif key == "PADLTRIGGER" then
+		return style.triggers[1]
+	elseif key == "PADRTRIGGER" then
+		return style.triggers[2]
+	elseif key == "PADLSHOULDER" then
+		return style.bumpers[1]
+	elseif key == "PADRSHOULDER" then
+		return style.bumpers[2]
+	end
+	return KEY_NAME[key] or key
+end
+
 function Layout.GetSetName(set)
 	local style = STYLES[Layout.GetStyleKey()]
 	if set == Layout.SET_LT then
@@ -141,10 +169,12 @@ Layout.COMMANDS = {
 	{ "TARGETSELF", "Target yourself", "Role-TargetFriend" },
 	{ "STARTATTACK", "Start attacking", "Role-Attack" },
 	{ "TOGGLEAUTORUN", "Auto-run", "Role-Run" },
-	{ "FREECONTROL_TOGGLECURSOR", "Mouse cursor on / off", "Role-Cursor" },
+	{ "FREECONTROL_TOGGLECURSOR", "Mouse cursor on / off", "Role-Cursor" }, -- see Mouse.lua
 	{ "TOGGLEWORLDMAP", "World map", "Role-Map" },
 	{ "OPENALLBAGS", "Bags", "Role-Bags" },
 }
+
+Layout.CURSOR_COMMAND = "FREECONTROL_TOGGLECURSOR"
 
 local COMMAND_BY_NAME = {}
 for _, command in ipairs(Layout.COMMANDS) do

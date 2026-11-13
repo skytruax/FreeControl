@@ -14,3 +14,6 @@ __pycache__/
 
 # Blizzard's spell icons, fetched for the pictures by tools/game_icons.py; never committed
 tools/.icon-cache/
+
+# The title typeface of the pictures, fetched by tools/make_listing.py; someone else's font, never committed
+tools/.font-cache/

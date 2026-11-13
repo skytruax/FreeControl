@@ -346,7 +346,13 @@ def draw_run(d):
 
 
 def draw_cursor(d):
-    poly(d, [(20, 13), (20, 47), (28, 39), (34, 52), (40, 49), (34, 37), (46, 37)], W)
+    # A mouse pointer as the desktop draws it: a white arrow with a dark edge, so it reads as
+    # "the mouse" at a glance and at the size of a bar button.
+    points = [(19, 10), (19, 46), (27.5, 38.5), (33.5, 52.5), (41, 49.5), (35, 36), (46.5, 36)]
+    edge = (10, 12, 18, 255)
+    line(d, points + points[:1], 6.4, edge)
+    poly(d, points, edge)
+    poly(d, points, W)
 
 
 def draw_map(d):
@@ -374,7 +380,7 @@ ROLES = {
     "TargetFriend": ((104, 190, 96), (30, 92, 40), draw_friend),
     "Attack": ((226, 156, 62), (116, 62, 16), draw_attack),
     "Run": ((150, 118, 220), (60, 38, 124), draw_run),
-    "Cursor": ((120, 138, 160), (44, 54, 72), draw_cursor),
+    "Cursor": ((226, 104, 178), (104, 30, 92), draw_cursor),
     "Map": ((204, 176, 116), (104, 78, 38), draw_map),
     "Bags": ((170, 122, 76), (78, 46, 22), draw_bags),
     "Generic": ((122, 126, 138), (50, 52, 62), draw_generic),
@@ -394,15 +400,92 @@ def set_shade():
     return Image.fromarray(rgba.astype(np.uint8), "RGBA")
 
 
-def logo():
-    img = layer(vgradient(G, G, (40, 46, 62), (14, 16, 24)), shape_mask(G, G, "square", 1, 13))
+def ring_logo(size, ss=3):
+    """The addon's emblem, size x size: a bronze compass ring with a stud at each quarter, a
+    sea-blue disc inside it, and the four face buttons of a controller in the middle."""
+    n = size * ss
+    c = n / 2
+    ink = INK + (255,)
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    c, off, r = G / 2, 15, 8.5
-    for name, (dx, dy) in (("Y", (0, -off)), ("X", (-off, 0)), ("B", (off, 0)), ("A", (0, off))):
-        d.ellipse(s(c + dx - r, c + dy - r, c + dx + r, c + dy + r), fill=FACE_COLORS[name] + (255,),
-                  outline=(12, 12, 14, 255), width=int(1.5 * SS))
-    edge = subtract(shape_mask(G, G, "square", 1, 13), shape_mask(G, G, "square", 3.4, 11))
-    return over(img, layer(vgradient(G, G, BRONZE_LIGHT, BRONZE_DARK), edge))
+
+    def disc_mask(radius, cx=c, cy=c):
+        m = Image.new("L", (n, n), 0)
+        ImageDraw.Draw(m).ellipse([cx - radius, cy - radius, cx + radius, cy + radius], fill=255)
+        return m
+
+    def shaded(top, bottom, y0, y1):
+        """A top-to-bottom gradient between two heights, as a full-size picture."""
+        rows = np.clip((np.arange(n, dtype=np.float32) - y0) / max(1.0, y1 - y0), 0, 1)[:, None]
+        rgb = np.asarray(top, np.float32) * (1 - rows) + np.asarray(bottom, np.float32) * rows
+        return Image.fromarray(np.broadcast_to(rgb[:, None, :], (n, n, 3)).astype(np.uint8), "RGB")
+
+    # Studs first, so the ring overlaps their inner halves: a faceted diamond at each quarter
+    # and a smaller one between.
+    for step in range(8):
+        angle = math.radians(step * 45 - 90)
+        major = step % 2 == 0
+        reach, half = (0.418 if major else 0.392) * n, (0.082 if major else 0.040) * n
+        sx, sy = c + math.cos(angle) * reach, c + math.sin(angle) * reach
+        corners = [(sx, sy - half), (sx + half, sy), (sx, sy + half), (sx - half, sy)]
+        d.polygon(corners, fill=ink)
+        inset = half * 0.86
+        top, right, bottom, left = (sx, sy - inset), (sx + inset, sy), (sx, sy + inset), (sx - inset, sy)
+        d.polygon([top, (sx, sy), left], fill=(240, 214, 152, 255))     # lit from the upper left
+        d.polygon([top, right, (sx, sy)], fill=(196, 160, 96, 255))
+        d.polygon([left, (sx, sy), bottom], fill=(150, 112, 60, 255))
+        d.polygon([(sx, sy), right, bottom], fill=(92, 66, 34, 255))
+
+    # The ring.
+    outer, inner = 0.392 * n, 0.305 * n
+    band = subtract(disc_mask(outer), disc_mask(inner))
+    img.paste(ink, mask=disc_mask(outer + 0.008 * n))
+    img.paste(shaded(BRONZE_LIGHT, BRONZE_DARK, c - outer, c + outer), mask=band)
+    d = ImageDraw.Draw(img)
+    for radius, colour, width in ((outer - 0.016 * n, (252, 236, 190, 150), 0.006), (inner + 0.012 * n, (40, 28, 12, 170), 0.006)):
+        d.ellipse([c - radius, c - radius, c + radius, c + radius], outline=colour, width=max(1, round(width * n)))
+    for tick in range(48):  # the graduations of a compass card
+        angle = math.radians(tick * 7.5)
+        r0, r1 = (0.326 if tick % 4 == 0 else 0.336) * n, (0.370 if tick % 4 == 0 else 0.360) * n
+        d.line([(c + math.cos(angle) * r0, c + math.sin(angle) * r0), (c + math.cos(angle) * r1, c + math.sin(angle) * r1)],
+               fill=(52, 36, 16, 210), width=max(1, round(0.006 * n)))
+
+    # The disc: light in its upper middle, deep at the rim, with the ring's shadow on its edge.
+    yy, xx = np.mgrid[0:n, 0:n].astype(np.float32)
+    fall = np.clip(np.hypot(xx - c, yy - (c - 0.07 * n)) / (inner * 1.15), 0, 1)[..., None] ** 1.2
+    sea = np.array((96, 208, 228), np.float32) * (1 - fall) + np.array((5, 58, 88), np.float32) * fall
+    img.paste(ink, mask=disc_mask(inner + 0.004 * n))
+    img.paste(Image.fromarray(sea.astype(np.uint8), "RGB"), mask=disc_mask(inner - 0.006 * n))
+    rim = blur_px(subtract(disc_mask(inner), disc_mask(inner - 0.045 * n)), 0.016 * n)
+    img.alpha_composite(layer((0, 0, 0), ImageChops.multiply(rim, disc_mask(inner - 0.006 * n)), 0.55))
+
+    # The four face buttons, in their colours, as they sit on a controller.
+    reach, radius = 0.128 * n, 0.080 * n
+    letters = ImageDraw.Draw(img)
+    for name, (dx, dy) in (("Y", (0, -1)), ("X", (-1, 0)), ("B", (1, 0)), ("A", (0, 1))):
+        bx, by = c + dx * reach, c + dy * reach
+        shadow = blur_px(disc_mask(radius * 1.10, bx, by + 0.016 * n), 0.014 * n)
+        img.alpha_composite(layer((0, 0, 0), shadow, 0.6))
+        img.paste(ink, mask=disc_mask(radius + 0.011 * n, bx, by))
+        colour = np.asarray(FACE_COLORS[name], np.float32)
+        img.paste(shaded(np.clip(colour * 1.22 + 14, 0, 255), colour * 0.70, by - radius, by + radius), mask=disc_mask(radius, bx, by))
+        gloss = blur_px(disc_mask(radius * 0.50, bx - radius * 0.18, by - radius * 0.34), 0.012 * n)
+        img.alpha_composite(layer((255, 255, 255), ImageChops.multiply(gloss, disc_mask(radius, bx, by)), 0.30))
+        letters = ImageDraw.Draw(img)
+        f = font(max(6, int(radius * 1.25)))
+        box = letters.textbbox((0, 0), name, font=f)
+        at = (bx - (box[0] + box[2]) / 2, by - (box[1] + box[3]) / 2)
+        letters.text((at[0], at[1] + 0.004 * n), name, font=f, fill=(10, 14, 20, 150))
+        letters.text(at, name, font=f, fill=(255, 255, 255, 255))
+    return img.resize((size, size), Image.LANCZOS)
+
+
+def blur_px(img, radius):
+    return img.filter(ImageFilter.GaussianBlur(radius))
+
+
+def logo():
+    return ring_logo(G * SS, 2)
 
 
 def drawings(supersample=None):

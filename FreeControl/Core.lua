@@ -35,7 +35,14 @@ local DEFAULTS = {
 	--   "action"      an action slot you can drop things into
 	--   "pass"        FreeControl leaves the button to your own key binding
 	--   "cmd:<NAME>"  run a game command (the names used by the Key Bindings screen)
-	roles = { "action", "action", "action", "action", "cmd:INTERACTTARGET", "pass", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" },
+	roles = { "action", "action", "action", "action", "cmd:INTERACTTARGET", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" },
+	-- The two buttons that are the mouse buttons while the controller's mouse cursor is out: a
+	-- button name, or "game" to leave that one to the game's own setting.
+	clickLeft = "PADLSTICK",
+	clickRight = "PADRSTICK",
+	cursorSpeed = 1,       -- how fast the stick moves the mouse cursor, as a multiple of the player's own setting
+	mouseHintShown = false, -- the chat line that explains the clicks, said the first time the cursor comes out
+	mouseTipShown = false,  -- the chat line telling a setup from before 1.2 that mouse mode exists
 	cvarBackup = {},       -- the player's own value of every console variable we changed
 	cvarApplied = {},      -- the value we changed it to
 	introShown = false,
@@ -76,6 +83,7 @@ local function Sanitize(db)
 	if type(db.scale) ~= "number" or db.scale < 0.4 or db.scale > 2.5 then Reset("scale") end
 	if type(db.activeScale) ~= "number" or db.activeScale < 1 or db.activeScale > 1.6 then Reset("activeScale") end
 	if type(db.inactiveAlpha) ~= "number" or db.inactiveAlpha < 0.2 or db.inactiveAlpha > 1 then Reset("inactiveAlpha") end
+	if type(db.cursorSpeed) ~= "number" or db.cursorSpeed < 0.25 or db.cursorSpeed > 4 then Reset("cursorSpeed") end
 	if not IsOneOf(db.page, 1, 2, 3) then Reset("page") end
 	if not IsOneOf(db.labelStyle, "auto", "xbox", "playstation", "nintendo") then Reset("labelStyle") end
 	if not IsOneOf(db.slotSource, "gamepad", "bars") then Reset("slotSource") end
@@ -92,6 +100,21 @@ local function Sanitize(db)
 	end
 	for i = 1, 2 do
 		if type(db.modKeys[i]) ~= "string" or db.modKeys[i] == "" then db.modKeys[i] = DEFAULTS.modKeys[i] end
+	end
+	-- A click button has to be a button name. It cannot be a trigger (a held trigger must stay a
+	-- trigger) and the two clicks cannot share one; either falls back to the game's own setting.
+	for _, key in ipairs({ "clickLeft", "clickRight" }) do
+		local value = db[key]
+		if type(value) ~= "string" or value == "" or (value ~= "game" and value ~= value:upper()) then
+			value = DEFAULTS[key]
+		end
+		if value == db.modKeys[1] or value == db.modKeys[2] then
+			value = "game"
+		end
+		db[key] = value
+	end
+	if db.clickLeft == db.clickRight then
+		db.clickRight = "game"
 	end
 end
 
@@ -253,12 +276,14 @@ function ns.Refresh()
 		ns.Buttons:Assign()
 		ns.Bars:Apply()
 		ns.Bindings:Apply()
+		ns.Mouse:Apply()
 	else
 		if built then
 			ns.Bindings:Clear()
 			ns.Buttons:Release()
 			ns.Bars:Hide()
 		end
+		ns.Mouse:Release()
 		ns.CVars:RestoreAll()
 	end
 	if ns.Options then
@@ -295,7 +320,17 @@ ns.On("PLAYER_LOGIN", function()
 		ns.Print("Gamepad UI mode is on, so FreeControl is idle. Turn off Options > Gamepad > Enable Gamepad UI to use it.")
 	elseif ns.db.enabled and not ns.db.introShown then
 		ns.db.introShown = true
+		ns.db.mouseTipShown = true -- a new setup has the mouse button on the bar and reads about it here
 		ns.Print("Hold a trigger to switch sets and drop spells, items or macros onto any slot. /fc opens the settings; /fc unlock lets you drag the bar.")
+		if ns.Mouse:IsAvailable() and ns.Mouse:GetBarButtonName() then
+			ns.Print(("%s brings out a mouse pointer that the right stick steers; %s."):format(ns.Mouse:GetBarButtonName(), ns.Mouse:DescribeClicks()))
+		end
+	elseif ns.db.enabled and not ns.db.mouseTipShown then
+		-- A setup from before version 1.2 keeps its buttons as they were, so it is told once.
+		ns.db.mouseTipShown = true
+		if ns.Mouse:IsAvailable() and not ns.Mouse:GetBarButtonName() then
+			ns.Print("New: mouse mode. Click a no-trigger button on the FreeControl bar (Y had no job until now) and choose \"Mouse cursor on / off\". It brings out a mouse pointer that the right stick steers, with the stick clicks as its two buttons. /fc has the settings.")
+		end
 	end
 end)
 

@@ -16,6 +16,13 @@ ns.Bindings = Bindings
 --   fc-kind-<set>-<i>    "click" (press that set's key button), "cmd" (run a game command) or nil
 --   fc-target-<set>-<i>  the key button's name, or the command
 -- A slot with no kind is unbound, which hands the key back to the player's own key binding.
+--
+-- Mouse mode (Mouse.lua) rides on the same snippet. While fc-mouse is set, the two click buttons
+-- are bound to the commands the real mouse buttons run, so they click the world as well:
+--   fc-click-<side>      the button, or nil when that click is left to the game
+--   fc-clickcmd-<side>   the command
+--   fc-clickslot-<side>  set when the button is also one of the eight slot keys, which the loop
+--                        above has just bound and which is therefore not to be cleared
 local APPLY = [=[
 	local left, right = self:GetAttribute("fc-l"), self:GetAttribute("fc-r")
 	local set = 0
@@ -38,6 +45,18 @@ local APPLY = [=[
 				self:SetBinding(true, key, target)
 			else
 				self:ClearBinding(key)
+			end
+		end
+
+		local mouse = self:GetAttribute("fc-mouse")
+		for side = 1, 2 do
+			local key = self:GetAttribute("fc-click-" .. side)
+			if key then
+				if mouse then
+					self:SetBinding(true, key, self:GetAttribute("fc-clickcmd-" .. side))
+				elseif not self:GetAttribute("fc-clickslot-" .. side) then
+					self:ClearBinding(key)
+				end
 			end
 		end
 	end
@@ -71,6 +90,19 @@ local TRIGGER_ONCLICK = [=[
 	header:RunAttribute("fc-apply")
 ]=]
 
+-- Restricted snippet, self = the mouse button, clicked on press. It flips mouse mode on the header,
+-- which rebinds the click buttons, and then has ordinary code bring the cursor out or put it away.
+local MOUSE_ONCLICK = [=[
+	local header = self:GetFrameRef("fc-header")
+	if header:GetAttribute("fc-mouse") then
+		header:SetAttribute("fc-mouse", nil)
+	else
+		header:SetAttribute("fc-mouse", 1)
+	end
+	header:RunAttribute("fc-apply")
+	header:CallMethod("FreeControl_ToggleCursor")
+]=]
+
 -- Out of combat. Needs the set frames and the buttons to exist.
 function Bindings:Create()
 	local header = CreateFrame("Frame", "FreeControlHeader", UIParent, "SecureHandlerStateTemplate")
@@ -94,6 +126,18 @@ function Bindings:Create()
 		trigger:SetAttribute("_onclick", TRIGGER_ONCLICK)
 		self.triggers[side] = trigger
 	end
+
+	-- What a no-trigger button set to "Mouse cursor on / off" clicks. A plain binding to the
+	-- command would run ordinary code, which cannot rebind anything in a fight; this can.
+	local mouse = CreateFrame("Button", "FreeControlMouse", header, "SecureHandlerClickTemplate")
+	mouse:RegisterForClicks("AnyDown")
+	mouse:SetFrameRef("fc-header", header)
+	mouse:SetAttribute("_onclick", MOUSE_ONCLICK)
+	self.mouse = mouse
+
+	function header:FreeControl_ToggleCursor()
+		ns.Mouse:Toggle()
+	end
 end
 
 -- Out of combat. Hands the header the current settings and binds everything.
@@ -110,7 +154,9 @@ function Bindings:Apply()
 				kind, target = "click", ns.Buttons.proxy[set][index]:GetName()
 			else
 				local roleKind, command = Layout.ParseRole(db.roles[index])
-				if roleKind == "cmd" then
+				if roleKind == "cmd" and command == Layout.CURSOR_COMMAND and ns.Mouse:IsAvailable() then
+					kind, target = "click", self.mouse:GetName()
+				elseif roleKind == "cmd" then
 					kind, target = "cmd", command
 				end
 			end
@@ -118,6 +164,18 @@ function Bindings:Apply()
 			header:SetAttribute(("fc-target-%d-%d"):format(set, index), target)
 		end
 	end
+
+	for side = 1, 2 do
+		local key = ns.Mouse:IsAvailable() and ns.Mouse:GetManagedKey(side) or nil
+		local isSlotKey = false
+		for index = 1, 8 do
+			isSlotKey = isSlotKey or db.keys[index] == key
+		end
+		header:SetAttribute("fc-click-" .. side, key)
+		header:SetAttribute("fc-clickcmd-" .. side, ns.Mouse.COMMANDS[side])
+		header:SetAttribute("fc-clickslot-" .. side, isSlotKey or nil)
+	end
+	header:SetAttribute("fc-mouse", ns.Mouse:IsOut() and 1 or nil)
 
 	header:SetAttribute("fc-scale-active", db.activeScale)
 	header:SetAttribute("fc-alpha-inactive", db.inactiveAlpha)
@@ -171,6 +229,20 @@ function Bindings:FindProblems()
 		local button = GetCVar(cvar)
 		if button and button ~= "" and used[button] then
 			problems[#problems + 1] = ("%s is also the controller's mouse-click button (%s), so it clicks instead while the mouse cursor is out."):format(button, cvar)
+		end
+	end
+	for index = 1, 8 do
+		local kind, command = Layout.ParseRole(db.roles[index])
+		if kind == "cmd" and command == Layout.CURSOR_COMMAND
+			and (db.keys[index] == ns.Mouse:GetManagedKey(1) or db.keys[index] == ns.Mouse:GetManagedKey(2)) then
+			problems[#problems + 1] = ("%s is both the mouse cursor button and a click button. While the cursor is out it clicks, so move or jump to put the cursor away."):format(
+				Layout.GetButtonName(0, index))
+		end
+	end
+	for side, setting in ipairs({ "clickLeft", "clickRight" }) do
+		if db[setting] ~= "game" and not ns.Mouse:GetManagedKey(side) then
+			problems[#problems + 1] = ("%s is a trigger, so it cannot also be the %s mouse click. That click is left to the game. Change it with /fc click."):format(
+				db[setting], side == 1 and "left" or "right")
 		end
 	end
 
