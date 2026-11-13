@@ -205,6 +205,35 @@ test("the readings after a press also catch a cooldown that only becomes visible
 	eq(cooldown.__cooldown, nil, "and by now the readings have stopped: the bar does not poll")
 end)
 
+test("only the pressed button is read again, not the whole bar", function()
+	M.silentCooldowns = true
+	Load()
+	M.actions[181] = { texture = "sinister strike" }
+	M.actions[182] = { texture = "kick" }
+	M.actions[183] = { texture = "gouge" }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 0)
+	local readings = 0
+	local read = C_ActionBar.GetActionCooldown
+	C_ActionBar.GetActionCooldown = function(slot)
+		readings = readings + 1
+		return read(slot)
+	end
+	M.Tap("PADDUP")
+	M.Advance(0.016)
+	for _ = 1, 60 do M.Advance(0.05) end -- three seconds
+	C_ActionBar.GetActionCooldown = read
+	-- Twenty a second for a second and a half, for one button. Reading every filled slot each
+	-- time would be three times that here, and thirty-two times that on a full bar.
+	truthy(readings >= 25 and readings <= 35, "about thirty readings, got " .. readings)
+	local other = M.frames.FreeControlButton0_3.fc.cooldown
+	M.actions[183].cooldown = { M.now, 10 }
+	M.Tap("PADDUP")
+	M.Advance(0.2)
+	eq(other.__cooldown, nil, "a button that was not pressed waits for its event")
+	M.Fire("SPELL_UPDATE_COOLDOWN", 183)
+	eq(other.__cooldown[2], 10, "which then shows it")
+end)
+
 test("the readings after a press never wipe a sweep the game put on a button itself", function()
 	Load()
 	local button = M.frames.FreeControlButton0_2

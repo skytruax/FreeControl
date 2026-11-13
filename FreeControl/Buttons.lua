@@ -303,12 +303,15 @@ local pressed = {}        -- [frame] = true while its key or mouse button is dow
 local releasing = {}      -- [frame] = seconds since it was let go
 local watchRoleKeys = false
 
--- After a press the bar reads every cooldown again, a few times a second, for a short while. The
--- events should already have delivered it; this is for when one does not arrive, so that a
--- cooldown can never go missing for longer than a moment after the button was pressed.
+-- After a press the pressed button reads its cooldown again, twenty times a second for a second
+-- and a half. The events should already have delivered it; this is for when one does not
+-- arrive, so that the cooldown of what was just used can never go missing for longer than a
+-- moment. Only the pressed button is read: each reading makes a small table the game has to
+-- collect later, and reading the whole bar came to a few hundred kilobytes per press.
 local CATCH_UP_TIME = 1.5  -- seconds after a press
 local CATCH_UP_STEP = 0.05 -- seconds between readings
-local catchUp, sinceReading = 0, 0
+local watching = {}        -- [button] = seconds left to keep reading its cooldown
+local sinceReading = 0
 
 local animator = CreateFrame("Frame")
 animator:Hide()
@@ -351,18 +354,24 @@ local function WatchRoleKeys()
 	end
 end
 
-local function StartCatchUp()
-	catchUp, sinceReading = CATCH_UP_TIME, CATCH_UP_STEP -- the first reading is on the next frame
+local function StartCatchUp(button)
+	watching[button] = CATCH_UP_TIME
+	sinceReading = CATCH_UP_STEP -- the first reading is on the next frame
 	animator:Show()
 end
 
 animator:SetScript("OnUpdate", function(self, elapsed)
-	if catchUp > 0 then
-		catchUp = catchUp - elapsed
+	if next(watching) then
 		sinceReading = sinceReading + elapsed
-		if sinceReading >= CATCH_UP_STEP then
+		local reading = sinceReading >= CATCH_UP_STEP
+		if reading then
 			sinceReading = 0
-			ForEachWithAction(ShowRunningCooldown)
+		end
+		for button, left in pairs(watching) do
+			if reading and button.fc.hasAction then
+				ShowRunningCooldown(button)
+			end
+			watching[button] = left > elapsed and left - elapsed or nil
 		end
 	end
 	for frame, age in pairs(releasing) do
@@ -378,7 +387,7 @@ animator:SetScript("OnUpdate", function(self, elapsed)
 	end
 	if watchRoleKeys then
 		WatchRoleKeys()
-	elseif catchUp <= 0 and not next(releasing) then
+	elseif not next(watching) and not next(releasing) then
 		self:Hide()
 	end
 end)
@@ -530,7 +539,7 @@ local function CreateActionButton(set, index, parent)
 	button:SetScript("OnReceiveDrag", OnReceiveDrag)
 	button:SetScript("PostClick", function(self)
 		UpdateState(self)
-		StartCatchUp()
+		StartCatchUp(self)
 	end)
 	button:HookScript("OnAttributeChanged", OnAttributeChanged)
 
@@ -554,7 +563,7 @@ local function CreateKeyButton(set, index, button)
 	proxy:SetScript("PostClick", function(_, _, down)
 		Press(button, "keyDown", down)
 		if down then
-			StartCatchUp()
+			StartCatchUp(button)
 		else
 			UpdateState(button)
 		end
@@ -715,6 +724,7 @@ end
 -- back from the client and stops asking it for range updates. Assign puts all of that back.
 function Buttons:Release()
 	watchRoleKeys = false
+	wipe(watching)
 	for frame in pairs(pressed) do
 		frame.fc.mouseDown = nil
 		Press(frame, "keyDown", false)

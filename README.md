@@ -213,8 +213,9 @@ What keeps the bar feeling immediate:
 - Cooldowns follow `SPELL_UPDATE_COOLDOWN` and `BAG_UPDATE_COOLDOWN` as well as
   `ACTIONBAR_UPDATE_COOLDOWN`. The last one alone leaves an ability's own cooldown seconds late:
   the game does not raise it when such a cooldown starts.
-- For a second and a half after every press the bar reads its cooldowns again, so one can never
-  go missing for longer than a moment. It only ever starts a sweep that way and never clears one.
+- For a second and a half after a press, the pressed button reads its cooldown again, so the
+  cooldown of what was just used can never go missing for longer than a moment. It only ever
+  starts a sweep that way and never clears one, and it reads that one button, not the whole bar.
 - The slots are also registered with the client (`C_ActionBar.RegisterActionUIButton`), as
   Blizzard's buttons are. Nothing depends on it.
 
@@ -229,7 +230,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 55 scenarios, runs on every push):
+**Mock client** (fast, 56 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
