@@ -207,10 +207,16 @@ tooling. `Layout.lua` holds the fixed facts (sets, geometry, which action slot e
 that rebinds the eight slot keys when a trigger is pressed, which is what lets the sets switch in
 combat. Each file's header comment explains its part.
 
-Two things keep the bar feeling immediate, both taken from Blizzard's own controller buttons: the
-keys always act on the press (`useOnKeyDown`), and every slot is registered with the client
-(`C_ActionBar.RegisterActionUIButton`), which then starts the button's cooldown itself the moment
-the action is used instead of leaving it to an event.
+What keeps the bar feeling immediate:
+
+- The keys always act on the press (`useOnKeyDown`), as Blizzard's own controller buttons do.
+- Cooldowns follow `SPELL_UPDATE_COOLDOWN` and `BAG_UPDATE_COOLDOWN` as well as
+  `ACTIONBAR_UPDATE_COOLDOWN`. The last one alone leaves an ability's own cooldown seconds late:
+  the game does not raise it when such a cooldown starts.
+- For a second and a half after every press the bar reads its cooldowns again, so one can never
+  go missing for longer than a moment. It only ever starts a sweep that way and never clears one.
+- The slots are also registered with the client (`C_ActionBar.RegisterActionUIButton`), as
+  Blizzard's buttons are. Nothing depends on it.
 
     python3 tools/make_art.py        # redraw FreeControl/Art/*.tga      (Pillow, numpy)
     python3 tools/preview.py         # docs/preview.png: the bar as the addon lays it out
@@ -223,7 +229,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 50 scenarios, runs on every push):
+**Mock client** (fast, 55 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -234,7 +240,7 @@ combat, secure snippets run in a restricted environment, a button standing in fo
 report being held, and key presses travel through override bindings to button clicks. It is a
 model, so a pass shows the addon is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 21 tests, about six seconds):
+**Simulator** (Blizzard's real interface code, 22 tests, about six seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh

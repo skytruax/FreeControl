@@ -287,18 +287,28 @@ end
 ---------------------------------------------------------------------------
 -- Secure action buttons (port of Blizzard's SecureActionButton_OnClick, type "action" only)
 ---------------------------------------------------------------------------
--- What the client does for buttons registered with C_ActionBar.RegisterActionUIButton: it sets
--- their cooldown frame itself, at once, with no event reaching Lua. ACTIONBAR_UPDATE_COOLDOWN is
--- a separate thing, which a test fires when it wants the event to arrive.
+-- An ability's own cooldown begins. What the client then does, as far as play has shown:
+--   * it announces it with SPELL_UPDATE_COOLDOWN, not with ACTIONBAR_UPDATE_COOLDOWN
+--     (M.silentCooldowns = true models an announcement that never arrives);
+--   * it does not touch the cooldown frame of a button an addon registered with
+--     C_ActionBar.RegisterActionUIButton (M.nativePush = true models a client that does).
 function M.StartCooldown(slot, duration)
 	M.actions[slot].cooldown = { M.now, duration }
-	M.secure = M.secure + 1
-	for _, entry in pairs(M.native) do
-		if entry.slot == slot then
-			entry.cooldown:SetCooldown(M.now, duration, 1)
+	if M.nativePush then
+		M.secure = M.secure + 1
+		for _, entry in pairs(M.native) do
+			if entry.slot == slot then
+				entry.cooldown:SetCooldown(M.now, duration, 1)
+			end
 		end
+		M.secure = M.secure - 1
 	end
-	M.secure = M.secure - 1
+	if not M.silentCooldowns then
+		local depth = M.secure
+		M.secure = 0 -- event handlers are addon code: they run tainted, whatever raised the event
+		M.Fire("SPELL_UPDATE_COOLDOWN", M.actions[slot].spell or slot)
+		M.secure = depth
+	end
 end
 
 function UseAction(slot, unit, button)

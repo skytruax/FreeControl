@@ -271,10 +271,31 @@ test("usable, range and cooldown events redraw the button without errors", funct
 	assertFalse(button.fc.outOfRange)
 	A_Admin.SetSpellCooldown(SPELL, 30)
 	A_Admin.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+	A_Admin.FireEvent("SPELL_UPDATE_COOLDOWN", SPELL)
+	A_Admin.FireEvent("BAG_UPDATE_COOLDOWN")
 	A_Admin.FireEvent("ACTIONBAR_UPDATE_STATE")
 	A_Admin.FireEvent("SPELL_UPDATE_CHARGES")
 	A_Admin.FireEvent("UPDATE_SHAPESHIFT_FORM")
 	A_Admin.SetSpellCooldown(SPELL, 0)
+	NothingRefused()
+end)
+
+test("a spell's own cooldown shows when SPELL_UPDATE_COOLDOWN is the only event raised", function()
+	Reset()
+	A_Admin.SetActionSlot(38, SPELL)
+	A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", 38)
+	local cooldown = FreeControlButton0_2.fc.cooldown
+	-- Earlier tests cast the spell, so the simulator may still report its global cooldown
+	-- (1500 ms); what matters is that the spell's own 30 seconds appear and go with the event.
+	A_Admin.SetSpellCooldown(SPELL, 0)
+	A_Admin.FireEvent("SPELL_UPDATE_COOLDOWN", SPELL)
+	assertTrue(cooldown:GetCooldownDuration() < 30000)
+	A_Admin.SetSpellCooldown(SPELL, 30)
+	A_Admin.FireEvent("SPELL_UPDATE_COOLDOWN", SPELL)
+	assertEquals(30000, cooldown:GetCooldownDuration())
+	A_Admin.SetSpellCooldown(SPELL, 0)
+	A_Admin.FireEvent("SPELL_UPDATE_COOLDOWN", SPELL)
+	assertTrue(cooldown:GetCooldownDuration() < 30000)
 	NothingRefused()
 end)
 

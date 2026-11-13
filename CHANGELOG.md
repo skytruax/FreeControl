@@ -1,8 +1,12 @@
 # Changelog
 
+## v1.1.1
+
+- Fixed: the cooldown of an ability that has one of its own, such as Kick or Gouge, could take seconds to appear on the bar. The bar followed only the action bar's cooldown event, which the game does not raise when such a cooldown starts. It now also follows the game's spell and item cooldown events, and reads every cooldown again for a moment after each press.
+
 ## v1.1.0
 
-- Cooldowns start the moment you press. Every slot is now registered with the game the way Blizzard's own action buttons are, so the game starts the sweep itself instead of the bar waiting for an update.
+- Every slot is now registered with the game the way Blizzard's own action buttons are.
 - Controller buttons always act on the press, even with "cast on key down" switched off in the game options.
 - Buttons sink in when you press them and spring back when you let go.
 - New option: a countdown on every slot that is on cooldown. It is on by default; untick "Cooldown numbers" on the settings page or type `/fc numbers off`.

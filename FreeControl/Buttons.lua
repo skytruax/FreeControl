@@ -7,8 +7,8 @@ local Layout = ns.Layout
 --     drop, tooltip), and
 --   * an invisible "key" button on top of it that the controller is bound to, which acts on press.
 --
--- The visible button is also registered with the client (SetNativeSlot below), which is what
--- makes its cooldown appear the moment an action is used.
+-- Cooldowns follow the game's events (the list at the end of this file) and are read again for
+-- a moment after every press; see ShowRunningCooldown and StartCatchUp.
 --
 -- Both are plain SecureActionButtonTemplate buttons whose click runs Blizzard's own
 -- SecureActionButton_OnClick and nothing else, so nothing of ours runs before the protected
@@ -66,6 +66,16 @@ local function UpdateCooldown(button)
 		fc.cooldown:SetCooldown(info.startTime, info.duration, info.modRate)
 	else
 		fc.cooldown:Clear()
+	end
+end
+
+-- The same reading, but it only ever starts a sweep. Used for the re-reads after a press, which
+-- must not wipe a sweep the client put on the button itself.
+local function ShowRunningCooldown(button)
+	local fc = button.fc
+	local info = C_ActionBar.GetActionCooldown(fc.slot)
+	if info and info.isActive then
+		fc.cooldown:SetCooldown(info.startTime, info.duration, info.modRate)
 	end
 end
 
@@ -164,11 +174,10 @@ local function SetRangeSlot(button, slot)
 end
 
 -- Blizzard's own action buttons hand themselves to the client (ActionButton.lua, UpdateAction),
--- and the client then sets a registered button's cooldown sweep and checked state itself, the
--- moment the action is used. A button that only listens for ACTIONBAR_UPDATE_COOLDOWN shows the
--- same thing noticeably later. The event handlers at the end of this file stay: they agree with
--- the client, and they are all there is on a client that does not offer the call.
-local nativeProblem -- what the client said, if it ever refused
+-- which then sets a registered button's cooldown sweep and checked state itself. The same is
+-- asked for these buttons, but in play it did not make their cooldowns prompt, so nothing here
+-- relies on it: the events at the end of this file and the re-reads after a press do the work.
+local nativeProblem -- what the client said, if it ever refused; /fc status shows it
 
 local function SetNativeSlot(button, slot)
 	local fc = button.fc
@@ -185,14 +194,10 @@ local function SetNativeSlot(button, slot)
 		fc.nativeSlot = slot
 		return
 	end
-	-- Not fatal: the bar still works from events, only less promptly. It is said once in chat
-	-- and stays in /fc status, so it does not go unnoticed.
+	-- Not fatal, and nothing the player can act on: the bar works from events either way. The
+	-- reason is kept for /fc status rather than printed at every login.
 	fc.nativeSlot = nil
-	if not nativeProblem then
-		nativeProblem = tostring(problem)
-		ns.Print("|cffff4040The game would not link the buttons for instant cooldowns (" .. nativeProblem
-			.. "). They will follow events instead. Please report this with the output of /fc status.|r")
-	end
+	nativeProblem = nativeProblem or tostring(problem)
 end
 
 -- For /fc status: "yes", that the client has no such call, or what the client complained about.
@@ -298,6 +303,13 @@ local pressed = {}        -- [frame] = true while its key or mouse button is dow
 local releasing = {}      -- [frame] = seconds since it was let go
 local watchRoleKeys = false
 
+-- After a press the bar reads every cooldown again, a few times a second, for a short while. The
+-- events should already have delivered it; this is for when one does not arrive, so that a
+-- cooldown can never go missing for longer than a moment after the button was pressed.
+local CATCH_UP_TIME = 1.5  -- seconds after a press
+local CATCH_UP_STEP = 0.05 -- seconds between readings
+local catchUp, sinceReading = 0, 0
+
 local animator = CreateFrame("Frame")
 animator:Hide()
 
@@ -339,7 +351,20 @@ local function WatchRoleKeys()
 	end
 end
 
+local function StartCatchUp()
+	catchUp, sinceReading = CATCH_UP_TIME, CATCH_UP_STEP -- the first reading is on the next frame
+	animator:Show()
+end
+
 animator:SetScript("OnUpdate", function(self, elapsed)
+	if catchUp > 0 then
+		catchUp = catchUp - elapsed
+		sinceReading = sinceReading + elapsed
+		if sinceReading >= CATCH_UP_STEP then
+			sinceReading = 0
+			ForEachWithAction(ShowRunningCooldown)
+		end
+	end
 	for frame, age in pairs(releasing) do
 		age = age + elapsed
 		if age >= RELEASE_TIME then
@@ -353,7 +378,7 @@ animator:SetScript("OnUpdate", function(self, elapsed)
 	end
 	if watchRoleKeys then
 		WatchRoleKeys()
-	elseif not next(releasing) then
+	elseif catchUp <= 0 and not next(releasing) then
 		self:Hide()
 	end
 end)
@@ -503,7 +528,10 @@ local function CreateActionButton(set, index, parent)
 	button:HookScript("OnMouseDown", OnMouseDown)
 	button:HookScript("OnMouseUp", OnMouseUp)
 	button:SetScript("OnReceiveDrag", OnReceiveDrag)
-	button:SetScript("PostClick", UpdateState)
+	button:SetScript("PostClick", function(self)
+		UpdateState(self)
+		StartCatchUp()
+	end)
 	button:HookScript("OnAttributeChanged", OnAttributeChanged)
 
 	all[#all + 1] = button
@@ -525,7 +553,9 @@ local function CreateKeyButton(set, index, button)
 	proxy:RegisterForClicks("AnyDown", "AnyUp")
 	proxy:SetScript("PostClick", function(_, _, down)
 		Press(button, "keyDown", down)
-		if not down then
+		if down then
+			StartCatchUp()
+		else
 			UpdateState(button)
 		end
 	end)
@@ -721,7 +751,13 @@ for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_SHAPESHIFT_FORM", "SPE
 	ns.On(event, UpdateAll)
 end
 
-for _, event in ipairs({ "ACTIONBAR_UPDATE_COOLDOWN" }) do
+-- ACTIONBAR_UPDATE_COOLDOWN on its own is not enough. In play, a sweep driven by it alone came
+-- up seconds late for abilities with a cooldown of their own (Kick, Gouge): the game announces
+-- those with SPELL_UPDATE_COOLDOWN, and an item's with BAG_UPDATE_COOLDOWN. Blizzard's bars get by
+-- without them because the client updates its own registered buttons directly; where one of its
+-- controller buttons is not registered, it listens for SPELL_UPDATE_COOLDOWN too
+-- (Blizzard_GamepadActionBars, HostileTargetingActionBar.lua).
+for _, event in ipairs({ "ACTIONBAR_UPDATE_COOLDOWN", "SPELL_UPDATE_COOLDOWN", "BAG_UPDATE_COOLDOWN" }) do
 	ns.On(event, function() ForEachWithAction(UpdateCooldown) end)
 end
 

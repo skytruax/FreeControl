@@ -366,7 +366,7 @@ local function PrintStatus()
 			ns.Print(("  %s: %s"):format(Layout.GetSetName(set), table.concat(slots, " ")))
 		end
 		ns.Print("Secure click handler present: " .. YesNo(not ns.Buttons:IsSecureClickMissing()))
-		ns.Print(("Buttons linked to the game for instant cooldowns: %s. Cooldown numbers: %s"):format(
+		ns.Print(("Buttons registered with the game: %s. Cooldown numbers: %s"):format(
 			ns.Buttons:GetNativeStatus(), YesNo(db.cooldownNumbers)))
 		ns.Print("Set held right now: " .. Layout.GetSetName(ns.Bindings:GetActiveSet()))
 	end
