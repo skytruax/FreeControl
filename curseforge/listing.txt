@@ -38,8 +38,9 @@ Images, in this order
     your own screenshots from the game first, then curseforge/gallery/01-hero.png to 08-controls.png
 
 Files
-    Uploaded by the release workflow, nothing to do by hand: v1.0.1 on 2026-11-12 and v1.1.0 on
-    2026-11-13 (type Release, game version 1.60.1, CHANGELOG.md as the changelog).
+    Nothing to upload by hand: pushing a version tag makes the release workflow send that version
+    to CurseForge (type Release, game version 1.60.1, CHANGELOG.md as the changelog). A new file
+    is public once CurseForge has reviewed it.
 
 Relations
     none. FreeControl needs no other addon. A relation to an addon it merely resembles is not what
