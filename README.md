@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/skytruax/FreeControl/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/skytruax/FreeControl?label=release&color=d9a441"></a>
+  <a href="https://www.curseforge.com/projects/1800965"><img alt="CurseForge downloads" src="https://img.shields.io/curseforge/dt/1800965?label=CurseForge&color=f16436"></a>
   <a href="https://github.com/skytruax/FreeControl/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/skytruax/FreeControl/actions/workflows/tests.yml/badge.svg"></a>
   <img alt="World of Warcraft: Forever 1.60.1" src="https://img.shields.io/badge/WoW%20Forever-1.60.1-3b82c4">
   <a href="LICENSE"><img alt="Licence: MIT" src="https://img.shields.io/badge/licence-MIT-3fa55b"></a>
@@ -83,15 +84,16 @@ from the addon's own textures and layout numbers. The spell icons in them are Bl
 
 ## Install
 
+**With the CurseForge app:** search for FreeControl, or start from its
+[CurseForge page](https://www.curseforge.com/projects/1800965). It installs and updates there like
+any other addon.
+
 **By hand**
 
 1. Download the zip from the [latest release](https://github.com/skytruax/FreeControl/releases/latest).
 2. Unzip it into `World of Warcraft\_forever_\Interface\AddOns\`, so that you end up with
    `...\AddOns\FreeControl\FreeControl.toc`.
 3. Enable FreeControl on the character screen.
-
-**With the CurseForge app:** the listing is on its way. Once it is up, FreeControl installs and
-updates there like any other addon.
 
 Leave **Options > Gamepad > Enable Gamepad UI** off. FreeControl stands down while that mode is on,
 because Blizzard's bar would be bound to the same buttons.

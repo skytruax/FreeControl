@@ -3,7 +3,7 @@ What goes in which field of the CurseForge project form (World of Warcraft > Add
 Project
     id 1800965, slug free-control
     https://authors.curseforge.com/#/projects/1800965/general
-    public page once a moderator approves it: https://www.curseforge.com/wow/addons/free-control
+    public page: https://www.curseforge.com/projects/1800965
 
 Name
     FreeControl - Controller & Gamepad Cross Hotbar
@@ -38,8 +38,8 @@ Images, in this order
     your own screenshots from the game first, then curseforge/gallery/01-hero.png to 08-controls.png
 
 Files
-    v1.0.1 was uploaded by the release workflow on 2026-11-12 (type Release, game version 1.60.1,
-    CHANGELOG.md as the changelog). Nothing to upload by hand.
+    Uploaded by the release workflow, nothing to do by hand: v1.0.1 on 2026-11-12 and v1.1.0 on
+    2026-11-13 (type Release, game version 1.60.1, CHANGELOG.md as the changelog).
 
 Relations
     none. FreeControl needs no other addon. A relation to an addon it merely resembles is not what
