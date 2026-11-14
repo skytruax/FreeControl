@@ -135,8 +135,9 @@ because Blizzard's bar would be bound to the same buttons.
   one. Press Y again and the pointer goes away; the game also puts it away when you jump. The Y
   button on the bar is lit while it is out. FreeControl binds Y itself, the way it binds
   Interact: there is nothing to set up in the Key Bindings screen. Both click buttons and the
-  pointer's speed can be changed on the settings page. If Y already had a job in your setup it
-  keeps it: click any no-trigger button on the bar and choose *Mouse pointer on / off*.
+  pointer's speed can be changed on the settings page. To have Y do something else, click it on
+  the bar; any other no-trigger button can be the mouse button instead (choose *Mouse pointer
+  on / off*).
 - **Stances and forms:** buttons change to different slots when you change stance or form, so
   each one has its own abilities. For most classes that is one set (the right-trigger set,
   unless **Options > Gamepad > Stance bar** names another). A Druid cannot use a single caster
@@ -301,7 +302,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 113 scenarios, runs on every push):
+**Mock client** (fast, 118 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches

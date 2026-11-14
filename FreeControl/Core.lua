@@ -43,7 +43,7 @@ local DEFAULTS = {
 	clickRight = "PADRSTICK",
 	cursorSpeed = 1,       -- how fast the stick moves the mouse cursor, as a multiple of the player's own setting
 	mouseHintShown = false, -- the chat line that explains the clicks, said the first time the pointer comes out
-	mouseButtonSet = false, -- a setup from before 1.3 has been given the mouse button (MigrateMouseButton)
+	mouseStep = 0,         -- how far this setup has been brought along by GiveMouseButton
 	stanceNoteShown = false, -- the chat line telling a Druid which buttons change with the form
 	cvarBackup = {},       -- the player's own value of every console variable we changed
 	cvarApplied = {},      -- the value we changed it to
@@ -77,6 +77,10 @@ ns.IsOneOf = IsOneOf
 
 -- Saved variables are plain text the player can edit, and they outlive versions of this addon,
 -- so anything out of range goes back to its default instead of breaking the bars later.
+local function IsRole(value)
+	return type(value) == "string" and (value == "action" or value == "pass" or value:match("^cmd:[%w_]+$") ~= nil)
+end
+
 local function Sanitize(db)
 	local function Reset(key)
 		local default = DEFAULTS[key]
@@ -95,8 +99,7 @@ local function Sanitize(db)
 	end
 	for i = 1, 8 do
 		if type(db.keys[i]) ~= "string" or db.keys[i] == "" then db.keys[i] = DEFAULTS.keys[i] end
-		local role = db.roles[i]
-		if type(role) ~= "string" or not (role == "action" or role == "pass" or role:match("^cmd:[%w_]+$")) then
+		if not IsRole(db.roles[i]) then
 			db.roles[i] = DEFAULTS.roles[i]
 		end
 	end
@@ -119,7 +122,14 @@ local function Sanitize(db)
 		db.clickRight = "game"
 	end
 	db.mouseTipShown = nil -- used by 1.2.0 only
-	if not IsOneOf(db.mouseNews, nil, "given", "taken") then db.mouseNews = nil end
+	-- Version 1.3.0 kept its own notes on the mouse button. Its "given" meant the button had no
+	-- job before, which is what "pass" says now; anything else it wrote is dropped.
+	db.mouseButtonSet = nil
+	if db.mouseNews == "given" then
+		db.mouseNews = "pass"
+	end
+	if type(db.mouseStep) ~= "number" then Reset("mouseStep") end
+	if db.mouseNews ~= nil and not IsRole(db.mouseNews) then db.mouseNews = nil end
 end
 
 ---------------------------------------------------------------------------
@@ -326,29 +336,27 @@ end
 -- The top face button: Y, Triangle, or X on a Nintendo pad.
 local MOUSE_INDEX = 6
 
--- Up to version 1.2 the top face button was left to the player's own key binding, and mouse mode
--- had to be bound in the Key Bindings screen or put on a bar button by hand. From 1.3 that button
--- is the mouse button, bound by FreeControl like Interact is, unless the player has given the
--- button or mouse mode a place of their own. Done once for a setup that predates it (a new one
--- starts with the button). What the player is to be told is kept in db.mouseNews until it has
--- been said: "given" when the button was changed, "taken" when it has another job and mouse mode
--- is on no button.
-local function MigrateMouseButton(db)
-	if db.mouseButtonSet then
+-- The top face button is the mouse button for every setup, and FreeControl binds it, the way it
+-- binds Interact. A new setup starts that way. One from an earlier version that has the mouse
+-- button on no button at all is given it there, once, whatever the button was doing: up to 1.2
+-- it was left to the player's own key binding, and 1.3.0 gave it the job only where it had none,
+-- so a player whose Y did something else still had to find the menu entry. What the button was
+-- is kept in db.mouseNews until the player has been told, so the chat line can say how to put it
+-- back. After that the player's own choice stands, including taking the mouse button off again.
+local MOUSE_STEP = 2 -- 1 was version 1.3.0's
+
+local function GiveMouseButton(db)
+	if db.mouseStep >= MOUSE_STEP then
 		return
 	end
-	db.mouseButtonSet = true
+	db.mouseStep = MOUSE_STEP
 	for index = 1, 8 do
 		if ns.Layout.IsCursorRole(db.roles[index]) then
 			return
 		end
 	end
-	if db.roles[MOUSE_INDEX] == "pass" then
-		db.roles[MOUSE_INDEX] = ns.Layout.CURSOR_ROLE
-		db.mouseNews = "given"
-	else
-		db.mouseNews = "taken"
-	end
+	db.mouseNews = db.roles[MOUSE_INDEX]
+	db.roles[MOUSE_INDEX] = ns.Layout.CURSOR_ROLE
 end
 
 ns.On("ADDON_LOADED", function(_, name)
@@ -358,23 +366,28 @@ ns.On("ADDON_LOADED", function(_, name)
 	FreeControlDB = CopyDefaults(type(FreeControlDB) == "table" and FreeControlDB or {}, DEFAULTS)
 	ns.db = FreeControlDB
 	Sanitize(ns.db)
-	MigrateMouseButton(ns.db)
+	GiveMouseButton(ns.db)
 end)
 
 -- Said at the first login at which FreeControl is in use, which need not be the one that made the change.
 local function SayMouseNews()
-	local news = ns.db.mouseNews
-	if not news or not ns.Mouse:IsAvailable() then
+	local was = ns.db.mouseNews
+	if not was or not ns.Mouse:IsAvailable() then
 		return
 	end
 	ns.db.mouseNews = nil
 	local name = ns.Layout.GetButtonName(ns.Layout.SET_NONE, MOUSE_INDEX)
-	if news == "given" then
-		ns.Print(("New: %s is now the mouse button. Press it and the right stick steers a mouse pointer; %s. Press it again to put the pointer away. To give %s another job, click it on the bar."):format(
-			name, ns.Mouse:DescribeClicks(), name))
+	local kind, command = ns.Layout.ParseRole(was)
+	local before
+	if kind == "cmd" then
+		before = ("It was \"%s\" before: to put that back, click %s on the bar."):format(ns.Layout.GetCommandInfo(command), name)
+	elseif kind == "action" then
+		before = ("It was an action slot before, and what was in it is still there: to put that back, click %s on the bar."):format(name)
 	else
-		ns.Print(("New: mouse mode puts a mouse pointer on your right stick. %s already has a job here, so no button brings the pointer out: click a no-trigger button on the bar and choose \"Mouse pointer on / off\"."):format(name))
+		before = ("To give %s another job, click it on the bar."):format(name)
 	end
+	ns.Print(("New: %s is now the mouse button. Press it and the right stick steers a mouse pointer; %s. Press it again to put the pointer away. %s"):format(
+		name, ns.Mouse:DescribeClicks(), before))
 end
 
 -- Said once, the first time a Druid logs in: more of their bar changes with the form than a

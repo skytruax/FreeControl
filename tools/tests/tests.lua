@@ -1157,10 +1157,10 @@ local function OldSetup(more)
 	return saved
 end
 
--- A setup in which the player has taken the mouse button off the bar, and has been told about it.
+-- A setup in which the player has taken the mouse button off the bar again, after being given it.
 local function NoMouseButton(more)
 	local saved = OldSetup(more)
-	saved.mouseButtonSet = true
+	saved.mouseStep = 2
 	return saved
 end
 
@@ -1191,18 +1191,54 @@ test("a setup from before 1.3 gets the mouse button on Y, bound by the addon, an
 	eq(Printed("New:"), false, "and nothing is said again")
 end)
 
-test("a setup from before 1.3 whose Y has a job keeps it, and is told how to get mouse mode", function()
+test("a Y that had another job becomes the mouse button too, once, and chat says what it was", function()
 	local roles = { unpack(OLD_ROLES) }
 	roles[6] = "cmd:TARGETNEARESTENEMY"
 	Load(OldSetup({ roles = roles }))
-	eq(ns.db.roles[6], "cmd:TARGETNEARESTENEMY", "untouched")
-	eq(Binding("PAD4"), "cmd:TARGETNEARESTENEMY", "still bound to its job")
-	truthy(Printed("New: mouse mode puts a mouse pointer on your right stick%. Y already has a job here"), "told")
-	truthy(Printed("choose \"Mouse pointer on / off\""), "with the name to look for")
+	eq(ns.db.roles[6], "cmd:FREECONTROL_TOGGLECURSOR", "Y is the mouse button")
+	eq(Binding("PAD4"), "click:FreeControlMouse", "and is bound as one")
+	truthy(Printed("New: Y is now the mouse button%. Press it and the right stick steers a mouse pointer"), "told")
+	truthy(Printed("It was \"Target nearest enemy\" before: to put that back, click Y on the bar%."), "with what it was and how to get it back")
+	local saved = FreeControlDB
 	M.printed = {}
+	saved.roles[6] = "cmd:TARGETNEARESTENEMY" -- the player puts it back
 	M.Fire("ADDON_LOADED", "FreeControl")
 	M.Fire("PLAYER_LOGIN")
-	eq(Printed("New:"), false, "once")
+	eq(saved.roles[6], "cmd:TARGETNEARESTENEMY", "and from then on their choice stands")
+	eq(Printed("New:"), false, "with nothing more said")
+end)
+
+test("a Y that was an action slot becomes the mouse button, and what was in the slot is kept", function()
+	local roles = { unpack(OLD_ROLES) }
+	roles[6] = "action"
+	M.actions[262] = { texture = "icon" } -- the slot Y borrows on page 1
+	Load(OldSetup({ roles = roles }))
+	eq(ns.db.roles[6], "cmd:FREECONTROL_TOGGLECURSOR", "Y is the mouse button")
+	truthy(Printed("It was an action slot before, and what was in it is still there: to put that back, click Y on the bar%."), "told")
+	eq(#M.picked + #M.placed, 0, "nothing was moved out of the slot")
+	ns.db.roles[6] = "action"
+	ns.RequestRefresh()
+	eq(ns.Buttons:GetSlot(0, 6), 262, "switched back, it shows the same slot")
+	eq(M.frames.FreeControlButton0_6.fc.hasAction, true, "with its action")
+end)
+
+test("a setup that 1.3.0 left without a mouse button, because Y had a job, gets one now", function()
+	local roles = { unpack(OLD_ROLES) }
+	roles[6] = "cmd:OPENALLBAGS"
+	Load(OldSetup({ roles = roles, mouseButtonSet = true, mouseNews = "taken" })) -- as 1.3.0 saved it
+	eq(ns.db.roles[6], "cmd:FREECONTROL_TOGGLECURSOR", "Y is the mouse button")
+	truthy(Printed("It was \"Bags\" before"), "and chat says what it was")
+	eq(ns.db.mouseButtonSet, nil, "1.3.0's own note is cleared out of the saved settings")
+end)
+
+test("news that 1.3.0 had not said yet is still said", function()
+	M.gamepadUI = true
+	Load({ introShown = true, mouseButtonSet = true, mouseNews = "given" }) -- 1.3.0 gave Y the job with the Gamepad UI on
+	eq(Printed("New:"), false, "not while FreeControl is idle")
+	M.gamepadUI = false
+	M.Fire("ADDON_LOADED", "FreeControl")
+	M.Fire("PLAYER_LOGIN")
+	truthy(Printed("New: Y is now the mouse button.*To give Y another job, click it on the bar%."), "said once FreeControl is in use")
 end)
 
 test("a setup from before 1.3 that has the mouse button on another button is left alone", function()
@@ -1606,7 +1642,7 @@ test("settings page buttons open a menu when the client has one", function()
 			picked = root
 		end,
 	}
-	Load({ mouseButtonSet = true, roles = { [6] = "pass" } })
+	Load({ mouseStep = 2, roles = { [6] = "pass" } })
 	ns.Options:OpenRoleMenu(ns.Buttons.role[6], 6)
 	eq(picked.items[1].text, "Action slot", "first choice")
 	eq(picked.items[2].isSelected(), true, "'My own key binding' is the current one")
@@ -1618,7 +1654,7 @@ end)
 
 test("a button left to the player's own binding says what that binding is", function()
 	M.userBindings = { PAD4 = "TARGETNEARESTENEMY" }
-	Load({ mouseButtonSet = true, roles = { [6] = "pass" } })
+	Load({ mouseStep = 2, roles = { [6] = "pass" } })
 	local role = ns.Buttons.role[6]
 	role:GetScript("OnEnter")(role)
 	eq(GameTooltip.lines[2], "Your own key binding: <TARGETNEARESTENEMY>", "names the binding")
@@ -1746,13 +1782,31 @@ test("what is new is not announced while FreeControl is switched off", function(
 	Load(OldSetup({ enabled = false }))
 	eq(#M.printed, 0, "nothing at all is said")
 	eq(ns.db.stanceNoteShown, false, "and the Druid note is kept for when it is switched on")
-	eq(ns.db.mouseNews, "given", "as is the news about the mouse button")
+	eq(ns.db.mouseNews, "pass", "as is the news about the mouse button: what Y was before")
 end)
 
 test("a saved note that makes no sense is dropped", function()
-	Load({ introShown = true, mouseButtonSet = true, mouseNews = "everything" })
+	Load({ introShown = true, mouseStep = 2, mouseNews = "everything" })
 	eq(ns.db.mouseNews, nil, "dropped")
 	eq(Printed("New:"), false, "and nothing is said")
+end)
+
+test("a saved step that makes no sense is taken as not done", function()
+	Load(OldSetup({ mouseStep = "done" }))
+	eq(ns.db.mouseStep, 2, "worked out afresh")
+	eq(ns.db.roles[6], "cmd:FREECONTROL_TOGGLECURSOR", "and Y is given the job")
+end)
+
+test("a command button on the D-pad shows the whole of its icon, ring and all", function()
+	local roles = { "cmd:TARGETNEARESTENEMY", "action", "action", "action", "cmd:INTERACTTARGET", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" }
+	Load({ roles = roles })
+	local function Shown(frame)
+		local c = frame.fc.icon.calls.SetTexCoord
+		return ("%.2f %.2f %.2f %.2f"):format(c[1], c[2], c[3], c[4])
+	end
+	eq(Shown(ns.Buttons.role[1]), "0.00 1.00 0.00 1.00", "a square command button: nothing trimmed, or its ring would be cut")
+	eq(Shown(ns.Buttons.role[5]), "0.00 1.00 0.00 1.00", "a round one never was")
+	eq(Shown(M.frames.FreeControlButton0_2), "0.07 0.93 0.07 0.93", "a square action slot still trims the border spell icons come with")
 end)
 
 test("a setup that was never logged into gets the mouse button without the note for older setups", function()

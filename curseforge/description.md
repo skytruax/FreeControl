@@ -1,4 +1,4 @@
-![FreeControl: the cross hotbar over a sunny city, with the right-trigger set selected](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/01-hero.jpg?v=1.3.0)
+![FreeControl: the cross hotbar over a sunny city, with the right-trigger set selected](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/01-hero.jpg?v=1.3.1)
 
 ## Play Forever with a controller. Keep the rest of your game.
 
@@ -8,7 +8,7 @@ Forever's built-in Gamepad UI has a great idea at its heart: hold LT, RT or both
 
 FreeControl is that hotbar on its own. The game stays in normal mode. Your targeting stays yours. Your menus stay the ones you know. Pick up the controller and play.
 
-![The bar with no trigger held, then LT, then LT and RT, then RT: the held set grows and the others fade](https://raw.githubusercontent.com/skytruax/FreeControl/main/docs/demo.gif?v=1.3.0)
+![The bar with no trigger held, then LT, then LT and RT, then RT: the held set grows and the others fade](https://raw.githubusercontent.com/skytruax/FreeControl/main/docs/demo.gif?v=1.3.1)
 
 ## Why you will like it
 
@@ -16,31 +16,31 @@ FreeControl is that hotbar on its own. The game stays in normal mode. Your targe
 
 Four sets of eight on the D-pad and face buttons: one with no trigger, one for LT, one for RT, one for both. The set you are holding grows and the others step back, so you always know where you are.
 
-![The four sets: no trigger, LT, RT, and LT with RT](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/02-sets.jpg?v=1.3.0)
+![The four sets: no trigger, LT, RT, and LT with RT](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/02-sets.jpg?v=1.3.1)
 
 ### Drop anything, anywhere
 
 Drag spells, items and macros straight from your spellbook and bags onto any slot. FreeControl uses the same slots as Blizzard's controller bars, so whatever you already set up in Gamepad UI mode is waiting for you, and it does not rearrange the action bars you already have.
 
-![A spell being dragged onto an empty slot of the bar](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/03-drop.jpg?v=1.3.0)
+![A spell being dragged onto an empty slot of the bar](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/03-drop.jpg?v=1.3.1)
 
 ### One button for the world
 
 Interact loots the corpse next to you, talks to the NPC in front of you, opens the chest, and attacks your target when there is nothing else to do.
 
-![The Interact button: loot, talk, open, attack](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/04-interact.jpg?v=1.3.0)
+![The Interact button: loot, talk, open, attack](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/04-interact.jpg?v=1.3.1)
 
 ### Your game stays in normal mode
 
 Bumpers, stick clicks and every button FreeControl does not use are yours. Bind them in the normal Key Bindings screen, to whatever targeting you prefer. The menus are the ones you know, and nothing in your layout is moved or replaced.
 
-![A sketch of the normal interface with the FreeControl bar as the one thing added](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/05-normal-mode.jpg?v=1.3.0)
+![A sketch of the normal interface with the FreeControl bar as the one thing added](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/05-normal-mode.jpg?v=1.3.1)
 
 ### Made for combat
 
 Every slot shows what a normal action bar shows: cooldowns with a countdown, item counts, range and out-of-mana colouring. Sets switch in the middle of a fight, the button sinks under your thumb, and its cooldown shows the moment it starts. An equipped item is ringed in the colour of its rarity.
 
-![Slots showing a cooldown, out of range, not enough energy, not usable, an item count and an action in progress](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/06-combat.jpg?v=1.3.0)
+![Slots showing a cooldown, out of range, not enough energy, not usable, an item count and an action in progress](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/06-combat.jpg?v=1.3.1)
 
 ### Every stance and form has its own buttons
 
@@ -52,7 +52,7 @@ Already have Cat and Bear bars set up in the normal interface? They are on the l
 
 Xbox, PlayStation and Nintendo button labels, matched to the controller you plug in.
 
-![The same set with Xbox, PlayStation and Nintendo labels](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/07-controllers.jpg?v=1.3.0)
+![The same set with Xbox, PlayStation and Nintendo labels](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/07-controllers.jpg?v=1.3.1)
 
 And two more things:
 
@@ -68,13 +68,13 @@ And two more things:
 
 Type `/fc` for the settings, `/fc unlock` to drag the bar where you want it, and `/fc status` to see what the addon sees, which helps in a bug report.
 
-![The bar with every slot empty, labelled set by set](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/08-controls.jpg?v=1.3.0)
+![The bar with every slot empty, labelled set by set](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/08-controls.jpg?v=1.3.1)
 
 ## Mouse mode: a pointer on your sticks
 
 Some things still want a mouse: a vendor, a quest window, your bags, dragging a spell onto the bar. Mouse mode gives you one without putting the controller down.
 
-![Mouse mode: Y brings the pointer out, the left stick click is the left mouse button and the right stick click the right](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/09-mouse-mode.jpg?v=1.3.0)
+![Mouse mode: Y brings the pointer out, the left stick click is the left mouse button and the right stick click the right](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/09-mouse-mode.jpg?v=1.3.1)
 
 1. Press **Y** with no trigger held. The mouse pointer comes out, and the Y button on the bar lights up.
 2. Steer the pointer with the **right stick**.
@@ -84,7 +84,7 @@ Some things still want a mouse: a vendor, a quest window, your bags, dragging a 
 
 The triggers keep choosing your sets the whole time. The two click buttons and the pointer's speed are yours to change under *Mouse mode* on the settings page (`/fc`).
 
-There is nothing to set up: FreeControl binds Y itself, the same way it binds Interact, and nothing is added to the game's Key Bindings screen. If Y already has a job in your setup it keeps it, and any other no-trigger button can be the mouse button: click it on the bar and choose *Mouse pointer on / off*.
+There is nothing to set up: FreeControl binds Y itself, the same way it binds Interact, and nothing is added to the game's Key Bindings screen. To have Y do something else, click it on the bar; any other no-trigger button can be the mouse button instead (choose *Mouse pointer on / off*).
 
 ## FreeControl, Gamepad UI mode or ConsolePort?
 
@@ -116,6 +116,16 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 World of Warcraft: Forever and a controller the game recognises. No libraries or other addons needed.
 
 The pictures on this page are illustrations built from the addon's own artwork, not screenshots. The spell icons in them are Blizzard's, and the title lettering is LifeCraft, a typeface by Eliot Truelove.
+
+## Why I made this
+
+I've been using a controller with WoW for a few years. I got used to ConsolePort but never loved not just having my regular old interface. When Blizzard came out with their GamePad support with Forever, I loved the HotBar approach, but ... sorta hated every thing else.
+
+So I made this for myself.
+
+I hope you like it too.
+
+\- Sky
 
 ## Feedback
 

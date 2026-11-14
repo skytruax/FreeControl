@@ -7,6 +7,7 @@ Needs Pillow and numpy. Everything is drawn at several times its final size and 
 which is what gives the edges their smoothing. Sizes are powers of two because that is what the
 game client is happiest with.
 """
+import colorsys
 import math
 import os
 import struct
@@ -286,38 +287,153 @@ def badge(text):
 # ---------------------------------------------------------------------------
 # Role icons: 64 x 64, used like a spell icon for buttons that run a command
 # ---------------------------------------------------------------------------
-def role(top, bottom, draw):
-    img = vgradient(G, G, top, bottom).convert("RGBA")
-    # Darker towards the rim, like a painted icon.
-    rim = blur(subtract(Image.new("L", img.size, 255), shape_mask(G, G, "round", 2)), 6)
-    img = over(img, layer((0, 0, 0), rim, 0.55))
+# Each is a small copy of the addon's emblem (ring_logo, further down): the same bronze compass
+# ring, drawn in ink, around a glazed disc in the button's own colour, with a white symbol where
+# the emblem has its four buttons. The four the bar starts with take the colours of those four
+# buttons, so X, Y, B and A on the bar are the emblem's blue, yellow, red and green.
+RING_OUTER = 31.0   # the ring's outer edge, in pixels from the middle of the 64 px tile
+RING_INNER = 25.0
+SYMBOL_SIZE = 0.76  # the symbols are drawn across the whole tile and set into the disc at this size
+
+
+def mix(a, b, t):
+    return tuple(int(round(x + (y - x) * t)) for x, y in zip(a, b))
+
+
+def field(fn):
+    """A mask computed from fn(x, y), with x and y in final pixels over the tile."""
+    n = G * SS
+    y, x = (np.mgrid[0:n, 0:n].astype(np.float32) + 0.5) / SS
+    return Image.fromarray((np.clip(fn(x, y), 0, 1) * 255).astype(np.uint8), "L")
+
+
+def tones(colour):
+    """The light and the deep tone a glazed disc of this colour runs between. Yellows and oranges
+    deepen towards amber: darkened as they are they would turn olive."""
+    hue, saturation, value = colorsys.rgb_to_hsv(*(v / 255 for v in colour))
+    warm = -0.05 if 0.08 < hue < 0.25 else 0
+    light = colorsys.hsv_to_rgb(hue, saturation * 0.8, min(1, value * 1.12 + 0.08))
+    deep = colorsys.hsv_to_rgb((hue + warm) % 1, min(1, saturation * 1.2), value * 0.4)
+    return tuple(int(v * 255) for v in light), tuple(int(v * 255) for v in deep)
+
+
+def round_spot(radius, cx=G / 2, cy=G / 2):
+    m = mask(G, G)
+    ImageDraw.Draw(m).ellipse(s(cx - radius, cy - radius, cx + radius, cy + radius), fill=255)
+    return m
+
+
+def medallion(colour):
+    c = G / 2
+    # What shows in the corners of a square button: the dark of an empty slot.
+    img = vgradient(G, G, SLOT_TOP, SLOT_BOTTOM).convert("RGBA")
+    img = over(img, layer(INK, round_spot(RING_OUTER + 0.6)))
+
+    # The ring: bronze, lighter above than below, a bright line inside its outer edge, a dark one
+    # along its inner edge, and the graduations of a compass card.
+    band = subtract(round_spot(RING_OUTER), round_spot(RING_INNER))
+    img = over(img, layer(vgradient(G, G, BRONZE_LIGHT, BRONZE_DARK, 0.02, 0.98), band))
+    d = ImageDraw.Draw(img)
+    for radius, ink, width in ((RING_OUTER - 0.9, (252, 236, 190, 165), 0.55), (RING_INNER + 0.7, (40, 28, 12, 180), 0.6)):
+        d.ellipse(s(c - radius, c - radius, c + radius, c + radius), outline=ink, width=max(1, round(width * SS)))
+    for tick in range(32):
+        angle = math.radians(tick * 11.25)
+        if tick % 8 == 0:
+            continue  # a stud sits here
+        r0, r1 = (RING_INNER + 1.5, RING_OUTER - 1.5) if tick % 4 == 0 else (RING_INNER + 2.1, RING_OUTER - 2.1)
+        d.line(s(c + math.cos(angle) * r0, c + math.sin(angle) * r0, c + math.cos(angle) * r1, c + math.sin(angle) * r1),
+               fill=(52, 36, 16, 215), width=max(1, round(0.62 * SS)))
+    # A faceted stud at each quarter, lit from the upper left like the emblem's.
+    middle, half = (RING_OUTER + RING_INNER) / 2, 2.7
+    for step in range(4):
+        angle = math.radians(step * 90 - 90)
+        sx, sy = c + math.cos(angle) * middle, c + math.sin(angle) * middle
+        poly(d, [(sx, sy - half - 0.6), (sx + half + 0.6, sy), (sx, sy + half + 0.6), (sx - half - 0.6, sy)], INK + (255,))
+        top, right, bottom, left = (sx, sy - half), (sx + half, sy), (sx, sy + half), (sx - half, sy)
+        poly(d, [top, (sx, sy), left], (240, 214, 152, 255))
+        poly(d, [top, right, (sx, sy)], (196, 160, 96, 255))
+        poly(d, [left, (sx, sy), bottom], (150, 112, 60, 255))
+        poly(d, [(sx, sy), right, bottom], (92, 66, 34, 255))
+
+    # The disc: light in its upper middle and deep at the rim, under the ring's shadow, with the
+    # shine of a glazed surface on its upper left.
+    img = over(img, layer(INK, round_spot(RING_INNER + 0.3)))
+    inside = round_spot(RING_INNER - 0.45)
+    light, deep = tones(colour)
+    fall = field(lambda x, y: (np.hypot(x - c, y - (c - 5)) / (RING_INNER * 1.12)) ** 1.25)
+    glaze = Image.composite(Image.new("RGB", fall.size, deep), Image.new("RGB", fall.size, light), fall)
+    img = over(img, layer(glaze, inside))
+    shadow = blur(subtract(round_spot(RING_INNER), round_spot(RING_INNER - 3.4)), 1.25)
+    img = over(img, layer((0, 0, 0), ImageChops.multiply(shadow, inside), 0.6))
+    shine = blur(round_spot(RING_INNER * 0.5, c - RING_INNER * 0.2, c - RING_INNER * 0.38), 2.6)
+    return over(img, layer(WHITE, ImageChops.multiply(shine, inside), 0.2))
+
+
+def grow(alpha, pixels):
+    """The mask made `pixels` wider all round, with smooth corners."""
+    return blur(alpha, pixels * 0.7).point(lambda v: min(255, int(v * 4.5)))
+
+
+def role(colour, draw):
     art = blank(G, G)
     draw(ImageDraw.Draw(art))
-    shadow = layer((0, 0, 0), blur(art.getchannel("A"), 1.6), 0.6)
-    shadow = ImageChops.offset(shadow, 0, int(1.5 * SS))
-    return over(img, shadow, art)
+    # Set into the disc: smaller, about the middle of the tile.
+    n = G * SS
+    small = art.resize((round(n * SYMBOL_SIZE),) * 2, Image.LANCZOS)
+    art = blank(G, G)
+    art.alpha_composite(small, ((n - small.width) // 2,) * 2)
+    alpha = art.getchannel("A")
+    # An ink line round the symbol and its shadow on the disc, as the emblem's letters have. A
+    # part drawn see-through keeps a line as faint as it is.
+    nearby = alpha.filter(ImageFilter.MaxFilter(int(1.4 * SS) * 2 + 1))
+    edge = layer(mix(colour, INK, 0.86), ImageChops.multiply(subtract(grow(alpha, 1.05), alpha), nearby), 0.9)
+    shadow = ImageChops.offset(layer(mix(colour, INK, 0.9), blur(alpha, 1.0), 0.7), 0, int(1.5 * SS))
+    return over(medallion(colour), shadow, edge, art)
 
 
 W = (250, 250, 252, 255)
 
 
+def faint(alpha):
+    return (250, 250, 252, alpha)
+
+
+def turned(points, degrees, cx=32, cy=32):
+    a = math.radians(degrees)
+    return [(cx + (x - cx) * math.cos(a) - (y - cy) * math.sin(a), cy + (x - cx) * math.sin(a) + (y - cy) * math.cos(a))
+            for x, y in points]
+
+
+def spark(d, cx, cy, r, fill):
+    """A four-pointed glint."""
+    k = r * 0.2
+    poly(d, [(cx, cy - r), (cx + k, cy - k), (cx + r, cy), (cx + k, cy + k), (cx, cy + r), (cx - k, cy + k), (cx - r, cy), (cx - k, cy - k)], fill)
+
+
 def draw_jump(d):
-    line(d, [(32, 44), (32, 18)], 6, W)
-    line(d, [(20, 29), (32, 17), (44, 29)], 6, W)
-    line(d, [(18, 50), (46, 50)], 4, (250, 250, 252, 170))
+    # Leaving the ground: two chevrons going up, and the shadow left behind on it.
+    line(d, [(17.5, 26.5), (32, 12), (46.5, 26.5)], 6.6, W)
+    line(d, [(21, 38.5), (32, 27.5), (43, 38.5)], 5.2, faint(205))
+    d.ellipse(s(20.5, 46, 43.5, 53), fill=faint(105))
 
 
 def draw_interact(d):
-    # An open hand: palm, four fingers, thumb.
-    d.rounded_rectangle(s(21, 30, 43, 50), radius=7 * SS, fill=W)
-    for x, top in ((23.5, 17), (29.5, 13), (35.5, 14), (41.5, 19)):
-        line(d, [(x, 34), (x, top)], 5, W)
-    line(d, [(22, 40), (15, 32)], 5, W)
+    # An open hand reaching for something: palm, four spread fingers and a thumb, and the glint
+    # of what it is about to pick up.
+    points = lambda base, length, angle: [base, (base[0] + length * math.sin(math.radians(angle)),
+                                                 base[1] - length * math.cos(math.radians(angle)))]
+    d.rounded_rectangle(s(20.5, 31, 41.5, 51.5), radius=8.5 * SS, fill=W)
+    for base, length, angle in (((23.6, 35), 15, -11), ((29, 34), 19, -4), ((34.4, 34), 18, 3), ((39, 35.5), 14, 11)):
+        line(d, points(base, length, angle), 4.8, W)
+    line(d, points((22.5, 45.5), 11, -68), 5, W)
+    spark(d, 49, 17, 7, faint(240))
+    spark(d, 53.5, 29, 3.6, faint(200))
 
 
 def draw_cancel(d):
-    line(d, [(21, 21), (43, 43)], 7, W)
-    line(d, [(21, 43), (43, 21)], 7, W)
+    # A heavy cross with cut ends, the way a mark is struck through.
+    for degrees in (45, -45):
+        poly(d, turned([(10.5, 28.2), (53.5, 28.2), (53.5, 35.8), (10.5, 35.8)], degrees), W)
 
 
 def draw_target(d):
@@ -347,10 +463,16 @@ def draw_run(d):
 
 def draw_cursor(d):
     # A mouse pointer as the desktop draws it: a white arrow with a dark edge, so it reads as
-    # "the mouse" at a glance and at the size of a bar button.
-    points = [(19, 10), (19, 46), (27.5, 38.5), (33.5, 52.5), (41, 49.5), (35, 36), (46.5, 36)]
+    # "the mouse" at a glance and at the size of a bar button. The three strokes at its tip are a
+    # click.
+    tip, size = (22.5, 14.5), 1.0
+    for degrees in (180, 225, 270):
+        x, y = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+        line(d, [(tip[0] + 5.6 * x, tip[1] + 5.6 * y), (tip[0] + 10.4 * x, tip[1] + 10.4 * y)], 2.6, faint(235))
+    points = [(tip[0] + x * size, tip[1] + y * size)
+              for x, y in ((0, 0), (0, 33), (7.8, 26.2), (13.3, 39), (20.2, 36.2), (14.7, 23.8), (25.2, 23.8))]
     edge = (10, 12, 18, 255)
-    line(d, points + points[:1], 6.4, edge)
+    line(d, points + points[:1], 5.6, edge)
     poly(d, points, edge)
     poly(d, points, W)
 
@@ -372,18 +494,20 @@ def draw_generic(d):
     d.ellipse(s(28, 28, 36, 36), fill=W)
 
 
+# name -> (the disc's colour, what is drawn on it). The first four are the buttons the bar starts
+# with, in the colours the emblem gives X, Y, B and A.
 ROLES = {
-    "Interact": ((70, 176, 164), (20, 74, 78), draw_interact),
-    "Jump": ((84, 150, 232), (24, 56, 124), draw_jump),
-    "Cancel": ((196, 78, 70), (88, 22, 22), draw_cancel),
-    "TargetEnemy": ((214, 96, 66), (104, 30, 20), draw_target),
-    "TargetFriend": ((104, 190, 96), (30, 92, 40), draw_friend),
-    "Attack": ((226, 156, 62), (116, 62, 16), draw_attack),
-    "Run": ((150, 118, 220), (60, 38, 124), draw_run),
-    "Cursor": ((226, 104, 178), (104, 30, 92), draw_cursor),
-    "Map": ((204, 176, 116), (104, 78, 38), draw_map),
-    "Bags": ((170, 122, 76), (78, 46, 22), draw_bags),
-    "Generic": ((122, 126, 138), (50, 52, 62), draw_generic),
+    "Interact": (FACE_COLORS["X"], draw_interact),
+    "Cursor": (FACE_COLORS["Y"], draw_cursor),
+    "Cancel": (FACE_COLORS["B"], draw_cancel),
+    "Jump": (FACE_COLORS["A"], draw_jump),
+    "TargetEnemy": ((226, 110, 62), draw_target),
+    "TargetFriend": ((70, 190, 150), draw_friend),
+    "Attack": ((232, 150, 56), draw_attack),
+    "Run": ((150, 118, 226), draw_run),
+    "Map": ((206, 176, 112), draw_map),
+    "Bags": ((178, 124, 76), draw_bags),
+    "Generic": ((132, 138, 152), draw_generic),
 }
 
 
@@ -516,8 +640,8 @@ def _drawings():
         out["Glyph-Dpad" + direction] = (glyph_dpad(direction), G, G)
     for text in ("LT", "RT", "L2", "R2", "ZL", "ZR"):
         out["Badge-" + text] = (badge(text), 64, 32)
-    for name, (top, bottom, draw) in ROLES.items():
-        out["Role-" + name] = (role(top, bottom, draw), G, G)
+    for name, (colour, draw) in ROLES.items():
+        out["Role-" + name] = (role(colour, draw), G, G)
     out["Logo"] = (logo(), G, G)
     return out
 

@@ -389,7 +389,8 @@ function Buttons:IsSecureClickMissing()
 	return secureClickMissing
 end
 
-local function AddArt(frame, round)
+-- ownIcon: the icon is one of this addon's own, which has no border to trim.
+local function AddArt(frame, round, ownIcon)
 	local shape = round and "Round" or "Square"
 	local fc = frame.fc
 	fc.shape = shape
@@ -428,7 +429,7 @@ local function AddArt(frame, round)
 
 	fc.pressParts = {
 		{ texture = fc.base, crop = 0 },
-		{ texture = fc.icon, crop = round and 0 or ICON_CROP },
+		{ texture = fc.icon, crop = (round or ownIcon) and 0 or ICON_CROP },
 		{ texture = fc.glyph, crop = 0 },
 		{ texture = frame:GetNormalTexture(), crop = 0 },
 		{ texture = frame:GetPushedTexture(), crop = 0 },
@@ -569,7 +570,8 @@ local function CreateRoleWidget(index, parent)
 	widget:SetSize(Layout.BUTTON_SIZE, Layout.BUTTON_SIZE)
 	widget:SetPoint("CENTER", parent, "CENTER", unpack(Layout.BUTTON_OFFSET[index]))
 	widget.fc = { index = index, round = Layout.IsRound(index) }
-	AddArt(widget, widget.fc.round)
+	-- Its icon is a ring that reaches the edge of the picture: trimmed, the ring would be cut.
+	AddArt(widget, widget.fc.round, true)
 	-- A bright ring while what the button switches is on: the mouse pointer being out.
 	local lit = widget:CreateTexture(nil, "ARTWORK", nil, 2)
 	lit:SetAllPoints()
