@@ -130,7 +130,8 @@ because Blizzard's bar would be bound to the same buttons.
 - **Interact:** X runs the game's Interact command with "Enable Interact Key" behaviour switched
   on, so it loots the corpse next to you, talks to the NPC in front of you or opens the chest, and
   attacks your target when there is nothing to interact with.
-- **Mouse mode:** press Y and the right stick steers the mouse pointer. Click the left stick for
+- **Mouse mode:** press Y, the button that wears FreeControl's mascot (a little black dog that is
+  half chihuahua, half beetle), and the right stick steers the mouse pointer. Click the left stick for
   the left mouse button (hold it to drag a spell onto the bar) and the right stick for the right
   one. Press Y again and the pointer goes away; the game also puts it away when you jump. The Y
   button on the bar is lit while it is out. FreeControl binds Y itself, the way it binds
@@ -291,9 +292,12 @@ default, which is how the bar went on passing sealed numbers to its sweeps up to
 Bartender4 and ConsolePort, draws cooldowns from duration objects on this client; reading how it
 does that is what pointed to the cause.
 
-    python3 tools/make_art.py        # redraw FreeControl/Art/*.tga      (Pillow, numpy)
+    python3 tools/make_art.py        # redraw FreeControl/Art/*.tga      (Pillow, numpy, cairosvg or Inkscape)
     python3 tools/preview.py         # docs/preview.png: the bar as the addon lays it out
     python3 tools/make_listing.py    # the README and CurseForge pictures (uses the Inter font if installed)
+
+The mascot on the mouse button is drawn by hand as an SVG, `tools/art/chihuahua-beetle.svg`;
+`make_art.py` sets it into the button's ring, which is what needs cairosvg or Inkscape.
 
 The pictures show a Rogue's spell icons. `tools/game_icons.py` downloads those from a public mirror
 of the game's interface art into a git-ignored folder the first time they are needed; add

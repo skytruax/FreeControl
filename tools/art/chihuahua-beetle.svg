@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FreeControl's mascot: half chihuahua, half beetle, and black all over. The head of a black
+     chihuahua, with its big ears, on a beetle's glossy black shell and six short legs. Drawn on the 64 x 64 grid the bar's other symbols
+     use, in the manner of the emblem: ink outlines, shaded colour, a shine where the light falls.
+     tools/make_art.py sets it into the ring of the mouse button's icon. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <defs>
+    <!-- a black shell: it shows its shape by what it reflects -->
+    <radialGradient id="shell" cx="0.34" cy="0.22" r="0.95">
+      <stop offset="0" stop-color="#7d7b8c"/>
+      <stop offset="0.38" stop-color="#3a3942"/>
+      <stop offset="1" stop-color="#121116"/>
+    </radialGradient>
+    <!-- a black coat: charcoal where the light catches it, near black below -->
+    <linearGradient id="coat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4d4b57"/>
+      <stop offset="0.55" stop-color="#2a2930"/>
+      <stop offset="1" stop-color="#17161a"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f9c3bd"/>
+      <stop offset="1" stop-color="#e2848f"/>
+    </linearGradient>
+    <!-- white eyes, so they show in a black face: a little shade under the lid -->
+    <linearGradient id="eye" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9dbe6"/>
+      <stop offset="0.35" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <clipPath id="skull">
+      <path d="M32 11.4 C40.4 11.4 45.4 16.6 45.4 22.6 C45.4 26.8 43 29.8 39.6 31.2 C38.6 33.6 35.6 35 32 35 C28.4 35 25.4 33.6 24.4 31.2 C21 29.8 18.6 26.8 18.6 22.6 C18.6 16.6 23.6 11.4 32 11.4 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- six short legs, tucked close like a beetle's -->
+  <g fill="none" stroke="#0b0a0c" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21.4 42.8 L15.4 40.6 L12.8 43.6"/>
+    <path d="M42.6 42.8 L48.6 40.6 L51.2 43.6"/>
+    <path d="M20 47.6 L13.8 48.8 L11.8 52.4"/>
+    <path d="M44 47.6 L50.2 48.8 L52.2 52.4"/>
+    <path d="M22.4 53.4 L17.6 56.8 L18.4 59.8"/>
+    <path d="M41.6 53.4 L46.4 56.8 L45.6 59.8"/>
+  </g>
+  <g fill="none" stroke="#45434d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21.4 42.8 L15.4 40.6 L12.8 43.6"/>
+    <path d="M42.6 42.8 L48.6 40.6 L51.2 43.6"/>
+    <path d="M20 47.6 L13.8 48.8 L11.8 52.4"/>
+    <path d="M44 47.6 L50.2 48.8 L52.2 52.4"/>
+    <path d="M22.4 53.4 L17.6 56.8 L18.4 59.8"/>
+    <path d="M41.6 53.4 L46.4 56.8 L45.6 59.8"/>
+  </g>
+
+  <!-- the shell: two glossy wing cases under a darker collar -->
+  <ellipse cx="32" cy="46.6" rx="12.6" ry="11" fill="url(#shell)" stroke="#0b0a0c" stroke-width="1.4"/>
+  <path d="M20.3 42.4 A12.6 11 0 0 1 43.7 42.4 Q32 46.4 20.3 42.4 Z" fill="#232228" stroke="#0b0a0c" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M32 44.5 V57.4" fill="none" stroke="#0b0a0c" stroke-width="1.3" stroke-linecap="round"/>
+  <!-- the light along the collar and down each wing case -->
+  <path d="M22.6 41.2 Q32 37.4 41.4 41.2" fill="none" stroke="#8e8c9c" stroke-width="0.8" stroke-linecap="round" opacity="0.7"/>
+  <g fill="none" stroke="#ffffff" stroke-linecap="round">
+    <path d="M23.2 47.2 C22.9 50 23.8 52.6 25.8 54.4" stroke-width="1.7" opacity="0.85"/>
+    <path d="M35.4 46.8 C35.2 49 35.6 51 36.6 52.8" stroke-width="1.1" opacity="0.5"/>
+  </g>
+  <circle cx="25.6" cy="45.6" r="0.9" fill="#ffffff" opacity="0.9"/>
+
+  <!-- the ears -->
+  <g stroke="#0b0a0c" stroke-width="1.3" stroke-linejoin="round" fill="url(#coat)">
+    <path d="M24.6 21 C18.8 17 15 12.4 13.8 7.2 C19.8 7.6 26.2 10.8 30.6 15.6 Z"/>
+    <path d="M39.4 21 C45.2 17 49 12.4 50.2 7.2 C44.2 7.6 37.8 10.8 33.4 15.6 Z"/>
+  </g>
+  <g fill="url(#ear)">
+    <path d="M23.6 18 C20.4 15.4 18.2 12.6 17.2 9.9 C21 10.7 24.6 12.8 27.4 15.5 Z"/>
+    <path d="M40.4 18 C43.6 15.4 45.8 12.6 46.8 9.9 C43 10.7 39.4 12.8 36.6 15.5 Z"/>
+  </g>
+
+  <!-- the head: black all over, with the sheen of a short coat on the brow -->
+  <g clip-path="url(#skull)">
+    <rect x="16" y="9" width="32" height="28" fill="url(#coat)"/>
+    <ellipse cx="27.6" cy="15.2" rx="9.5" ry="4.4" fill="url(#sheen)" transform="rotate(-14 27.6 15.2)"/>
+  </g>
+  <path d="M32 11.4 C40.4 11.4 45.4 16.6 45.4 22.6 C45.4 26.8 43 29.8 39.6 31.2 C38.6 33.6 35.6 35 32 35 C28.4 35 25.4 33.6 24.4 31.2 C21 29.8 18.6 26.8 18.6 22.6 C18.6 16.6 23.6 11.4 32 11.4 Z" fill="none" stroke="#0b0a0c" stroke-width="1.4" stroke-linejoin="round"/>
+
+  <!-- the brows -->
+  <ellipse cx="25.2" cy="16.6" rx="1.8" ry="0.9" fill="#6a6774" transform="rotate(-16 25.2 16.6)"/>
+  <ellipse cx="38.8" cy="16.6" rx="1.8" ry="0.9" fill="#6a6774" transform="rotate(16 38.8 16.6)"/>
+
+  <!-- big white eyes with dark pupils, and the light in them -->
+  <g fill="url(#eye)" stroke="#060506" stroke-width="0.8">
+    <ellipse cx="25.2" cy="22" rx="3.6" ry="3.9"/>
+    <ellipse cx="38.8" cy="22" rx="3.6" ry="3.9"/>
+  </g>
+  <g fill="#0a0708">
+    <ellipse cx="25.6" cy="22.4" rx="1.75" ry="2.05"/>
+    <ellipse cx="38.4" cy="22.4" rx="1.75" ry="2.05"/>
+  </g>
+  <g fill="#ffffff">
+    <circle cx="25" cy="21.6" r="0.6"/>
+    <circle cx="37.8" cy="21.6" r="0.6"/>
+  </g>
+
+  <!-- muzzle, nose, mouth and the tip of a tongue -->
+  <ellipse cx="32" cy="30.5" rx="5.5" ry="4.1" fill="#3b3941" stroke="#0b0a0c" stroke-width="0.9"/>
+  <path d="M30.9 31.9 Q32 31.3 33.1 31.9 Q33.3 34 32 34.3 Q30.7 34 30.9 31.9 Z" fill="#f08397" stroke="#a8475b" stroke-width="0.4"/>
+  <path d="M32 30.2 V31.4 M29.5 31 Q30.8 32.6 32 31.4 Q33.2 32.6 34.5 31" fill="none" stroke="#08070a" stroke-width="1" stroke-linecap="round"/>
+  <path d="M29.9 27.5 Q32 26.4 34.1 27.5 Q33.8 29.9 32 30.4 Q30.2 29.9 29.9 27.5 Z" fill="#ffffff" stroke="#060506" stroke-width="0.5" stroke-linejoin="round"/>
+</svg>

@@ -8,9 +8,12 @@ which is what gives the edges their smoothing. Sizes are powers of two because t
 game client is happiest with.
 """
 import colorsys
+import io
 import math
 import os
+import shutil
 import struct
+import subprocess
 
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
@@ -18,6 +21,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 SS = 6  # every shape is drawn this many times larger, then scaled down
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "FreeControl", "Art")
+DRAWN = os.path.join(ROOT, "tools", "art")  # pictures drawn by hand, as SVG
 
 FONT_CANDIDATES = [
     os.path.expanduser("~/.local/share/fonts/Inter/Inter-Bold.ttf"),
@@ -374,12 +378,33 @@ def grow(alpha, pixels):
     return blur(alpha, pixels * 0.7).point(lambda v: min(255, int(v * 4.5)))
 
 
-def role(colour, draw):
-    art = blank(G, G)
-    draw(ImageDraw.Draw(art))
+def svg_art(name):
+    """A picture from tools/art, drawn by hand on the 64 x 64 grid of the symbols, at the size the
+    drawings here are made. Needs something that reads SVG: the cairosvg module, or Inkscape."""
+    path, n = os.path.join(DRAWN, name + ".svg"), G * SS
+    try:
+        import cairosvg
+    except ImportError:
+        inkscape = shutil.which("inkscape")
+        if not inkscape:
+            raise SystemExit("%s is an SVG: install cairosvg (pip install cairosvg) or Inkscape to draw it" % path)
+        png = subprocess.run([inkscape, path, "--export-type=png", "--export-filename=-", "-w", str(n), "-h", str(n)],
+                             check=True, capture_output=True).stdout
+    else:
+        png = cairosvg.svg2png(url=path, output_width=n, output_height=n)
+    return Image.open(io.BytesIO(png)).convert("RGBA")
+
+
+def role(colour, draw, size=SYMBOL_SIZE):
+    """`draw` is a function that draws the symbol, or the name of a picture in tools/art."""
+    if isinstance(draw, str):
+        art = svg_art(draw)
+    else:
+        art = blank(G, G)
+        draw(ImageDraw.Draw(art))
     # Set into the disc: smaller, about the middle of the tile.
     n = G * SS
-    small = art.resize((round(n * SYMBOL_SIZE),) * 2, Image.LANCZOS)
+    small = art.resize((round(n * size),) * 2, Image.LANCZOS)
     art = blank(G, G)
     art.alpha_composite(small, ((n - small.width) // 2,) * 2)
     alpha = art.getchannel("A")
@@ -461,22 +486,6 @@ def draw_run(d):
     line(d, [(33, 20), (45, 32), (33, 44)], 6, W)
 
 
-def draw_cursor(d):
-    # A mouse pointer as the desktop draws it: a white arrow with a dark edge, so it reads as
-    # "the mouse" at a glance and at the size of a bar button. The three strokes at its tip are a
-    # click.
-    tip, size = (22.5, 14.5), 1.0
-    for degrees in (180, 225, 270):
-        x, y = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
-        line(d, [(tip[0] + 5.6 * x, tip[1] + 5.6 * y), (tip[0] + 10.4 * x, tip[1] + 10.4 * y)], 2.6, faint(235))
-    points = [(tip[0] + x * size, tip[1] + y * size)
-              for x, y in ((0, 0), (0, 33), (7.8, 26.2), (13.3, 39), (20.2, 36.2), (14.7, 23.8), (25.2, 23.8))]
-    edge = (10, 12, 18, 255)
-    line(d, points + points[:1], 5.6, edge)
-    poly(d, points, edge)
-    poly(d, points, W)
-
-
 def draw_map(d):
     poly(d, [(13, 20), (25, 15), (25, 46), (13, 51)], W)
     poly(d, [(28, 16), (37, 20), (37, 51), (28, 47)], (250, 250, 252, 215))
@@ -494,11 +503,12 @@ def draw_generic(d):
     d.ellipse(s(28, 28, 36, 36), fill=W)
 
 
-# name -> (the disc's colour, what is drawn on it). The first four are the buttons the bar starts
-# with, in the colours the emblem gives X, Y, B and A.
+# name -> (the disc's colour, what is drawn on it, and for some the size it is set at). The first
+# four are the buttons the bar starts with, in the colours the emblem gives X, Y, B and A. The
+# mouse button does not show a pointer: it wears the mascot, which is the addon's calling card.
 ROLES = {
     "Interact": (FACE_COLORS["X"], draw_interact),
-    "Cursor": (FACE_COLORS["Y"], draw_cursor),
+    "Cursor": (FACE_COLORS["Y"], "chihuahua-beetle", 0.8),  # the mouse button wears the mascot
     "Cancel": (FACE_COLORS["B"], draw_cancel),
     "Jump": (FACE_COLORS["A"], draw_jump),
     "TargetEnemy": ((226, 110, 62), draw_target),
@@ -640,8 +650,8 @@ def _drawings():
         out["Glyph-Dpad" + direction] = (glyph_dpad(direction), G, G)
     for text in ("LT", "RT", "L2", "R2", "ZL", "ZR"):
         out["Badge-" + text] = (badge(text), 64, 32)
-    for name, (colour, draw) in ROLES.items():
-        out["Role-" + name] = (role(colour, draw), G, G)
+    for name, entry in ROLES.items():
+        out["Role-" + name] = (role(*entry), G, G)
     out["Logo"] = (logo(), G, G)
     return out
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.3.2
+
+- The mouse button now wears FreeControl's mascot where the arrow was: a little black dog that is half chihuahua, half beetle. The button does what it did: it brings the mouse pointer out, puts it away, and is lit while the pointer is out.
+
 ## v1.3.1
 
 - New icons for the buttons that run a command. Each is a small copy of the FreeControl emblem: its bronze compass ring around a glazed disc, with the symbol in white. Interact, the mouse pointer, Cancel and Jump take the colours the emblem gives X, Y, B and A, so the four buttons the bar starts with are blue, yellow, red and green.
