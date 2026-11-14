@@ -50,12 +50,23 @@ local function SweepIs(expected, cooldown)
 end
 
 -- The simulator has SetGamePadCursorControl but no IsGamePadCursorControlEnabled, so FreeControl
--- would take it for a client without a stick cursor. These two stand in for the pair. What the
--- mouse tests below are about is the secure button and the bindings around it, which are
--- Blizzard's own code here; whether the real client then clicks cannot be seen in a simulator.
+-- would take it for a client without a stick pointer. These stand in for the client's four
+-- pointer functions, and note the order they are called in. What the mouse tests below are about
+-- is the secure button and the bindings around it, which are Blizzard's own code here; whether
+-- the real client then shows a pointer and clicks cannot be seen in a simulator.
 local cursorOut = false
-SetGamePadCursorControl = function(enabled) cursorOut = enabled and true or false end
+local freeLook = true -- the controller is steering the camera, as it is whenever one is in use
+local pointerCalls = {}
+SetGamePadCursorControl = function(enabled)
+	cursorOut = enabled and true or false
+	pointerCalls[#pointerCalls + 1] = "pointer " .. tostring(cursorOut)
+end
 IsGamePadCursorControlEnabled = function() return cursorOut end
+SetGamePadFreeLook = function(enabled)
+	freeLook = enabled and true or false
+	pointerCalls[#pointerCalls + 1] = "camera " .. tostring(freeLook)
+end
+IsGamePadFreelookEnabled = function() return freeLook end
 
 test("the bar is built on Blizzard's templates and the secure click handler survived", function()
 	ns.Refresh() -- with the stick cursor now there, so that Y gets the secure mouse button
@@ -352,21 +363,44 @@ test("/fc trace records a key press against Blizzard's own interface code and sh
 	NothingRefused()
 end)
 
-test("the mouse button is Blizzard's secure click handler, and a press brings the cursor out and binds the stick clicks", function()
+test("the mouse button is Blizzard's secure click handler, and a press brings the pointer out and binds the stick clicks", function()
 	Reset()
+	wipe(pointerCalls)
 	local protected, explicit = FreeControlMouse:IsProtected()
 	assertTrue(protected)
 	assertTrue(explicit)
 	local leftBefore, rightBefore = Bound("PADLSTICK"), Bound("PADRSTICK")
 	assertFalse(cursorOut)
+	-- A press and its release both reach the button, as they do for a trigger; only the press
+	-- may count, or the release would put the pointer straight back.
 	SimInput.PressKey("PAD4")
 	assertTrue(cursorOut)
+	assertFalse(freeLook)
+	assertEquals("camera false, pointer true", table.concat(pointerCalls, ", "))
+	assertEquals(1, ns.Mouse:GetHistory().presses)
 	assertEquals("CAMERAORSELECTORMOVE", Bound("PADLSTICK"))
 	assertEquals("TURNORACTION", Bound("PADRSTICK"))
+	wipe(pointerCalls)
 	SimInput.PressKey("PAD4")
 	assertFalse(cursorOut)
+	assertTrue(freeLook)
+	assertEquals("pointer false, camera true", table.concat(pointerCalls, ", "))
 	assertEquals(leftBefore, Bound("PADLSTICK"))
 	assertEquals(rightBefore, Bound("PADRSTICK"))
+	assertEquals(0, #ns.GetProblems())
+	NothingRefused()
+end)
+
+test("holding the mouse button down does not bring the pointer out and then put it away", function()
+	Reset()
+	SimInput.KeyDown("PAD4")
+	assertTrue(cursorOut)
+	assertEquals("CAMERAORSELECTORMOVE", Bound("PADLSTICK"))
+	SimInput.KeyUp("PAD4")
+	assertTrue(cursorOut)
+	assertEquals("CAMERAORSELECTORMOVE", Bound("PADLSTICK"))
+	SimInput.PressKey("PAD4")
+	assertFalse(cursorOut)
 	assertEquals(0, #ns.GetProblems())
 	NothingRefused()
 end)
@@ -390,7 +424,7 @@ test("in combat the mouse button still works, the clicks survive a set change, a
 	NothingRefused()
 end)
 
-async_test("when the cursor comes out or goes away by itself the stick clicks follow, and the button on the bar lights up", function(done)
+async_test("when the pointer comes out or goes away by itself the stick clicks follow, and the button on the bar lights up", function(done)
 	Reset()
 	local rightBefore = Bound("PADRSTICK")
 	local lit = ns.Buttons.role[6].fc.lit
@@ -398,7 +432,7 @@ async_test("when the cursor comes out or goes away by itself the stick clicks fo
 	SimInput.AfterTicks(5, function()
 		assertEquals("TURNORACTION", Bound("PADRSTICK"))
 		Near(1, lit:GetAlpha())
-		cursorOut = false -- the character moved
+		cursorOut = false -- the character jumped
 		SimInput.AfterTicks(5, function()
 			assertEquals(rightBefore, Bound("PADRSTICK"))
 			Near(0, lit:GetAlpha())
@@ -572,9 +606,9 @@ test("the bar can be dragged while unlocked, and the handle hides in combat", fu
 	NothingRefused()
 end)
 
-async_test("the stance driver is accepted by Blizzard's state driver and keeps the plain slot out of stance", function(done)
+async_test("the stance drivers of all three changing groups are accepted by Blizzard's state driver and keep the plain slots out of stance", function(done)
 	Reset()
-	ns.db.stanceSet = "lt"
+	ns.db.stanceSet = "all" -- the right set, the left set and the D-pad
 	ns.db.slotSource = "gamepad"
 	local first = C_GamepadUI.GetFirstGamepadActionStorageSlotIndex()
 	local had = C_GamepadUI.IsValidGamepadActionStorageSlotIndex
@@ -582,18 +616,25 @@ async_test("the stance driver is accepted by Blizzard's state driver and keeps t
 		return slot >= first and slot < first + 124
 	end
 	ns.RequestRefresh()
+	local described = ns.Layout.DescribeStanceGroups(ns.Layout.GetStanceGroups())
 	SimInput.AfterTicks(20, function() -- the driver manager evaluates on a timer
-		local visible, key = FreeControlButton1_3:GetAttribute("action"), FreeControlKey1_3:GetAttribute("action")
+		local left, leftKey = FreeControlButton1_3:GetAttribute("action"), FreeControlKey1_3:GetAttribute("action")
+		local right, dpad, face = FreeControlKey2_3:GetAttribute("action"), FreeControlKey0_1:GetAttribute("action"), FreeControlKey3_8:GetAttribute("action")
 		local shown = ns.Buttons:GetSlot(1, 3)
 		ns.db.stanceSet = "auto"
 		ns.db.slotSource = "bars"
 		ns.RequestRefresh()
 		C_GamepadUI.IsValidGamepadActionStorageSlotIndex = had
 		done(function()
-			assertEquals(first + 6, tonumber(visible))
-			assertEquals(first + 6, tonumber(key))
+			assertEquals("RT set, LT set and the D-pad", described)
+			assertEquals(first + 6, tonumber(left))
+			assertEquals(first + 6, tonumber(leftKey))
 			assertEquals(first + 6, shown)
+			assertEquals(first + 14, tonumber(right))
+			assertEquals(first, tonumber(dpad))
+			assertEquals(first + 27, tonumber(face))
 			assertEquals(63, FreeControlKey1_3:GetAttribute("action"))
+			assertEquals(0, #ns.GetProblems())
 			NothingRefused()
 		end)
 	end)

@@ -90,9 +90,13 @@ local TRIGGER_ONCLICK = [=[
 	header:RunAttribute("fc-apply")
 ]=]
 
--- Restricted snippet, self = the mouse button, clicked on press. It flips mouse mode on the header,
--- which rebinds the click buttons, and then has ordinary code bring the cursor out or put it away.
+-- Restricted snippet, self = the mouse button. Like a trigger it is clicked on press and again on
+-- release; only the press counts. It flips mouse mode on the header, which rebinds the click
+-- buttons. Bringing the pointer out is ordinary code and follows in the button's PostClick.
 local MOUSE_ONCLICK = [=[
+	if not down then
+		return
+	end
 	local header = self:GetFrameRef("fc-header")
 	if header:GetAttribute("fc-mouse") then
 		header:SetAttribute("fc-mouse", nil)
@@ -100,7 +104,6 @@ local MOUSE_ONCLICK = [=[
 		header:SetAttribute("fc-mouse", 1)
 	end
 	header:RunAttribute("fc-apply")
-	header:CallMethod("FreeControl_ToggleCursor")
 ]=]
 
 -- Out of combat. Needs the set frames and the buttons to exist.
@@ -127,17 +130,21 @@ function Bindings:Create()
 		self.triggers[side] = trigger
 	end
 
-	-- What a no-trigger button set to "Mouse cursor on / off" clicks. A plain binding to the
-	-- command would run ordinary code, which cannot rebind anything in a fight; this can.
+	-- What the mouse button on the bar (Y unless changed) is bound to. Ordinary code cannot rebind
+	-- anything in a fight; this can. It is registered for the press and the release exactly as
+	-- the triggers are, and acts on the press only: 1.2.0 asked for presses alone, which no
+	-- other button here does.
 	local mouse = CreateFrame("Button", "FreeControlMouse", header, "SecureHandlerClickTemplate")
-	mouse:RegisterForClicks("AnyDown")
+	mouse:RegisterForClicks("AnyDown", "AnyUp")
 	mouse:SetFrameRef("fc-header", header)
 	mouse:SetAttribute("_onclick", MOUSE_ONCLICK)
+	-- Runs after the snippet whether or not it got through, so the pointer never depends on it.
+	mouse:SetScript("PostClick", function(_, _, down)
+		if down then
+			ns.Try(ns.Mouse.OnButtonPressed, ns.Mouse)
+		end
+	end)
 	self.mouse = mouse
-
-	function header:FreeControl_ToggleCursor()
-		ns.Mouse:Toggle()
-	end
 end
 
 -- Out of combat. Hands the header the current settings and binds everything.
@@ -154,8 +161,11 @@ function Bindings:Apply()
 				kind, target = "click", ns.Buttons.proxy[set][index]:GetName()
 			else
 				local roleKind, command = Layout.ParseRole(db.roles[index])
-				if roleKind == "cmd" and command == Layout.CURSOR_COMMAND and ns.Mouse:IsAvailable() then
-					kind, target = "click", self.mouse:GetName()
+				if Layout.IsCursorRole(db.roles[index]) then
+					-- Not a game command. Without a pointer in this client the button is left alone.
+					if ns.Mouse:IsAvailable() then
+						kind, target = "click", self.mouse:GetName()
+					end
 				elseif roleKind == "cmd" then
 					kind, target = "cmd", command
 				end
@@ -228,16 +238,23 @@ function Bindings:FindProblems()
 	for _, cvar in ipairs({ "GamePadCursorLeftClick", "GamePadCursorRightClick" }) do
 		local button = GetCVar(cvar)
 		if button and button ~= "" and used[button] then
-			problems[#problems + 1] = ("%s is also the controller's mouse-click button (%s), so it clicks instead while the mouse cursor is out."):format(button, cvar)
+			problems[#problems + 1] = ("%s is also the controller's mouse-click button (%s), so it clicks instead while the mouse pointer is out."):format(button, cvar)
 		end
 	end
 	for index = 1, 8 do
-		local kind, command = Layout.ParseRole(db.roles[index])
-		if kind == "cmd" and command == Layout.CURSOR_COMMAND
+		if Layout.IsCursorRole(db.roles[index])
 			and (db.keys[index] == ns.Mouse:GetManagedKey(1) or db.keys[index] == ns.Mouse:GetManagedKey(2)) then
-			problems[#problems + 1] = ("%s is both the mouse cursor button and a click button. While the cursor is out it clicks, so move or jump to put the cursor away."):format(
+			problems[#problems + 1] = ("%s is both the mouse button and a click button. While the pointer is out it clicks, so jump to put the pointer away."):format(
 				Layout.GetButtonName(0, index))
 		end
+	end
+	if ns.Mouse:IsAvailable() and not ns.Mouse:GetBarButtonName() then
+		problems[#problems + 1] = "No button brings the mouse pointer out. Click a no-trigger button on the bar and choose \"Mouse pointer on / off\"."
+	end
+	-- With this on, the game pins the pointer to the middle of the screen instead of letting the
+	-- stick move it. CVars.lua turns it off; this says so if something turned it back on.
+	if GetCVar("GamePadCursorCentering") == "1" then
+		problems[#problems + 1] = "GamePadCursorCentering is on, which pins the mouse pointer to the middle of the screen. Turn it off with: /console GamePadCursorCentering 0"
 	end
 	for side, setting in ipairs({ "clickLeft", "clickRight" }) do
 		if db[setting] ~= "game" and not ns.Mouse:GetManagedKey(side) then

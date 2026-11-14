@@ -713,7 +713,7 @@ def mouse_mode():
                    glows=[(bx, by, 520, 420, 0.42)], spell_icons=False)  # everything here is drawn, none of it the game's
     painter(7.4).button(canvas, bx, by, 6, preview.STYLES["xbox"][0], ("role", "Cursor"), state="checked")
     canvas.alpha_composite(sized(big("Glyph-Y"), 64, 64), (bx - 196, by + 168))
-    text(canvas, (bx - 118, by + 200), "Mouse cursor", 46, WHITE, "Black", "lm")
+    text(canvas, (bx - 118, by + 200), "Mouse pointer", 46, WHITE, "Black", "lm")
     text(canvas, (bx, by + 258), "the top face button, with no trigger held", 23, SOFT, "Medium")
     text(canvas, (bx, by + 292), "lit while the pointer is out", 23, SOFT, "Medium")
 
@@ -723,7 +723,7 @@ def mouse_mode():
     cards = [(stick_tile("L"), "Left stick click", "Left click. Hold it to drag."),
              (stick_tile("R"), "Right stick click", "Right click: use, sell, loot."),
              (stick_tile(), "Right stick", "Moves the pointer."),
-             (rounded_icon(big("Role-Run"), 112, 20), "Move or jump", "Puts the pointer away again.")]
+             (rounded_icon(big("Role-Cursor"), 112, 20), "Press Y again", "Puts it away. So does a jump.")]
     cw, ch, gap, x0, y0 = 536, 184, 24, 772, 430
     for i, (tile, title, sub) in enumerate(cards):
         x, y = x0 + (i % 2) * (cw + gap), y0 + (i // 2) * (ch + gap)
@@ -815,7 +815,7 @@ def combat():
         text(canvas, (x, 694), title, 29, WHITE, "Bold")
         text(canvas, (x, 732), sub, 22, SOFT, "Medium")
     pills(canvas, W / 2, 880, ["Cooldowns show the moment they start", "Sets switch in the middle of a fight",
-                               "One set can follow your stance or form"], 28, 62)
+                               "Every stance and form has its own buttons"], 28, 62)
     return canvas
 
 
@@ -861,7 +861,7 @@ def controls():
     cx1, cy1 = bars.set_centre(ox, oy, 1)
     cx2, cy2 = bars.set_centre(ox, oy, 2)
     cx3, cy3 = bars.set_centre(ox, oy, 3)
-    callout("No trigger", "4 action slots · Interact · Mouse cursor · Cancel · Jump", cx0, cy0 - half - 112)
+    callout("No trigger", "4 action slots · Interact · Mouse pointer · Cancel · Jump", cx0, cy0 - half - 112)
     callout("Hold LT", "8 action slots", cx1, cy1 + half + 76)
     callout("Hold RT", "8 action slots (shown held)", cx2, cy2 + half * 1.2 + 86, GOLD)
     callout("Hold LT + RT", "8 action slots", cx3, cy3 + half + 76)

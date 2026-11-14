@@ -1,6 +1,6 @@
 local ADDON, ns = ...
 
--- Exposed for /run debugging and for Bindings.xml. Blizzard code never reads it.
+-- Exposed for /run debugging. Blizzard code never reads it.
 _G.FreeControl = ns
 
 ns.name = ADDON
@@ -25,7 +25,7 @@ local DEFAULTS = {
 	labelStyle = "auto",   -- auto | xbox | playstation | nintendo
 	slotSource = "gamepad", -- gamepad (Blizzard's controller-bar slots) | bars (regular action bar slots)
 	page = 1,              -- which of Blizzard's three controller-bar pages to show (gamepad source only)
-	stanceSet = "auto",    -- auto | none | lt | rt | both: the set that swaps with your stance or form
+	stanceSet = "auto",    -- what changes with your stance or form: one of Layout.STANCE_CHOICES
 	manageGamepad = true,  -- turn controller input (GamePadEnable) on while FreeControl is active
 	softInteract = true,   -- make the Interact command pick nearby loot, NPCs and objects by itself
 	interactReach = true,  -- use the Gamepad UI's wider interact arc and range
@@ -35,14 +35,16 @@ local DEFAULTS = {
 	--   "action"      an action slot you can drop things into
 	--   "pass"        FreeControl leaves the button to your own key binding
 	--   "cmd:<NAME>"  run a game command (the names used by the Key Bindings screen)
+	-- The top face button (Y) is the mouse button; its role is Layout.CURSOR_ROLE, see Mouse.lua.
 	roles = { "action", "action", "action", "action", "cmd:INTERACTTARGET", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" },
 	-- The two buttons that are the mouse buttons while the controller's mouse cursor is out: a
 	-- button name, or "game" to leave that one to the game's own setting.
 	clickLeft = "PADLSTICK",
 	clickRight = "PADRSTICK",
 	cursorSpeed = 1,       -- how fast the stick moves the mouse cursor, as a multiple of the player's own setting
-	mouseHintShown = false, -- the chat line that explains the clicks, said the first time the cursor comes out
-	mouseTipShown = false,  -- the chat line telling a setup from before 1.2 that mouse mode exists
+	mouseHintShown = false, -- the chat line that explains the clicks, said the first time the pointer comes out
+	mouseButtonSet = false, -- a setup from before 1.3 has been given the mouse button (MigrateMouseButton)
+	stanceNoteShown = false, -- the chat line telling a Druid which buttons change with the form
 	cvarBackup = {},       -- the player's own value of every console variable we changed
 	cvarApplied = {},      -- the value we changed it to
 	introShown = false,
@@ -87,7 +89,7 @@ local function Sanitize(db)
 	if not IsOneOf(db.page, 1, 2, 3) then Reset("page") end
 	if not IsOneOf(db.labelStyle, "auto", "xbox", "playstation", "nintendo") then Reset("labelStyle") end
 	if not IsOneOf(db.slotSource, "gamepad", "bars") then Reset("slotSource") end
-	if not IsOneOf(db.stanceSet, "auto", "none", "lt", "rt", "both") then Reset("stanceSet") end
+	if not IsOneOf(db.stanceSet, unpack(ns.Layout.STANCE_CHOICES)) then Reset("stanceSet") end
 	if type(db.point[1]) ~= "number" or type(db.point[2]) ~= "number" then
 		Reset("point")
 	end
@@ -116,6 +118,8 @@ local function Sanitize(db)
 	if db.clickLeft == db.clickRight then
 		db.clickRight = "game"
 	end
+	db.mouseTipShown = nil -- used by 1.2.0 only
+	if not IsOneOf(db.mouseNews, nil, "given", "taken") then db.mouseNews = nil end
 end
 
 ---------------------------------------------------------------------------
@@ -167,8 +171,7 @@ local MAX_PROBLEMS = 8 -- different errors kept; repeats of a kept one are only 
 local problems = {}    -- { text = "...", count = n }, in order of first appearance
 local problemByText = {}
 
-local function OnError(message)
-	local text = tostring(message)
+local function Record(text)
 	local problem = problemByText[text]
 	if problem then
 		problem.count = problem.count + 1
@@ -183,6 +186,10 @@ local function OnError(message)
 			ns.Trace:Add("ERROR " .. text)
 		end
 	end
+end
+
+local function OnError(message)
+	Record(tostring(message))
 	geterrorhandler()(message)
 	return message
 end
@@ -194,6 +201,15 @@ end
 
 function ns.GetProblems()
 	return problems
+end
+
+-- The game refuses some calls from addons, in a fight above all. That is not an error in Lua:
+-- the call simply does nothing and the game announces it with one of these events, which nobody
+-- sees. They are kept with the errors, so that a button that quietly does nothing can be traced.
+local function OnBlocked(_, addon, what)
+	if addon == ADDON then
+		Record(("The game refused to let FreeControl call %s."):format(tostring(what)))
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -215,6 +231,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
 		ns.Try(fn, event, ...)
 	end
 end)
+
+ns.On("ADDON_ACTION_BLOCKED", OnBlocked)
+ns.On("ADDON_ACTION_FORBIDDEN", OnBlocked)
 
 ---------------------------------------------------------------------------
 -- Combat: protected frames and bindings can only be changed out of combat
@@ -304,6 +323,34 @@ function ns.IsBuilt()
 	return built
 end
 
+-- The top face button: Y, Triangle, or X on a Nintendo pad.
+local MOUSE_INDEX = 6
+
+-- Up to version 1.2 the top face button was left to the player's own key binding, and mouse mode
+-- had to be bound in the Key Bindings screen or put on a bar button by hand. From 1.3 that button
+-- is the mouse button, bound by FreeControl like Interact is, unless the player has given the
+-- button or mouse mode a place of their own. Done once for a setup that predates it (a new one
+-- starts with the button). What the player is to be told is kept in db.mouseNews until it has
+-- been said: "given" when the button was changed, "taken" when it has another job and mouse mode
+-- is on no button.
+local function MigrateMouseButton(db)
+	if db.mouseButtonSet then
+		return
+	end
+	db.mouseButtonSet = true
+	for index = 1, 8 do
+		if ns.Layout.IsCursorRole(db.roles[index]) then
+			return
+		end
+	end
+	if db.roles[MOUSE_INDEX] == "pass" then
+		db.roles[MOUSE_INDEX] = ns.Layout.CURSOR_ROLE
+		db.mouseNews = "given"
+	else
+		db.mouseNews = "taken"
+	end
+end
+
 ns.On("ADDON_LOADED", function(_, name)
 	if name ~= ADDON then
 		return
@@ -311,27 +358,62 @@ ns.On("ADDON_LOADED", function(_, name)
 	FreeControlDB = CopyDefaults(type(FreeControlDB) == "table" and FreeControlDB or {}, DEFAULTS)
 	ns.db = FreeControlDB
 	Sanitize(ns.db)
+	MigrateMouseButton(ns.db)
 end)
+
+-- Said at the first login at which FreeControl is in use, which need not be the one that made the change.
+local function SayMouseNews()
+	local news = ns.db.mouseNews
+	if not news or not ns.Mouse:IsAvailable() then
+		return
+	end
+	ns.db.mouseNews = nil
+	local name = ns.Layout.GetButtonName(ns.Layout.SET_NONE, MOUSE_INDEX)
+	if news == "given" then
+		ns.Print(("New: %s is now the mouse button. Press it and the right stick steers a mouse pointer; %s. Press it again to put the pointer away. To give %s another job, click it on the bar."):format(
+			name, ns.Mouse:DescribeClicks(), name))
+	else
+		ns.Print(("New: mouse mode puts a mouse pointer on your right stick. %s already has a job here, so no button brings the pointer out: click a no-trigger button on the bar and choose \"Mouse pointer on / off\"."):format(name))
+	end
+end
+
+-- Said once, the first time a Druid logs in: more of their bar changes with the form than a
+-- player coming from another class, or from an earlier version, would expect.
+local function SayStanceNote()
+	local db = ns.db
+	if db.stanceNoteShown or db.stanceSet ~= "auto" then
+		return
+	end
+	-- On automatic only a class whose forms replace the whole bar has more than one group.
+	local groups = ns.Layout.GetStanceGroups()
+	if #groups < 2 then
+		return
+	end
+	db.stanceNoteShown = true
+	ns.Print(("Druid: %s change with your form, so each form has its own buttons. The %s set and the face buttons stay the same in every form: put your shapeshifts there. Stance sets on the settings page (/fc) changes this."):format(
+		ns.Layout.DescribeStanceGroups(groups), ns.Layout.GetSetName(ns.Layout.SET_BOTH)))
+end
 
 ns.On("PLAYER_LOGIN", function()
 	ns.Options:Create()
 	ns.RunOutOfCombat("refresh", ns.Refresh)
 	if ns.IsGamepadUI() and ns.db.enabled then
 		ns.Print("Gamepad UI mode is on, so FreeControl is idle. Turn off Options > Gamepad > Enable Gamepad UI to use it.")
-	elseif ns.db.enabled and not ns.db.introShown then
+		return
+	elseif not ns.db.enabled then
+		return
+	end
+	if not ns.db.introShown then
 		ns.db.introShown = true
-		ns.db.mouseTipShown = true -- a new setup has the mouse button on the bar and reads about it here
+		ns.db.mouseNews = nil -- these lines cover the mouse button
 		ns.Print("Hold a trigger to switch sets and drop spells, items or macros onto any slot. /fc opens the settings; /fc unlock lets you drag the bar.")
 		if ns.Mouse:IsAvailable() and ns.Mouse:GetBarButtonName() then
 			ns.Print(("%s brings out a mouse pointer that the right stick steers; %s."):format(ns.Mouse:GetBarButtonName(), ns.Mouse:DescribeClicks()))
 		end
-	elseif ns.db.enabled and not ns.db.mouseTipShown then
-		-- A setup from before version 1.2 keeps its buttons as they were, so it is told once.
-		ns.db.mouseTipShown = true
-		if ns.Mouse:IsAvailable() and not ns.Mouse:GetBarButtonName() then
-			ns.Print("New: mouse mode. Click a no-trigger button on the FreeControl bar (Y had no job until now) and choose \"Mouse cursor on / off\". It brings out a mouse pointer that the right stick steers, with the stick clicks as its two buttons. /fc has the settings.")
-		end
 	end
+	SayMouseNews()
+	ns.Layout.Prepare()
+	SayStanceNote()
 end)
 
 -- Console variables are saved by the client on the way out, so the player's own values go back first.

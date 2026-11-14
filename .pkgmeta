@@ -20,3 +20,4 @@ ignore:
   - README.md
   - CHANGELOG.md
   - "*.code-workspace"
+  - stance-plan.md

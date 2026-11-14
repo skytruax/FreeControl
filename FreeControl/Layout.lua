@@ -169,12 +169,19 @@ Layout.COMMANDS = {
 	{ "TARGETSELF", "Target yourself", "Role-TargetFriend" },
 	{ "STARTATTACK", "Start attacking", "Role-Attack" },
 	{ "TOGGLEAUTORUN", "Auto-run", "Role-Run" },
-	{ "FREECONTROL_TOGGLECURSOR", "Mouse cursor on / off", "Role-Cursor" }, -- see Mouse.lua
+	{ "FREECONTROL_TOGGLECURSOR", "Mouse pointer on / off", "Role-Cursor" }, -- see Mouse.lua
 	{ "TOGGLEWORLDMAP", "World map", "Role-Map" },
 	{ "OPENALLBAGS", "Bags", "Role-Bags" },
 }
 
+-- Not a game command: the name a button's role is saved under when it is the mouse button.
+-- Bindings.lua binds such a button itself; see Mouse.lua.
 Layout.CURSOR_COMMAND = "FREECONTROL_TOGGLECURSOR"
+Layout.CURSOR_ROLE = "cmd:" .. Layout.CURSOR_COMMAND
+
+function Layout.IsCursorRole(role)
+	return role == Layout.CURSOR_ROLE
+end
 
 local COMMAND_BY_NAME = {}
 for _, command in ipairs(Layout.COMMANDS) do
@@ -280,20 +287,41 @@ function Layout.GetSlot(set, index)
 	return BAR_FIRST[set] + index - 1
 end
 
--- The set that swaps to stance-specific slots, or nil. "auto" follows the choice made in
--- Options > Gamepad > Stance bar, so the bars match what the Gamepad UI would show.
-function Layout.GetStanceSet()
-	if Layout.GetSlotSource() ~= "gamepad" or not gamepad.stanceValid then
-		return nil
-	end
-	local choice = ns.db.stanceSet
-	if choice == "none" then
-		return nil
-	elseif choice ~= "auto" then
-		return Layout.SET_FROM_KEY[choice]
-	end
+---------------------------------------------------------------------------
+-- Stances and forms
+---------------------------------------------------------------------------
+-- A button that changes with the stance needs a separate place to keep its action for each
+-- stance. The game has two such places, and both are used:
+--
+--   "pad"  the controller stance bars: eight slots for each stance, after the three pages. The
+--          Gamepad UI shows the same ones.
+--   "bar"  the twelve slots the regular action bar shows in that stance. Blizzard's main bar
+--          turns to them by itself (Blizzard_ActionBarController sets its page to the bonus
+--          bar's), so they are shared with that bar.
+--
+-- Up to three groups of buttons change: one trigger set kept in "pad", the other trigger set
+-- kept in the first eight "bar" slots, and the D-pad with no trigger held in the last four. The
+-- both-triggers set and the face buttons never change, so there is always somewhere for what is
+-- needed in every form.
+local BAR_STANCE_FIRST = 73 -- the first slot of the regular action bar in stance 1
+local BAR_STANCE_SLOTS = 12
+
+Layout.STANCE_CHOICES = { "auto", "none", "lt", "rt", "both", "ltrt", "all" }
+
+-- Classes whose forms replace everything they can do. In Cat or Bear form a Druid cannot use a
+-- single caster spell, so one changing set of eight would leave the other 24 buttons dead.
+local FORM_CLASSES = { DRUID = true }
+
+function Layout.IsFormClass()
+	local _, class = UnitClass("player")
+	return FORM_CLASSES[class] or false
+end
+
+-- The set picked in Options > Gamepad > Stance bar, or nil when that is none, another page, or
+-- the top bar (its face buttons are not action slots).
+local function GetGamepadOptionSet()
 	-- Enum.GamepadStanceBarOverride: 1 none, 2-4 page 1 left/right/bottom, 5-8 page 2 top/left/right/bottom,
-	-- 9-12 page 3 top/left/right/bottom. The top bar is left alone: its face buttons are not action slots.
+	-- 9-12 page 3 top/left/right/bottom.
 	local value = tonumber(GetCVar("GamepadStanceBarOverride"))
 	if not value or value < 2 or value > 12 then
 		return nil
@@ -310,17 +338,82 @@ function Layout.GetStanceSet()
 	return bar
 end
 
--- Slot shown by a button of the stance set while stance (bonus bar) number `stance` is active.
-function Layout.GetStanceSlot(stance, index)
-	return gamepad.first + PAGE_SLOTS * NUM_PAGES + (stance - 1) * 8 + index - 1
+-- The groups of buttons that change with the stance, in the order described above. Each is
+--   { set =, last =, store = "pad" | "bar", offset = }
+-- where the group is buttons 1 to `last` of the set, and `offset` is how far into a stance's
+-- "bar" slots it starts.
+function Layout.GetStanceGroups()
+	local groups = {}
+	if Layout.GetSlotSource() ~= "gamepad" or not gamepad.stanceValid then
+		return groups
+	end
+	local choice = ns.db.stanceSet
+	local first, pair, dpad
+	if choice == "auto" then
+		-- What the Gamepad options say, so the bar matches what the Gamepad UI would show; and
+		-- for a class that needs it, the other trigger set and the D-pad as well.
+		first = GetGamepadOptionSet()
+		pair = Layout.IsFormClass()
+		dpad = pair
+	elseif choice == "ltrt" or choice == "all" then
+		first = GetGamepadOptionSet()
+		pair, dpad = true, choice == "all"
+	elseif choice ~= "none" then
+		first = Layout.SET_FROM_KEY[choice]
+	end
+	if pair and first ~= Layout.SET_LT and first ~= Layout.SET_RT then
+		first = Layout.SET_RT
+	end
+	if first then
+		groups[#groups + 1] = { set = first, last = 8, store = "pad", offset = 0 }
+	end
+	if pair then
+		groups[#groups + 1] = { set = first == Layout.SET_RT and Layout.SET_LT or Layout.SET_RT, last = 8, store = "bar", offset = 0 }
+	end
+	if dpad then
+		groups[#groups + 1] = { set = Layout.SET_NONE, last = 4, store = "bar", offset = 8 }
+	end
+	return groups
+end
+
+-- The group a button belongs to, or nil for a button that never changes.
+function Layout.FindStanceGroup(groups, set, index)
+	for _, group in ipairs(groups) do
+		if group.set == set and index <= group.last then
+			return group
+		end
+	end
+	return nil
+end
+
+-- Slot shown by button `index` of a group while stance (bonus bar) number `stance` is active.
+function Layout.GetStanceSlot(group, stance, index)
+	if group.store == "pad" then
+		return gamepad.first + PAGE_SLOTS * NUM_PAGES + (stance - 1) * 8 + index - 1
+	end
+	return BAR_STANCE_FIRST + (stance - 1) * BAR_STANCE_SLOTS + group.offset + index - 1
 end
 
 -- Macro-condition string for RegisterAttributeDriver: the stance slots, then the normal slot.
-function Layout.GetStanceDriver(set, index)
+function Layout.GetStanceDriver(group, index)
 	local parts = {}
 	for stance = 1, NUM_STANCE_BARS do
-		parts[#parts + 1] = ("[bonusbar:%d] %d"):format(stance, Layout.GetStanceSlot(stance, index))
+		parts[#parts + 1] = ("[bonusbar:%d] %d"):format(stance, Layout.GetStanceSlot(group, stance, index))
 	end
-	parts[#parts + 1] = tostring(Layout.GetSlot(set, index))
+	parts[#parts + 1] = tostring(Layout.GetSlot(group.set, index))
 	return table.concat(parts, "; ")
+end
+
+-- "RT set, LT set and the D-pad", for the settings page, chat and /fc status; nil for none.
+function Layout.DescribeStanceGroups(groups)
+	local names = {}
+	for _, group in ipairs(groups) do
+		names[#names + 1] = group.set == Layout.SET_NONE and "the D-pad" or (Layout.GetSetName(group.set) .. " set")
+	end
+	if #names == 0 then
+		return nil
+	elseif #names == 1 then
+		return names[1]
+	end
+	return table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
 end

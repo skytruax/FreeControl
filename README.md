@@ -62,14 +62,15 @@ controller and play.
     <td width="50%" valign="top">
       <img src="curseforge/gallery/05-normal-mode.png" alt="A sketch of the normal interface with the FreeControl bar as the one thing added">
       <b>Everything else stays yours.</b> Bumpers and stick clicks are free for whatever targeting
-      you like, the menus are the ones you know, and your regular action bars are never touched.
+      you like, the menus are the ones you know, and your action bars are not rearranged.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/06-combat.png" alt="Slots showing a cooldown, out of range, not enough mana, not usable, an item count and an action in progress">
       <b>Made for combat.</b> Sets switch in the middle of a fight, the button sinks under your
-      thumb, and its cooldown shows the moment it starts. One set can follow your stance or form.
+      thumb, and its cooldown shows the moment it starts. The bar follows your stance or form: one
+      set for most classes, two sets and the D-pad for a Druid.
     </td>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/07-controllers.png" alt="The same set with Xbox, PlayStation and Nintendo labels">
@@ -115,7 +116,7 @@ because Blizzard's bar would be bound to the same buttons.
 
 | Hold | You get |
 | --- | --- |
-| nothing | D-pad: four action slots. X: Interact. Y: mouse cursor on / off. B: Cancel / game menu. A: Jump. |
+| nothing | D-pad: four action slots. X: Interact. Y: mouse pointer on / off. B: Cancel / game menu. A: Jump. |
 | LT | eight action slots (left set) |
 | RT | eight action slots (right set) |
 | LT + RT | eight action slots (bottom set) |
@@ -124,16 +125,26 @@ because Blizzard's bar would be bound to the same buttons.
   the regular action bars, dragging one *off* a slot needs Shift while the action bars are locked.
 - **Same slots as the Gamepad UI:** the slots are the ones Blizzard's controller bars use, which
   are separate from your normal action bars. Anything you already set up in Gamepad UI mode is
-  there when you log in, and nothing on your regular bars is touched.
+  there when you log in, and your regular bars are left alone (the one exception is under
+  *Stances and forms* below).
 - **Interact:** X runs the game's Interact command with "Enable Interact Key" behaviour switched
   on, so it loots the corpse next to you, talks to the NPC in front of you or opens the chest, and
   attacks your target when there is nothing to interact with.
 - **Mouse mode:** press Y and the right stick steers the mouse pointer. Click the left stick for
   the left mouse button (hold it to drag a spell onto the bar) and the right stick for the right
-  one. Press Y again, or just move or jump, and the pointer goes away. The Y button on the bar is
-  lit while it is out. Both click buttons and the pointer's speed can be changed on the settings
-  page. If you set FreeControl up before version 1.2, your Y is still as you left it: click it on
-  the bar and choose *Mouse cursor on / off*.
+  one. Press Y again and the pointer goes away; the game also puts it away when you jump. The Y
+  button on the bar is lit while it is out. FreeControl binds Y itself, the way it binds
+  Interact: there is nothing to set up in the Key Bindings screen. Both click buttons and the
+  pointer's speed can be changed on the settings page. If Y already had a job in your setup it
+  keeps it: click any no-trigger button on the bar and choose *Mouse pointer on / off*.
+- **Stances and forms:** buttons change to different slots when you change stance or form, so
+  each one has its own abilities. For most classes that is one set (the right-trigger set,
+  unless **Options > Gamepad > Stance bar** names another). A Druid cannot use a single caster
+  spell in Cat or Bear form, so for a Druid the right set, the left set and the D-pad all
+  change, and the both-triggers set and the face buttons stay the same in every form: that is
+  where shapeshifts, a mount or a trinket go. The left set and the D-pad show the slots of the
+  game's own action bar for that form, so a bar you already set up there is waiting for you.
+  *Stance sets* on the settings page offers the same to any class.
 - **Targeting and everything else:** bind the bumpers and stick clicks to whatever you like in
   **Options > Key Bindings**; controller buttons can be bound there like keys. The stick clicks
   keep those bindings except while the mouse pointer is out.
@@ -169,6 +180,7 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc page 2` | Show another of Blizzard's three controller-bar pages. |
 | `/fc slots bars` | Use the regular Left / Bottom Left / Bottom Right / Right action bar slots instead (`gamepad` to go back). |
 | `/fc numbers off` | Hide the countdown numbers on slots that are on cooldown (`on` to show them again). |
+| `/fc stance all` | What changes with your stance or form: `auto`, `none`, `lt`, `rt`, `both`, `ltrt` (both trigger sets) or `all` (both and the D-pad). |
 | `/fc mouse` | Bring the mouse pointer out or put it away, like the Y button. |
 | `/fc click left PADLSHOULDER` | Use another button as the left (`left`) or right (`right`) mouse click while the pointer is out. `game` leaves that click to the game's own setting. |
 | `/fc pointer 150` | How fast the stick moves the mouse pointer, in percent (50 to 300). |
@@ -177,9 +189,9 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc trace` | Records what the game reports about the next abilities you use, for twenty seconds. Type it again to see the result in a box you can copy from. For reports about cooldowns. |
 
 Other settings on the page: how much the held set grows, how far the others fade, button labels
-(Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, which set swaps
-with your stance or form (it follows **Options > Gamepad > Stance bar** unless you choose
-otherwise), and a **Mouse mode** section with the two click buttons and the pointer speed.
+(Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, what changes
+with your stance or form (*Stance sets*: automatic unless you choose otherwise), and a **Mouse
+mode** section with the two click buttons and the pointer speed.
 
 ## What it changes, and puts back
 
@@ -191,6 +203,7 @@ when you switch it off:
 | `GamePadEnable = 1` | Lets the game read the controller. This is controller *input*, not Gamepad UI mode. Forever ships with it on, so this usually changes nothing. |
 | `GamePadEmulateShift` / `Ctrl` / `Alt = none` | Only where one of them names a button FreeControl uses (by default: LT as Shift). |
 | `GamePadCursorLeftClick`, `GamePadCursorRightClick` | The two buttons that click while the mouse pointer is out: the stick clicks unless you choose others. |
+| `GamePadCursorCentering = 0` | With it on, the game pins the mouse pointer to the middle of the screen. It is off unless something turned it on. |
 | `GamePadCursorSpeedStart`, `...Accel`, `...Max` | Only when you change the pointer speed: all three are scaled together from your own values. |
 | `SoftTargetInteract = 3` | The Interact command picks nearby things by itself (Options > Controls > Enable Interact Key). |
 | `SoftTargetInteractArc = 1`, `SoftTargetInteractRange = 20`, `SoftTargetIconGameObject = 1` | The reach Gamepad UI mode uses for Interact. |
@@ -217,6 +230,10 @@ without changing them.
   pointer to pick from. Put the individual spells on the bar instead.
 - Mouse mode clicks windows through the game's own controller mouse, which needs a plain button:
   a trigger combination cannot be a click button.
+- A second changing set and the D-pad keep their stance actions in the slots of the game's own
+  action bar for that stance, so what you drop on them in a form also shows on that bar. The
+  rest of your regular action bars is never touched.
+- Stances and forms change the bar only with the controller-bar slots, not with `/fc slots bars`.
 - No vehicle or possess bar yet: use the game's own bar for those.
 - Triggers are hold-to-select; there is no tap-to-toggle.
 - Hold-to-cast ("press and hold casting") is a client feature reserved for Blizzard's own bars.
@@ -243,14 +260,28 @@ What keeps the bar feeling immediate:
 - Cooldowns follow `ACTIONBAR_UPDATE_COOLDOWN`, `SPELL_UPDATE_COOLDOWN` and `BAG_UPDATE_COOLDOWN`.
   Nothing is polled.
 
-Mouse mode ([Mouse.lua](FreeControl/Mouse.lua)) is the game's own stick cursor with a way to click.
+Mouse mode ([Mouse.lua](FreeControl/Mouse.lua)) is the game's own stick pointer with a way to
+click. The game keeps two things apart: whether a stick steers the pointer (`SetGamePadCursorControl`)
+and whether the controller is steering the camera (`SetGamePadFreeLook`), during which the pointer
+is hidden. Version 1.2.0 asked for the first without ending the second, and a player pressing the
+button in the middle of play saw nothing. The pointer is now brought out by ending camera mode
+first, the order ConsolePort uses, and `/fc status` prints what the game says about both, how
+often the button was pressed and what came of it.
+
 The game treats a mouse button as two things: a click on a window comes from the two buttons named
 by `GamePadCursorLeftClick` and `GamePadCursorRightClick`, and a click on the world goes through
 key bindings to the commands the real mouse buttons run. FreeControl sets the first pair and, while
 the pointer is out, binds the same buttons to the second, from the secure header so that it works
-in a fight. That two-part behaviour is how ConsolePort describes the client to its users; nothing
-here has been tried against the real game by anyone but its players, so treat it as the newest and
-least proven part of the addon.
+in a fight. That two-part behaviour is how ConsolePort describes the client to its users. None of
+mouse mode can be tried without the game, so treat it as the least proven part of the addon.
+
+Stances ([Layout.lua](FreeControl/Layout.lua)) are state drivers on the buttons' `action`
+attribute, one `[bonusbar:N]` clause per stance, so they switch in a fight. A changing button
+needs somewhere to keep its action for each stance, and the game has two such places: the
+controller stance bars (eight slots per stance, the ones the Gamepad UI shows) and the twelve
+slots its regular action bar turns to in that stance (73 to 132). The first changing set uses the
+former; a second set and the D-pad use the latter. `/fc status` compares both with what the game
+reports for the stance you are in.
 
 An error while drawing the bar is never silent: it goes to the game's error handler as usual, the
 first one is also said in chat, and `/fc status` lists them. The game hides addon errors by
@@ -270,7 +301,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 83 scenarios, runs on every push):
+**Mock client** (fast, 113 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -279,11 +310,12 @@ It loads the addon into Lua 5.1 against `tools/tests/wowmock.lua`, a strict stan
 client set to a fresh Forever install's defaults: protected frames refuse protected calls in
 combat, secure snippets run in a restricted environment, a button standing in for Shift does not
 report being held, key presses travel through override bindings to button clicks, in combat
-cooldown numbers come back sealed and are refused by cooldown frames, and while the stick cursor is
-out its two click buttons become mouse clicks. It is a model, so a pass shows the addon is
-consistent with that model, not that the game agrees.
+cooldown numbers come back sealed and are refused by cooldown frames, using the controller puts
+the client in camera mode where the pointer stays hidden until that is ended, and while the stick
+pointer is out its two click buttons become mouse clicks. It is a model, so a pass shows the addon
+is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 28 tests, about six seconds):
+**Simulator** (Blizzard's real interface code, 29 tests, about six seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh
@@ -303,8 +335,8 @@ every API, console variable and event the addon names against the Forever client
 filled slots are blank there.
 
 What it cannot show: it implements about half of the client's API, does not seal anything in
-combat, has no stick cursor of its own (the tests stand in for it), has no real key or controller input (the tests click the bound button from a secure call
-stack instead), has no controller-slot validity check (so FreeControl falls back to the regular
+combat, has no stick pointer of its own (the tests stand in for it), has no real key or controller
+input (the tests click the bound button from a secure call stack instead), has no controller-slot validity check (so FreeControl falls back to the regular
 bar slots there unless a test stands in for it), and never evaluates stance conditions as true.
 `tools/sim/lab/run-sim.sh --help` lists its options; `tools/sim/tests/` holds the tests and the
 screenshot scenario.

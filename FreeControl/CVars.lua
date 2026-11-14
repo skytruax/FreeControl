@@ -75,10 +75,13 @@ local MANAGED = {
 	{ "GamePadEmulateShift", WithoutStandIn("GamePadEmulateShift") },
 	{ "GamePadEmulateCtrl", WithoutStandIn("GamePadEmulateCtrl") },
 	{ "GamePadEmulateAlt", WithoutStandIn("GamePadEmulateAlt") },
-	-- The two buttons the client turns into mouse clicks while its stick cursor is out. It starts
+	-- The two buttons the client turns into mouse clicks while its stick pointer is out. It starts
 	-- with RT and RB, and RT is a trigger here; see Mouse.lua.
 	{ "GamePadCursorLeftClick", function() return ns.Mouse:GetManagedKey(1) end },
 	{ "GamePadCursorRightClick", function() return ns.Mouse:GetManagedKey(2) end },
+	-- With this on the client pins the pointer to the middle of the screen and the stick cannot
+	-- move it. It is off unless something turned it on.
+	{ "GamePadCursorCentering", function() return ns.Mouse:IsAvailable() and "0" or nil end },
 	{ "GamePadCursorSpeedStart", PointerSpeed("GamePadCursorSpeedStart") },
 	{ "GamePadCursorSpeedAccel", PointerSpeed("GamePadCursorSpeedAccel") },
 	{ "GamePadCursorSpeedMax", PointerSpeed("GamePadCursorSpeedMax") },

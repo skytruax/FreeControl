@@ -6,8 +6,6 @@ local Layout = ns.Layout
 local Options = {}
 ns.Options = Options
 
-BINDING_NAME_FREECONTROL_TOGGLECURSOR = "Controller mouse cursor on / off"
-
 ---------------------------------------------------------------------------
 -- Choices offered by the menus: { value, label }
 ---------------------------------------------------------------------------
@@ -22,12 +20,15 @@ local SLOT_SOURCES = {
 	{ "bars", "Regular action bars" },
 }
 local PAGES = { { 1, "Page 1" }, { 2, "Page 2" }, { 3, "Page 3" } }
+-- The values are Layout.STANCE_CHOICES.
 local STANCE_SETS = {
-	{ "auto", "Same as Gamepad options" },
-	{ "none", "None" },
+	{ "auto", "Automatic" },
+	{ "none", "Nothing" },
 	{ "lt", "Left trigger set" },
 	{ "rt", "Right trigger set" },
 	{ "both", "Both triggers set" },
+	{ "ltrt", "Left and right sets" },
+	{ "all", "Left, right and D-pad" },
 }
 local TRIGGER_KEYS = {
 	{ "PADLTRIGGER", "Left trigger" },
@@ -276,7 +277,7 @@ local function Build(panel)
 		function() return ns.db.slotSource end, function(value) Set("slotSource", value) end)
 	y = Choice(panel, left, y, "Page", "Which of the three controller-bar pages the bar shows.", PAGES,
 		function() return ns.db.page end, function(value) Set("page", value) end)
-	y = Choice(panel, left, y, "Stance set", "The set that swaps to different slots in each stance or form.", STANCE_SETS,
+	y = Choice(panel, left, y, "Stance sets", "What changes to different slots in each stance or form. Automatic is the left and right trigger sets and the D-pad for a Druid, and for every other class the one set picked in Options > Gamepad > Stance bar. A second set and the D-pad use the slots of the game's own action bar for that stance, so they are shared with it. The both-triggers set and the face buttons never change.", STANCE_SETS,
 		function() return ns.db.stanceSet end, function(value) Set("stanceSet", value) end)
 
 	y = Heading(panel, "Mouse mode", left, y - 8)
@@ -286,17 +287,17 @@ local function Build(panel)
 	mouseNote:SetJustifyH("LEFT")
 	mouseNote.Sync = function(self)
 		local button = ns.Mouse:GetBarButtonName()
-		local how = button and (button .. " on the bar brings the mouse cursor out and puts it away.")
-			or "No bar button brings the mouse cursor out yet. Give one \"Mouse cursor on / off\" on the right, or bind it in Key Bindings."
+		local how = button and (button .. " brings the mouse pointer out and puts it away. FreeControl binds it; there is nothing to set up.")
+			or "No button brings the mouse pointer out. Give one \"Mouse pointer on / off\" in the list on the right."
 		self:SetText(how .. " While it is out, the right stick moves it and these two buttons click.")
 	end
 	controls[#controls + 1] = mouseNote
 	y = y - 52
-	y = Choice(panel, left, y, "Left click", "The left mouse button while the mouse cursor is out. Pick a button you can hold while your right thumb steers, such as a stick click or a bumper, so you can drag spells and items. The rest of the time the button does whatever you bound it to.", ClickChoices,
+	y = Choice(panel, left, y, "Left click", "The left mouse button while the mouse pointer is out. Pick a button you can hold while your right thumb steers, such as a stick click or a bumper, so you can drag spells and items. The rest of the time the button does whatever you bound it to.", ClickChoices,
 		function() return ns.db.clickLeft end, function(value) SetClick(1, value) end)
-	y = Choice(panel, left, y, "Right click", "The right mouse button while the mouse cursor is out. The rest of the time the button does whatever you bound it to.", ClickChoices,
+	y = Choice(panel, left, y, "Right click", "The right mouse button while the mouse pointer is out. The rest of the time the button does whatever you bound it to.", ClickChoices,
 		function() return ns.db.clickRight end, function(value) SetClick(2, value) end)
-	y = Stepper(panel, left, y, "Pointer speed", "How fast the right stick moves the mouse cursor. 100% is the game's own speed, or whatever you had set it to.", "cursorSpeed", 0.5, 3, 0.25)
+	y = Stepper(panel, left, y, "Pointer speed", "How fast the right stick moves the mouse pointer. 100% is the game's own speed, or whatever you had set it to.", "cursorSpeed", 0.5, 3, 0.25)
 
 	y = -78
 	y = Heading(panel, "Controller", right, y)
@@ -379,17 +380,29 @@ local function PrintStatus()
 	ns.Print(("Slots: %s (asked for %s). Controller-bar slots start at %s, usable: %s, stance slots usable: %s"):format(
 		source, db.slotSource, tostring(first), YesNo(Layout.HasGamepadSlots()), YesNo(Layout.HasStanceSlots())))
 	if source == "gamepad" then
-		local stanceSet = Layout.GetStanceSet()
-		ns.Print(("Page %d, stance set: %s"):format(db.page, stanceSet and Layout.GetSetName(stanceSet) or "none"))
-		-- Which slots a stance uses is worked out from the first slot; the client can confirm it
-		-- for the stance you are in right now.
-		local reported = C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance
-			and C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance()
+		local _, class = UnitClass("player")
+		ns.Print(("Page %d. Class: %s. Changes with your stance or form (setting: %s): %s"):format(db.page, tostring(class), db.stanceSet,
+			Layout.DescribeStanceGroups(Layout.GetStanceGroups()) or "nothing"))
+		-- Which slots a stance uses is worked out, not asked for; the client can confirm both
+		-- kinds for the stance you are in right now.
 		local bonus = C_ActionBar.GetBonusBarOffset()
-		if reported and bonus > 0 and Layout.HasStanceSlots() then
-			local expected = Layout.GetStanceSlot(bonus, 1)
-			ns.Print(("Stance %d slots start at %d (the game says %d)%s"):format(bonus, expected, reported,
-				expected == reported and "" or " |cffff4040- these differ, please report it|r"))
+		local differ = " |cffff4040- these differ, please report it|r"
+		if bonus > 0 and Layout.HasStanceSlots() then
+			local reported = C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance
+				and C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance()
+			if reported then
+				local expected = Layout.GetStanceSlot({ store = "pad" }, bonus, 1)
+				ns.Print(("Stance %d: its controller slots start at %d (the game says %d)%s"):format(bonus, expected, reported,
+					expected == reported and "" or differ))
+			end
+			local page = C_ActionBar.GetBonusBarIndex and C_ActionBar.GetBonusBarIndex()
+			if page then
+				local expected, reportedBar = Layout.GetStanceSlot({ store = "bar", offset = 0 }, bonus, 1), (page - 1) * 12 + 1
+				ns.Print(("Stance %d: its regular action bar slots start at %d (the game says %d)%s"):format(bonus, expected, reportedBar,
+					expected == reportedBar and "" or differ))
+			end
+		else
+			ns.Print("No stance or form bar is active right now.")
 		end
 	end
 
@@ -408,16 +421,27 @@ local function PrintStatus()
 		YesNo(db.cooldownNumbers), ns.DescribeSealing()))
 
 	if ns.Mouse:IsAvailable() then
-		ns.Print(("Mouse cursor: %s. Button on the bar: %s. Pointer speed: %d%%"):format(ns.Mouse:IsOut() and "out" or "away",
-			ns.Mouse:GetBarButtonName() or "none", db.cursorSpeed * 100 + 0.5))
+		local index, key
+		for i = 1, 8 do
+			if Layout.IsCursorRole(db.roles[i]) then
+				index, key = i, db.keys[i]
+				break
+			end
+		end
+		local bound = key and GetBindingAction(key, true) or ""
+		ns.Print(("Mouse pointer: %s. Mouse button: %s (%s), bound right now to: %s. Pointer speed: %d%%"):format(ns.Mouse:IsOut() and "out" or "away",
+			index and Layout.GetButtonName(Layout.SET_NONE, index) or "none", key or "-", bound ~= "" and bound or "nothing", db.cursorSpeed * 100 + 0.5))
 		for side, setting in ipairs({ "clickLeft", "clickRight" }) do
-			local key = GetCVar(side == 1 and "GamePadCursorLeftClick" or "GamePadCursorRightClick") or ""
-			local bound = key ~= "" and GetBindingAction(key, true) or ""
+			local click = GetCVar(side == 1 and "GamePadCursorLeftClick" or "GamePadCursorRightClick") or ""
+			local clickBound = click ~= "" and GetBindingAction(click, true) or ""
 			ns.Print(("  %s click: %s (setting: %s), bound right now to: %s"):format(side == 1 and "Left" or "Right",
-				key ~= "" and key or "none", db[setting], bound ~= "" and bound or "nothing"))
+				click ~= "" and click or "none", db[setting], clickBound ~= "" and clickBound or "nothing"))
+		end
+		for _, line in ipairs(ns.Mouse:Describe()) do
+			ns.Print("  " .. line)
 		end
 	else
-		ns.Print("Mouse cursor: this client has no controller mouse cursor.")
+		ns.Print("Mouse pointer: this client has no controller mouse pointer.")
 	end
 
 	ns.Print("Keys: " .. table.concat(db.keys, " ") .. " | triggers: " .. table.concat(db.modKeys, " "))
@@ -450,9 +474,10 @@ local HELP = {
 	"/fc slots gamepad | bars - where the slots are stored",
 	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
 	"/fc key <1-8 | lt | rt> <KEY> - use a different key for a slot or trigger (1-4 D-pad left/up/right/down, 5-8 face left/top/right/bottom)",
-	"/fc mouse - bring the controller's mouse cursor out or put it away",
-	"/fc click left | right <BUTTON> - the button that clicks while the mouse cursor is out (game = leave it to the game)",
-	"/fc pointer <50-300> - how fast the stick moves the mouse cursor, in percent",
+	"/fc stance auto | none | lt | rt | both | ltrt | all - what changes with your stance or form (ltrt = both trigger sets, all = those and the D-pad)",
+	"/fc mouse - bring the controller's mouse pointer out or put it away",
+	"/fc click left | right <BUTTON> - the button that clicks while the mouse pointer is out (game = leave it to the game)",
+	"/fc pointer <50-300> - how fast the stick moves the mouse pointer, in percent",
 	"/fc status - what FreeControl sees, for bug reports",
 	"/fc trace - record what the game reports about the next abilities you use (type it again to see the result)",
 }
@@ -503,8 +528,14 @@ SlashCmdList.FREECONTROL = function(message)
 		Set("cooldownNumbers", first == "on")
 	elseif command == "key" and SetKey(first, second) then
 		ns.Print("Keys: " .. table.concat(ns.db.keys, " ") .. " | triggers: " .. table.concat(ns.db.modKeys, " "))
+	elseif command == "stance" and ns.IsOneOf(first, unpack(Layout.STANCE_CHOICES)) then
+		-- In combat the change waits for the fight to end, and RequestRefresh has said so.
+		Set("stanceSet", first)
+		if not InCombatLockdown() then
+			ns.Print(("Changes with your stance or form: %s."):format(Layout.DescribeStanceGroups(Layout.GetStanceGroups()) or "nothing"))
+		end
 	elseif command == "mouse" then
-		ns.Mouse:Toggle()
+		ns.Mouse:Toggle(false)
 	elseif command == "pointer" and tonumber(first) then
 		Set("cursorSpeed", math.max(0.5, math.min(3, tonumber(first) / 100)))
 	elseif command == "click" and ns.IsOneOf(first, "left", "right") and second and second ~= "" then

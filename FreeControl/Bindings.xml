@@ -1,5 +1,0 @@
-<Bindings>
-	<Binding name="FREECONTROL_TOGGLECURSOR" category="FreeControl">
-		FreeControl.ToggleCursor()
-	</Binding>
-</Bindings>

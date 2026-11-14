@@ -10,8 +10,11 @@
 --   * in combat the cooldown API hands addon code sealed ("secret") numbers, which cooldown
 --     frames refuse from addon code, as Blizzard's API documentation says the client does;
 --   * an error the addon reports to the game's error handler fails the test that caused it;
---   * while the stick cursor is out, the two buttons named by the click console variables are
---     mouse buttons: a real click over the interface, the button's own binding over the world.
+--   * while the stick pointer is out, the two buttons named by the click console variables are
+--     mouse buttons: a real click over the interface, the button's own binding over the world;
+--   * using the controller puts the client in camera mode ("free look"), in which the pointer is
+--     hidden even if a stick has been told to steer it. FreeControl 1.2.0 asked for the pointer
+--     without ending camera mode, and a player pressing its button saw nothing.
 --
 -- The secure click logic is a port of SecureActionButton_OnClick from Blizzard_FrameXML/
 -- SecureTemplates.lua (build 1.60.1). It is a model of the client, not the client: a pass here
@@ -32,6 +35,8 @@ local M = {
 		ActionButtonUseKeyDown = "1", countdownForCooldowns = "0", GamepadStanceBarOverride = "3",
 		GamePadCursorLeftClick = "PADRTRIGGER", GamePadCursorRightClick = "PADRSHOULDER",
 		GamePadCursorSpeedStart = "0.1", GamePadCursorSpeedAccel = "2", GamePadCursorSpeedMax = "1",
+		GamePadCursorCentering = "0", GamePadCursorCenteredEmulation = "1", GamePadCursorAutoEnable = "1",
+		GamePadCursorAutoDisableSticks = "2", GamePadCursorAutoDisableJump = "1",
 		GamePadEmulateShift = "PADLTRIGGER", GamePadEmulateCtrl = "PADLSHOULDER", GamePadEmulateAlt = "none",
 	},
 	floatCVars = { SoftTargetInteractRange = true }, -- the client stores these as "20.000000"
@@ -51,8 +56,14 @@ local M = {
 	firstGamepadSlot = 181,
 	lastGamepadSlot = 304, -- three pages of 28 plus five stance bars of 8
 	hasGamepadUI = true,
-	cursorControl = false, -- the client's stick-driven mouse cursor is out
+	cursorControl = false, -- a stick has been told to steer the mouse pointer
+	freeLook = false,      -- the controller is steering the camera, which hides the pointer
+	refuseCursor = 0,      -- how many more requests for the stick pointer the client ignores
+	pointerCalls = {},     -- what the addon asked of the pointer and the camera, in order
 	cursorOver = "interface", -- what the pointer is over while it is out: "interface" or "world"
+	class = "ROGUE",       -- the player's class, as UnitClass names it
+	itemQuality = {},      -- [item id] = rarity, for the items the client has loaded
+	sealActionInfo = false, -- a client that seals what is in a slot while restrictions are in force
 	clicks = {},           -- mouse clicks the client made out of controller buttons: { button, "down" | "up" }
 	secretRestrictions = true, -- the client seals cooldown numbers from addons while in combat
 	cooldownEvents = { "SPELL_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_COOLDOWN" }, -- raised when one starts
@@ -566,13 +577,23 @@ end
 -- click and the button's binding does not run. Over the world it goes to the binding as usual,
 -- which is why a button has to be bound to the mouse commands to click things there.
 local function clickButton(key)
-	if not M.cursorControl or M.cursorOver ~= "interface" then return nil end
+	if not M.PointerVisible() or M.cursorOver ~= "interface" then return nil end
 	if M.cvars.GamePadCursorLeftClick:upper() == key then return "LeftButton" end
 	if M.cvars.GamePadCursorRightClick:upper() == key then return "RightButton" end
 end
 
+-- The pointer can be seen and used: a stick steers it and the client is not in camera mode.
+function M.PointerVisible() return M.cursorControl and not M.freeLook end
+
+-- The client brings the pointer out by itself (a window that needs it opened), or puts it away
+-- (the character jumped).
+function M.GameShowsPointer() M.freeLook = false; M.cursorControl = true end
+function M.GameHidesPointer() M.cursorControl = false end
+
 function M.KeyDown(key)
 	M.down[key] = true
+	-- Using the controller puts the client in camera mode, unless a stick is steering the pointer.
+	if key:find("^PAD") and not M.cursorControl then M.freeLook = true end
 	if isModifierStandIn(key) then
 		M.held[key] = false
 		return "modifier"
@@ -753,8 +774,42 @@ C_Spell = {
 	end,
 }
 
+-- What is in a slot: its kind, an id and for some kinds a sub-kind.
+function GetActionInfo(slot)
+	local a = valid(slot)
+	if not a then return nil end
+	local kind, id, subKind = "spell", a.spell or slot, "spell"
+	if a.item then
+		kind, id, subKind = "item", a.item, nil
+	elseif a.macro then
+		kind, id, subKind = "macro", a.macro, nil
+	end
+	if M.sealActionInfo and restricted() then id = Seal(id) end
+	return kind, id, subKind
+end
+
+-- Rarity colours, by Enum.ItemQuality: poor, common, uncommon, rare, epic, legendary.
+local QUALITY_COLORS = {
+	[0] = { 0.62, 0.62, 0.62 }, { 1, 1, 1 }, { 0.12, 1, 0 }, { 0, 0.44, 0.87 }, { 0.64, 0.21, 0.93 }, { 1, 0.5, 0 },
+}
+C_Item = {
+	-- Nothing for an item the client has not loaded yet; GET_ITEM_INFO_RECEIVED follows when it has.
+	GetItemQualityByID = function(item)
+		if IsSealed(item) and insecure() then
+			error("C_Item.GetItemQualityByID: secret values are only allowed during untainted execution for this argument", 2)
+		end
+		return M.itemQuality[item]
+	end,
+	GetItemQualityColor = function(quality)
+		local color = assert(QUALITY_COLORS[quality], "unknown item quality " .. tostring(quality))
+		return color[1], color[2], color[3], "ff000000"
+	end,
+}
+
 C_ActionBar = {
 	GetBonusBarOffset = function() return M.bonusbar end,
+	-- The page the regular action bar turns to: 1 outside any stance, 6 + the stance otherwise.
+	GetBonusBarIndex = function() return M.bonusbar > 0 and 6 + M.bonusbar or 1 end,
 	HasAction = function(slot) return valid(slot) ~= nil end,
 	GetActionTexture = function(slot) local a = valid(slot); return a and a.texture end,
 	IsUsableAction = function(slot) local a = valid(slot); return a and a.usable ~= false or false, a and a.noMana or false end,
@@ -841,8 +896,27 @@ C_GamePad = {
 	GetActiveDeviceID = function() return 1 end,
 	GetDeviceMappedState = function() return { labelStyle = M.labelStyle or "Letters" } end,
 }
-function SetGamePadCursorControl(enabled) M.cursorControl = enabled end
+-- Asking for the pointer does not end camera mode: that is a separate request.
+function SetGamePadCursorControl(enabled)
+	M.pointerCalls[#M.pointerCalls + 1] = "pointer " .. tostring(enabled)
+	if enabled and M.refuseCursor > 0 then
+		M.refuseCursor = M.refuseCursor - 1
+		return
+	end
+	M.cursorControl = enabled and true or false
+end
 function IsGamePadCursorControlEnabled() return M.cursorControl end
+function SetGamePadFreeLook(enabled)
+	M.pointerCalls[#M.pointerCalls + 1] = "camera " .. tostring(enabled)
+	M.freeLook = enabled and true or false
+end
+function IsGamePadFreelookEnabled() return M.freeLook end
+function IsUsingGamepad() return M.freeLook or M.cursorControl end
+function IsUsingMouse() return false end
+function UnitClass(unit)
+	assert(unit == "player", "mock only knows the player's class")
+	return "Class", M.class
+end
 
 Settings = {
 	GetValue = function(name) assert(name == "lockActionBars"); return M.lockActionBars end,

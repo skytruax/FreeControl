@@ -108,6 +108,33 @@ local function ShowIcon(fc, shown)
 	fc.glyph:SetAlpha(shown and 0 or GLYPH_ALPHA)
 end
 
+-- The ring around an equipped item has the colour of the item's rarity, as the item's border has
+-- in the bags. Up to 1.2.0 it was always green, the one colour the regular action bars use, which
+-- made a rare item look like an uncommon one. Green is kept for an item used through a macro, and
+-- for one the game has not loaded yet: that one is coloured when GET_ITEM_INFO_RECEIVED arrives.
+local EQUIPPED_COLOR = { 0.25, 1, 0.3 }
+
+local function UpdateRing(button)
+	local fc = button.fc
+	fc.ringPending = nil
+	if not (fc.hasAction and C_ActionBar.IsEquippedAction(fc.slot)) then
+		fc.equipped:SetAlpha(0)
+		return
+	end
+	local r, g, b = unpack(EQUIPPED_COLOR)
+	local actionType, item = GetActionInfo(fc.slot)
+	if actionType == "item" and item and not ns.IsSealed(item) then
+		local quality = C_Item.GetItemQualityByID(item)
+		if quality then
+			r, g, b = C_Item.GetItemQualityColor(quality)
+		else
+			fc.ringPending = item
+		end
+	end
+	fc.equipped:SetVertexColor(r, g, b)
+	fc.equipped:SetAlpha(1)
+end
+
 local ShowTooltip
 
 local function Update(button)
@@ -120,7 +147,6 @@ local function Update(button)
 		fc.cooldown:SetHideCountdownNumbers(not ns.db.cooldownNumbers)
 		local text = C_ActionBar.UsesActionText(slot) and C_ActionBar.GetActionText(slot)
 		fc.name:SetText(text or "")
-		fc.equipped:SetAlpha(C_ActionBar.IsEquippedAction(slot) and 1 or 0)
 		UpdateUsable(button)
 		UpdateCooldown(button)
 		UpdateCount(button)
@@ -129,8 +155,8 @@ local function Update(button)
 		fc.cooldown:Clear()
 		fc.count:SetText("")
 		fc.name:SetText("")
-		fc.equipped:SetAlpha(0)
 	end
+	UpdateRing(button)
 	UpdateState(button)
 	UpdateBadge(button)
 	if GameTooltip:GetOwner() == button then
@@ -431,11 +457,10 @@ local function CreateActionButton(set, index, parent)
 	AddArt(button, round)
 	button:SetCheckedTexture(ART .. fc.shape .. "-Checked")
 
-	-- A green ring for an equipped item, as on the regular bars. Shown by alpha.
+	-- A ring for an equipped item, in the colour of its rarity (UpdateRing). Shown by alpha.
 	fc.equipped = button:CreateTexture(nil, "ARTWORK", nil, 2)
 	fc.equipped:SetAllPoints()
 	fc.equipped:SetTexture(ART .. fc.shape .. "-Highlight")
-	fc.equipped:SetVertexColor(0.25, 1, 0.3)
 	fc.equipped:SetAlpha(0)
 
 	fc.pressParts[#fc.pressParts + 1] = { texture = button:GetCheckedTexture(), crop = 0 }
@@ -525,7 +550,7 @@ local function RoleTooltip(widget)
 	if kind == "cmd" then
 		GameTooltip:AddLine(Layout.GetCommandInfo(command), 1, 1, 1, true)
 		if command == Layout.CURSOR_COMMAND then
-			GameTooltip:AddLine(("The right stick moves the cursor; %s."):format(ns.Mouse:DescribeClicks()), 0.8, 0.8, 0.8, true)
+			GameTooltip:AddLine(("Press it to bring the mouse pointer out, and again to put it away. The right stick moves the pointer; %s."):format(ns.Mouse:DescribeClicks()), 0.8, 0.8, 0.8, true)
 		end
 	else
 		local bound = GetBindingAction(ns.db.keys[index], true)
@@ -545,7 +570,7 @@ local function CreateRoleWidget(index, parent)
 	widget:SetPoint("CENTER", parent, "CENTER", unpack(Layout.BUTTON_OFFSET[index]))
 	widget.fc = { index = index, round = Layout.IsRound(index) }
 	AddArt(widget, widget.fc.round)
-	-- A bright ring while what the button switches is on: the mouse cursor being out.
+	-- A bright ring while what the button switches is on: the mouse pointer being out.
 	local lit = widget:CreateTexture(nil, "ARTWORK", nil, 2)
 	lit:SetAllPoints()
 	lit:SetTexture(ART .. widget.fc.shape .. "-Checked")
@@ -564,7 +589,7 @@ local function CreateRoleWidget(index, parent)
 	return widget
 end
 
-local mouseLit = false -- the controller's mouse cursor is out
+local mouseLit = false -- the controller's mouse pointer is out
 
 local function UpdateRoleWidget(widget)
 	local fc = widget.fc
@@ -577,7 +602,7 @@ local function UpdateRoleWidget(widget)
 	fc.lit:SetAlpha(mouseLit and kind == "cmd" and command == Layout.CURSOR_COMMAND and 1 or 0)
 end
 
--- Called by Mouse.lua (in combat too) when the mouse cursor comes out or goes away. Alpha only.
+-- Called by Mouse.lua (in combat too) when the mouse pointer comes out or goes away. Alpha only.
 function Buttons:SetMouseLit(out)
 	mouseLit = out
 	for _, widget in pairs(self.role) do
@@ -615,7 +640,7 @@ end
 -- Out of combat. Points every button at its slot and shows the right widget for each position.
 function Buttons:Assign()
 	Layout.Prepare()
-	local stanceSet = Layout.GetStanceSet()
+	local groups = Layout.GetStanceGroups()
 	for _, set in ipairs(Layout.SETS) do
 		for index = 1, 8 do
 			local button, proxy = self.action[set][index], self.proxy[set][index]
@@ -627,8 +652,9 @@ function Buttons:Assign()
 				UnregisterAttributeDriver(proxy, "action")
 				button:SetAttribute("action", slot)
 				proxy:SetAttribute("action", slot)
-				if set == stanceSet then
-					local driver = Layout.GetStanceDriver(set, index)
+				local group = Layout.FindStanceGroup(groups, set, index)
+				if group then
+					local driver = Layout.GetStanceDriver(group, index)
 					RegisterAttributeDriver(button, "action", driver)
 					RegisterAttributeDriver(proxy, "action", driver)
 				end
@@ -760,3 +786,12 @@ end)
 for _, event in ipairs({ "SPELL_UPDATE_CHARGES", "BAG_UPDATE" }) do
 	ns.On(event, function() ForEachWithAction(UpdateCount) end)
 end
+
+-- The game has loaded an item it could not describe before; a ring may be waiting for it.
+ns.On("GET_ITEM_INFO_RECEIVED", function(_, item)
+	for _, button in ipairs(all) do
+		if button.fc.ringPending == item then
+			UpdateRing(button)
+		end
+	end
+end)

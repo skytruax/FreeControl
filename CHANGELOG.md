@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.0
+
+- Fixed: the mouse pointer did not come out when you pressed its button while playing with the controller. The game hides the pointer for as long as the controller is steering the camera, and version 1.2.0 asked for the pointer without taking the camera off the stick first. It now does that first, and hands the stick back to the camera when you put the pointer away.
+- Y is the mouse button for everyone, and FreeControl binds it, the same way it binds Interact. There is nothing to set up: the entry in the game's Key Bindings screen is gone. If you set FreeControl up before this version and Y had no job, it is the mouse button now, and chat says so once. If you had given Y a job of your own it keeps it; click any no-trigger button on the bar and choose "Mouse pointer on / off".
+- Druids: the right set, the left set and the D-pad now all change with your form, so each form has 20 buttons of its own. Before, one set of eight changed and the other 24 buttons held caster spells you could not use in a form. The both-triggers set and the face buttons stay the same in every form: put your shapeshifts there. The left set and the D-pad show the slots of the game's own action bar for that form, so a bar you set up there is already filled in.
+- Every other class keeps one changing set, as before. "Stance sets" on the settings page (it was "Stance set") lets any class pick more: both trigger sets, or both and the D-pad. `/fc stance` does the same from chat.
+- Fixed: the ring around an equipped item was always green. It now has the colour of the item's rarity, so a rare item is blue and an epic one purple.
+- `/fc status` now shows what the game says about its pointer and its camera mode, how often the mouse button was pressed and what came of it, and whether the game keeps a stance's slots where FreeControl expects them. If the game refuses to bring the pointer out, chat says so once.
+- If the game refuses a call from FreeControl, which it does without raising an error, that is now kept for `/fc status` too.
+
 ## v1.2.0
 
 - New: mouse mode with a way to click. Press Y (the top face button, with no trigger held) and the right stick steers the mouse pointer. Click the left stick for the left mouse button, and hold it to drag; click the right stick for the right mouse button. Press Y again, or move or jump, to put the pointer away. The Y button on the bar shows a pointer and is lit while the pointer is out.
