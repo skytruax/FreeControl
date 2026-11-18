@@ -320,6 +320,10 @@ local function Build(panel)
 		end
 		controls[#controls + 1] = name
 	end
+
+	y = Heading(panel, "Spells", right, y - 8)
+	y = Check(panel, right, y, "Glow when a spell procs", "A button glows while the game says its spell has procced, as on the regular action bars, and while an ability such as Overpower or Riposte has come free for a moment.", "procGlow")
+	y = Check(panel, right, y, "Keep spells at their newest rank", "When you learn a new rank of a spell, the copies on these slots are moved up to it, as the game does for the regular action bars. A lower rank you put on a slot yourself is left alone.", "keepRanks")
 end
 
 function Options:Create()
@@ -419,6 +423,9 @@ local function PrintStatus()
 	end
 	ns.Print(("Cooldown numbers: %s. The game seals combat values from addons: %s"):format(
 		YesNo(db.cooldownNumbers), ns.DescribeSealing()))
+	ns.Print(("Proc glow: %s (the game's proc signal is there: %s). Glowing right now: %s"):format(YesNo(db.procGlow),
+		YesNo(C_SpellActivationOverlay ~= nil), ns.IsBuilt() and ns.Buttons:DescribeGlows() or "nothing"))
+	ns.Print(ns.Ranks:Describe())
 
 	if ns.Mouse:IsAvailable() then
 		local index, key
@@ -473,6 +480,8 @@ local HELP = {
 	"/fc page <1-3> - which controller-bar page to show",
 	"/fc slots gamepad | bars - where the slots are stored",
 	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
+	"/fc glow on | off - glow a button whose spell has procced or come free for a moment",
+	"/fc ranks - move every spell on the bar up to its newest rank now (on | off: do it by itself whenever you learn one)",
 	"/fc key <1-8 | lt | rt> <KEY> - use a different key for a slot or trigger (1-4 D-pad left/up/right/down, 5-8 face left/top/right/bottom)",
 	"/fc stance auto | none | lt | rt | both | ltrt | all - what changes with your stance or form (ltrt = both trigger sets, all = those and the D-pad)",
 	"/fc mouse - bring the controller's mouse pointer out or put it away",
@@ -526,6 +535,13 @@ SlashCmdList.FREECONTROL = function(message)
 		Set("slotSource", first)
 	elseif command == "numbers" and ns.IsOneOf(first, "on", "off") then
 		Set("cooldownNumbers", first == "on")
+	elseif command == "glow" and ns.IsOneOf(first, "on", "off") then
+		Set("procGlow", first == "on")
+	elseif command == "ranks" and ns.IsOneOf(first, "on", "off") then
+		Set("keepRanks", first == "on")
+		ns.Ranks:CheckSoon()
+	elseif command == "ranks" and first == nil then
+		ns.Ranks:CheckAll()
 	elseif command == "key" and SetKey(first, second) then
 		ns.Print("Keys: " .. table.concat(ns.db.keys, " ") .. " | triggers: " .. table.concat(ns.db.modKeys, " "))
 	elseif command == "stance" and ns.IsOneOf(first, unpack(Layout.STANCE_CHOICES)) then

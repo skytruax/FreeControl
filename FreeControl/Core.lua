@@ -22,6 +22,9 @@ local DEFAULTS = {
 	activeScale = 1.2,     -- the set you are holding grows by this much
 	inactiveAlpha = 0.8,   -- the other sets fade to this
 	cooldownNumbers = true, -- count down the seconds left on a slot that is on cooldown
+	procGlow = true,       -- glow a button whose spell has procced, or has come free for a moment
+	keepRanks = true,      -- move a spell on the controller's slots up when a new rank of it is learned
+	ranks = {},            -- per character, what Ranks.lua last saw in each slot
 	labelStyle = "auto",   -- auto | xbox | playstation | nintendo
 	slotSource = "gamepad", -- gamepad (Blizzard's controller-bar slots) | bars (regular action bar slots)
 	page = 1,              -- which of Blizzard's three controller-bar pages to show (gamepad source only)
@@ -120,6 +123,9 @@ local function Sanitize(db)
 	end
 	if db.clickLeft == db.clickRight then
 		db.clickRight = "game"
+	end
+	for character, record in pairs(db.ranks) do
+		if type(record) ~= "table" then db.ranks[character] = nil end
 	end
 	db.mouseTipShown = nil -- used by 1.2.0 only
 	-- Version 1.3.0 kept its own notes on the mouse button. Its "given" meant the button had no
@@ -306,6 +312,7 @@ function ns.Refresh()
 		ns.Bars:Apply()
 		ns.Bindings:Apply()
 		ns.Mouse:Apply()
+		ns.Ranks:CheckSoon() -- ranks learned while FreeControl was off or idle
 	else
 		if built then
 			ns.Bindings:Clear()

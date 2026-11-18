@@ -139,6 +139,13 @@ because Blizzard's bar would be bound to the same buttons.
   pointer's speed can be changed on the settings page. To have Y do something else, click it on
   the bar; any other no-trigger button can be the mouse button instead (choose *Mouse pointer
   on / off*).
+- **Procs:** a button glows gold while its spell has procced. FreeControl follows the game's own
+  proc signal, the one the regular action bars use. Overpower, Victory Rush, Riposte,
+  Counterattack and Mongoose Bite also glow for the moment they can be used, and Ambush when it
+  can be used outside stealth (those go by their English names).
+- **Spell ranks:** learn a new rank and the copy on the bar moves up to it, once you are out of
+  combat. The game does this for its regular action bars but not for the controller's slots
+  outside Gamepad UI mode. A lower rank you put on a slot yourself is left alone.
 - **Stances and forms:** buttons change to different slots when you change stance or form, so
   each one has its own abilities. For most classes that is one set (the right-trigger set,
   unless **Options > Gamepad > Stance bar** names another). A Druid cannot use a single caster
@@ -182,6 +189,8 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc page 2` | Show another of Blizzard's three controller-bar pages. |
 | `/fc slots bars` | Use the regular Left / Bottom Left / Bottom Right / Right action bar slots instead (`gamepad` to go back). |
 | `/fc numbers off` | Hide the countdown numbers on slots that are on cooldown (`on` to show them again). |
+| `/fc glow off` | Stop buttons glowing when a spell procs (`on` to bring it back). |
+| `/fc ranks` | Move every spell on the bar up to its newest rank now. `/fc ranks off` stops FreeControl doing it by itself when you learn one (`on` to bring it back). |
 | `/fc stance all` | What changes with your stance or form: `auto`, `none`, `lt`, `rt`, `both`, `ltrt` (both trigger sets) or `all` (both and the D-pad). |
 | `/fc mouse` | Bring the mouse pointer out or put it away, like the Y button. |
 | `/fc click left PADLSHOULDER` | Use another button as the left (`left`) or right (`right`) mouse click while the pointer is out. `game` leaves that click to the game's own setting. |
@@ -277,6 +286,19 @@ the pointer is out, binds the same buttons to the second, from the secure header
 in a fight. That two-part behaviour is how ConsolePort describes the client to its users. None of
 mouse mode can be tried without the game, so treat it as the least proven part of the addon.
 
+Spell ranks ([Ranks.lua](FreeControl/Ranks.lua)): the game keeps two sets of action bars, one for
+mouse and keyboard and one for the controller, and going by what players see it moves a spell up
+to a newly learned rank only in the set that is in use. FreeControl shows the controller's set in
+the normal interface, so it does that itself. The spell book says which spells are lower ranks
+(`C_SpellBook.IsSpellBookItemLowRank`) and which spell of the same name is the newest; a slot is
+refilled the way a hand would do it (`PickupSpellBookItem`, `PlaceAction`, `ClearCursor`), outside
+combat and with an empty cursor. A slot is only moved up if it held the newest rank the last time
+it was looked at, which is kept per character in the saved settings.
+
+The proc glow ([Buttons.lua](FreeControl/Buttons.lua)) asks what Blizzard's own action buttons ask,
+`C_SpellActivationOverlay.IsSpellOverlayed`, on the same two events. The short list of abilities
+that only come free for a moment is in `Layout.REACTIVE`.
+
 Stances ([Layout.lua](FreeControl/Layout.lua)) are state drivers on the buttons' `action`
 attribute, one `[bonusbar:N]` clause per stance, so they switch in a fight. A changing button
 needs somewhere to keep its action for each stance, and the game has two such places: the
@@ -306,7 +328,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 118 scenarios, runs on every push):
+**Mock client** (fast, 156 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -320,7 +342,7 @@ the client in camera mode where the pointer stays hidden until that is ended, an
 pointer is out its two click buttons become mouse clicks. It is a model, so a pass shows the addon
 is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 29 tests, about six seconds):
+**Simulator** (Blizzard's real interface code, 31 tests, about ten seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh

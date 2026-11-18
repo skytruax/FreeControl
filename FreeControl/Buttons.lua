@@ -27,6 +27,7 @@ local ART = ns.ART
 local ICON_INSET = 2       -- the icon starts just under the inner edge of the rim
 local ICON_CROP = 0.07     -- trims the built-in border most spell icons have (square buttons)
 local MIN_COUNTDOWN = 1750 -- milliseconds: shorter cooldowns (the global cooldown) show no number
+local PROC_SIZE = Layout.BUTTON_SIZE * 128 / 88 -- the glow's picture is larger than the button: see proc() in tools/make_art.py
 
 local all = {}     -- every visible action button
 local bySlot = {}  -- [slot] = { [button] = true }, for events that name a slot
@@ -35,22 +36,83 @@ local activeSet = 0
 ---------------------------------------------------------------------------
 -- Drawing an action
 ---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- The glow of a proc
+---------------------------------------------------------------------------
+-- A button glows while the game says its spell has procced: the same question Blizzard's own
+-- action buttons ask (C_SpellActivationOverlay.IsSpellOverlayed), answered by the same two events,
+-- so whatever lights up on the regular bars lights up here.
+--
+-- A handful of abilities are never marked that way: they simply cannot be used until something
+-- has happened (Layout.REACTIVE). Those glow from the moment they come free until the game takes
+-- them back, they are used, or Layout.REACTIVE_TIME has passed.
+--
+-- The glow is a picture on the button's overlay frame, shown by alpha and pulsed by an
+-- animation, neither of which the game restricts in combat.
+local function IsReactiveFree(fc)
+	if not (fc.reactive and fc.ready and fc.freeSince) or GetTime() - fc.freeSince >= Layout.REACTIVE_TIME then
+		return false
+	end
+	return fc.reactive ~= "unstealthed" or not IsStealthed()
+end
+
+local function UpdateGlow(button)
+	local fc = button.fc
+	local glow = false
+	if fc.hasAction and ns.db.procGlow then
+		glow = (fc.spell ~= nil and C_SpellActivationOverlay ~= nil and C_SpellActivationOverlay.IsSpellOverlayed(fc.spell))
+			or IsReactiveFree(fc)
+	end
+	if glow == fc.glowing then
+		return
+	end
+	fc.glowing = glow
+	if glow then
+		fc.proc:SetAlpha(1)
+		fc.procPulse:Play()
+	else
+		fc.procPulse:Stop()
+		fc.proc:SetAlpha(0)
+	end
+end
+
+-- Follows an ability that can only be used for a moment after something has happened. "Locked"
+-- is unusable for a reason other than power: that is its resting state. Coming out of it is the
+-- moment it came free.
+local function NoteReactive(button, usable, lackingResources)
+	local fc = button.fc
+	local locked = not usable and not lackingResources
+	if locked then
+		fc.freeSince = nil
+	elseif fc.locked then
+		fc.freeSince = GetTime()
+		-- Nothing announces that the time is up, so the glow is looked at again when it is.
+		C_Timer.After(Layout.REACTIVE_TIME, function()
+			ns.Try(UpdateGlow, button)
+		end)
+	end
+	fc.locked = locked
+	fc.ready = usable
+end
+
 local function UpdateUsable(button)
 	local fc = button.fc
 	if not fc.hasAction then
 		return
 	end
+	local usable, lackingResources = C_ActionBar.IsUsableAction(fc.slot)
 	if fc.outOfRange then
 		fc.icon:SetVertexColor(0.9, 0.25, 0.25)
-		return
-	end
-	local usable, lackingResources = C_ActionBar.IsUsableAction(fc.slot)
-	if usable then
+	elseif usable then
 		fc.icon:SetVertexColor(1, 1, 1)
 	elseif lackingResources then
 		fc.icon:SetVertexColor(0.5, 0.5, 1)
 	else
 		fc.icon:SetVertexColor(0.4, 0.4, 0.4)
+	end
+	if fc.reactive then
+		NoteReactive(button, usable, lackingResources)
+		UpdateGlow(button)
 	end
 end
 
@@ -122,8 +184,8 @@ local function UpdateRing(button)
 		return
 	end
 	local r, g, b = unpack(EQUIPPED_COLOR)
-	local actionType, item = GetActionInfo(fc.slot)
-	if actionType == "item" and item and not ns.IsSealed(item) then
+	local item = fc.item
+	if item then
 		local quality = C_Item.GetItemQualityByID(item)
 		if quality then
 			r, g, b = C_Item.GetItemQualityColor(quality)
@@ -137,10 +199,34 @@ end
 
 local ShowTooltip
 
+-- What is in the slot, as far as the pictures need to know: the item for the ring, the spell for
+-- the glow. On a client that seals what is in a slot, neither is known while it does.
+local function ReadAction(fc)
+	local item, spell
+	if fc.hasAction then
+		local kind, id, subKind = GetActionInfo(fc.slot)
+		if id and not ns.IsSealed(id) then
+			if kind == "item" then
+				item = id
+			elseif kind == "spell" or (kind == "macro" and subKind == "spell") then
+				spell = id
+			end
+		end
+	end
+	if spell ~= fc.spell then
+		-- A different spell: what was known about the old one coming free no longer applies. A
+		-- redraw of the same spell must leave that alone, or it would end a glow in mid-fight.
+		fc.reactive = spell and Layout.REACTIVE[C_Spell.GetSpellName(spell) or ""] or nil
+		fc.locked, fc.ready, fc.freeSince = nil, nil, nil
+	end
+	fc.item, fc.spell = item, spell
+end
+
 local function Update(button)
 	local fc = button.fc
 	local slot = fc.slot
 	fc.hasAction = slot ~= nil and C_ActionBar.HasAction(slot)
+	ReadAction(fc)
 	if fc.hasAction then
 		fc.icon:SetTexture(C_ActionBar.GetActionTexture(slot))
 		ShowIcon(fc, true)
@@ -157,6 +243,7 @@ local function Update(button)
 		fc.name:SetText("")
 	end
 	UpdateRing(button)
+	UpdateGlow(button)
 	UpdateState(button)
 	UpdateBadge(button)
 	if GameTooltip:GetOwner() == button then
@@ -492,6 +579,21 @@ local function CreateActionButton(set, index, parent)
 	fc.name:SetHeight(10)
 	fc.name:SetWordWrap(false)
 
+	-- The glow of a proc (UpdateGlow), spilling past the rim. It is added to what is under it.
+	fc.proc = fc.overlay:CreateTexture(nil, "BORDER")
+	fc.proc:SetTexture(ART .. fc.shape .. "-Proc")
+	fc.proc:SetPoint("CENTER")
+	fc.proc:SetSize(PROC_SIZE, PROC_SIZE)
+	fc.proc:SetBlendMode("ADD")
+	fc.proc:SetAlpha(0)
+	fc.procPulse = fc.proc:CreateAnimationGroup()
+	fc.procPulse:SetLooping("BOUNCE")
+	local fade = fc.procPulse:CreateAnimation("Alpha")
+	fade:SetFromAlpha(1)
+	fade:SetToAlpha(0.4)
+	fade:SetDuration(0.5)
+	fade:SetSmoothing("IN_OUT")
+
 	-- Anchored to the overlay, not the button, so showing it never touches a protected frame.
 	fc.badge = fc.overlay:CreateTexture(nil, "OVERLAY")
 	fc.badge:SetSize(15, 15)
@@ -734,6 +836,17 @@ function Buttons:GetSlot(set, index)
 	return button and button.fc.slot
 end
 
+-- For /fc status: the names of the buttons that are glowing, or "nothing".
+function Buttons:DescribeGlows()
+	local names = {}
+	for _, button in ipairs(all) do
+		if button.fc.glowing then
+			names[#names + 1] = Layout.GetButtonName(button.fc.set, button.fc.index)
+		end
+	end
+	return #names > 0 and table.concat(names, ", ") or "nothing"
+end
+
 ---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
@@ -747,7 +860,10 @@ ns.On("ACTIONBAR_SLOT_CHANGED", function(_, slot)
 	end
 end)
 
-for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_SHAPESHIFT_FORM", "SPELL_UPDATE_ICON", "PLAYER_EQUIPMENT_CHANGED" }) do
+-- The last two are raised when the spell book changes: learning a new rank can change what a slot
+-- holds without the slot itself being announced.
+for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_SHAPESHIFT_FORM", "SPELL_UPDATE_ICON", "PLAYER_EQUIPMENT_CHANGED",
+	"SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE" }) do
 	ns.On(event, UpdateAll)
 end
 
@@ -787,6 +903,12 @@ end)
 
 for _, event in ipairs({ "SPELL_UPDATE_CHARGES", "BAG_UPDATE" }) do
 	ns.On(event, function() ForEachWithAction(UpdateCount) end)
+end
+
+-- A proc has begun or ended. The event names one spell; every button is asked again, which is
+-- cheap and does not depend on the event naming the same rank of the spell as the slot holds.
+for _, event in ipairs({ "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW", "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" }) do
+	ns.On(event, function() ForEachWithAction(UpdateGlow) end)
 end
 
 -- The game has loaded an item it could not describe before; a ring may be waiting for it.

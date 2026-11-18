@@ -14,7 +14,10 @@
 --     mouse buttons: a real click over the interface, the button's own binding over the world;
 --   * using the controller puts the client in camera mode ("free look"), in which the pointer is
 --     hidden even if a stick has been told to steer it. FreeControl 1.2.0 asked for the pointer
---     without ending camera mode, and a player pressing its button saw nothing.
+--     without ending camera mode, and a player pressing its button saw nothing;
+--   * learning a new rank of a spell changes the spell book and nothing else: the controller's
+--     slots keep the rank they hold, which is what players saw up to FreeControl 1.3.2. A slot is
+--     filled through the cursor, outside combat, as a hand would fill it.
 --
 -- The secure click logic is a port of SecureActionButton_OnClick from Blizzard_FrameXML/
 -- SecureTemplates.lua (build 1.60.1). It is a model of the client, not the client: a pass here
@@ -64,6 +67,14 @@ local M = {
 	class = "ROGUE",       -- the player's class, as UnitClass names it
 	itemQuality = {},      -- [item id] = rarity, for the items the client has loaded
 	sealActionInfo = false, -- a client that seals what is in a slot while restrictions are in force
+	book = {},             -- the spell book: { spell =, name =, low = true for a lower rank, passive =, offSpec = }
+	spellNames = {},       -- [spell id] = name, for spells that are not in the book
+	overlayed = {},        -- [spell id] = true while the game says the spell has procced
+	stealthed = false,
+	guid = "Player-1-00000001",
+	refusePlace = false,   -- a client that will not take what is dropped on a slot
+	refusePickup = false,  -- a client that will not hand over a spell from the spell book
+	timers = {},           -- C_Timer.After calls waiting: { due =, fn = }
 	clicks = {},           -- mouse clicks the client made out of controller buttons: { button, "down" | "up" }
 	secretRestrictions = true, -- the client seals cooldown numbers from addons while in combat
 	cooldownEvents = { "SPELL_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_COOLDOWN" }, -- raised when one starts
@@ -145,6 +156,27 @@ function Region:SetShown(shown) self.shown = shown and true or false end
 function Region:IsShown() return self.shown end
 function Region:SetText(text) self.text = text end
 function Region:GetText() return self.text end
+
+-- Animations: only what is played matters here, not how it looks.
+local Animation = {}
+Animation.__index = Animation
+for _, name in ipairs({ "SetFromAlpha", "SetToAlpha", "SetDuration", "SetSmoothing" }) do
+	Animation[name] = function(self, ...) self.calls[name] = { ... } end
+end
+local AnimationGroup = {}
+AnimationGroup.__index = AnimationGroup
+function AnimationGroup:SetLooping(kind) self.looping = kind end
+function AnimationGroup:CreateAnimation(kind)
+	local animation = setmetatable({ kind = kind, calls = {} }, Animation)
+	self.animations[#self.animations + 1] = animation
+	return animation
+end
+function AnimationGroup:Play() self.playing = true end
+function AnimationGroup:Stop() self.playing = false end
+function AnimationGroup:IsPlaying() return self.playing end
+function Region:CreateAnimationGroup()
+	return setmetatable({ animations = {}, playing = false }, AnimationGroup)
+end
 
 local function NewRegion(kind)
 	return setmetatable({ kind = kind, shown = true, alpha = 1, calls = {} }, Region)
@@ -640,11 +672,23 @@ function IsKeyDown(key) return M.down[key] or false end
 -- Lets time pass: runs the OnUpdate script of every visible frame that has one.
 function M.Advance(seconds)
 	M.now = M.now + seconds
+	local due = {}
+	for i = #M.timers, 1, -1 do
+		if M.timers[i].due <= M.now then table.insert(due, 1, table.remove(M.timers, i).fn) end
+	end
+	for _, fn in ipairs(due) do fn() end
 	for _, frame in ipairs(M.all) do
 		local fn = frame.__scripts.OnUpdate
 		if fn and frame:IsVisible() then fn(frame, seconds) end
 	end
 end
+
+C_Timer = {
+	After = function(seconds, fn)
+		assert(type(seconds) == "number" and type(fn) == "function", "C_Timer.After(seconds, function)")
+		M.timers[#M.timers + 1] = { due = M.now + seconds, fn = fn }
+	end,
+}
 
 function M.Fire(event, ...)
 	local frames = {}
@@ -783,6 +827,7 @@ function GetActionInfo(slot)
 		kind, id, subKind = "item", a.item, nil
 	elseif a.macro then
 		kind, id, subKind = "macro", a.macro, nil
+		if a.macroSpell then id, subKind = a.macroSpell, "spell" end -- a macro that casts a spell names the spell
 	end
 	if M.sealActionInfo and restricted() then id = Seal(id) end
 	return kind, id, subKind
@@ -848,17 +893,118 @@ C_GamepadUI = {
 	end,
 }
 
+-- What the cursor carries: nothing, "action" (something picked up from a slot, which is all the
+-- drag and drop tests need to know), or a spell taken from the spell book: { kind = "spell", spell = }.
+local function setCursor(carried)
+	local was = M.cursor
+	M.cursor = carried
+	if (was ~= nil) ~= (carried ~= nil) then
+		local depth = M.secure
+		M.secure = 0
+		M.Fire("CURSOR_CHANGED", carried == nil)
+		M.secure = depth
+	end
+end
+M.SetCursor = setCursor
+
 function PickupAction(slot)
 	if M.combat and insecure() then error("BLOCKED: PickupAction in combat", 2) end
 	M.picked[#M.picked + 1] = slot
-	M.cursor = "action"
+	setCursor("action")
 end
+-- Dropping a spell on a slot puts it there and leaves what was in the slot on the cursor.
 function PlaceAction(slot)
 	if M.combat and insecure() then error("BLOCKED: PlaceAction in combat", 2) end
 	M.placed[#M.placed + 1] = slot
-	M.cursor = nil
+	local carried = M.cursor
+	if type(carried) == "table" and carried.kind == "spell" then
+		if M.refusePlace then return end
+		local was = M.actions[slot]
+		M.actions[slot] = { texture = "spell " .. carried.spell, spell = carried.spell }
+		setCursor(was and was.spell and { kind = "spell", spell = was.spell } or nil)
+		local depth = M.secure
+		M.secure = 0
+		M.Fire("ACTIONBAR_SLOT_CHANGED", slot)
+		M.secure = depth
+	else
+		setCursor(nil)
+	end
 end
-function GetCursorInfo() return M.cursor end
+function ClearCursor() setCursor(nil) end
+function GetCursorInfo()
+	if type(M.cursor) == "table" then return M.cursor.kind, nil, nil, M.cursor.spell end
+	return M.cursor
+end
+
+-- The spell book. One skill line holds everything in M.book.
+C_SpellBook = {
+	GetNumSpellBookSkillLines = function() return #M.book > 0 and 1 or 0 end,
+	GetSpellBookSkillLineInfo = function(line)
+		if line ~= 1 then return nil end
+		return { name = "Class", itemIndexOffset = 0, numSpellBookItems = #M.book, isGuild = false, shouldHide = false }
+	end,
+	GetSpellBookItemInfo = function(index, bank)
+		assert(bank == 0, "mock only has the player's spell book")
+		local item = M.book[index]
+		if not item then return nil end
+		return { actionID = item.spell, spellID = item.spell, itemType = item.passive == "future" and 2 or 1, name = item.name,
+			subName = "", iconID = 1, isPassive = item.passive == true, isOffSpec = item.offSpec or false, skillLineIndex = 1 }
+	end,
+	IsSpellBookItemLowRank = function(index, bank)
+		assert(bank == 0, "mock only has the player's spell book")
+		return M.book[index] ~= nil and M.book[index].low == true
+	end,
+	PickupSpellBookItem = function(index, bank)
+		if M.combat and insecure() then error("BLOCKED: PickupSpellBookItem in combat", 2) end
+		if M.refusePickup then return end
+		setCursor({ kind = "spell", spell = assert(M.book[index], "no such spell book item").spell })
+	end,
+}
+
+-- A character learns a spell: a new rank makes the one before it a lower rank. The book changes
+-- and the client says so; no slot is touched.
+function M.Learn(spell, name)
+	for _, item in ipairs(M.book) do
+		if item.name == name then item.low = true end
+	end
+	M.book[#M.book + 1] = { spell = spell, name = name }
+	local depth = M.secure
+	M.secure = 0
+	M.Fire("LEARNED_SPELL_IN_SKILL_LINE", spell, 1, false)
+	M.Fire("SPELLS_CHANGED")
+	M.secure = depth
+end
+
+C_Spell = C_Spell or {}
+function C_Spell.GetSpellName(spell)
+	for _, item in ipairs(M.book) do
+		if item.spell == spell then return item.name end
+	end
+	return M.spellNames[spell]
+end
+
+-- Procs, as the game marks them for its own action buttons.
+C_SpellActivationOverlay = {
+	IsSpellOverlayed = function(spell)
+		if IsSealed(spell) and insecure() then
+			error("IsSpellOverlayed: secret values are only allowed during untainted execution for this argument", 2)
+		end
+		assert(type(spell) == "number", "IsSpellOverlayed wants a spell id")
+		return M.overlayed[spell] == true
+	end,
+}
+function M.Proc(spell, on)
+	M.overlayed[spell] = on or nil
+	local depth = M.secure
+	M.secure = 0
+	M.Fire(on and "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE", spell)
+	M.secure = depth
+end
+function IsStealthed() return M.stealthed end
+function UnitGUID(unit)
+	assert(unit == "player", "mock only knows the player")
+	return M.guid
+end
 function IsModifiedClick(action) return action == "PICKUPACTION" and M.pickupModifier end
 
 ---------------------------------------------------------------------------
@@ -888,7 +1034,11 @@ function xpcall(fn, handler, ...)
 end
 
 C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "test" or nil end }
-Enum = { InputDeviceInterfaceType = { Mkb = 0, Gamepad = 1 } }
+Enum = {
+	InputDeviceInterfaceType = { Mkb = 0, Gamepad = 1 },
+	SpellBookSpellBank = { Player = 0, Pet = 1 },
+	SpellBookItemType = { None = 0, Spell = 1, FutureSpell = 2, PetAction = 3, Flyout = 4 },
+}
 C_InputInterfaceStyle = { GetCurrentStyle = function() return M.gamepadUI and 1 or 0 end }
 C_GamePad = {
 	IsEnabled = function() return M.cvars.GamePadEnable == "1" end,

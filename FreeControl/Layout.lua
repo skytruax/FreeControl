@@ -207,6 +207,29 @@ function Layout.GetCommandInfo(command)
 end
 
 ---------------------------------------------------------------------------
+-- Abilities that come free for a moment
+---------------------------------------------------------------------------
+-- Most procs are marked by the game itself, and a button glows for those whatever the spell is
+-- (Buttons.lua). A few abilities are different: they cannot be used at all until something has
+-- happened (the target dodged, the player parried, an enemy died), and all the game does then is
+-- light the button up, which is easy to miss in a fight. These are glowed for as long as they stay
+-- usable after coming free.
+--
+-- They are matched by name, in English, because that is all that is known about them here: on a
+-- client in another language nothing in this list matches and nothing glows that should not.
+-- The value is true, or "unstealthed" for an ability that is always usable from stealth and
+-- counts as having come free only outside it.
+Layout.REACTIVE = {
+	["Overpower"] = true,
+	["Victory Rush"] = true,
+	["Riposte"] = true,
+	["Counterattack"] = true,
+	["Mongoose Bite"] = true,
+	["Ambush"] = "unstealthed",
+}
+Layout.REACTIVE_TIME = 20 -- seconds a glow may last; the game takes the ability back sooner than that
+
+---------------------------------------------------------------------------
 -- Action slots
 ---------------------------------------------------------------------------
 -- Blizzard's Gamepad UI keeps its cross hotbar in action slots of its own, away from the regular
@@ -253,6 +276,19 @@ end
 
 function Layout.HasStanceSlots()
 	return gamepad.stanceValid
+end
+
+-- The first and the last of the controller's slots: its three pages and, where the client has
+-- them, the stance bars after those. Nothing when the client has no usable controller slots.
+function Layout.GetGamepadSlotRange()
+	if not gamepad.pagesValid then
+		return nil
+	end
+	local last = gamepad.first + PAGE_SLOTS * NUM_PAGES - 1
+	if gamepad.stanceValid then
+		last = last + NUM_STANCE_BARS * 8
+	end
+	return gamepad.first, last
 end
 
 -- The slot source in use: the saved choice, or the regular bars when this client has no usable

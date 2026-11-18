@@ -140,7 +140,7 @@ class Painter:
         """One button. index is 1-4 for the D-pad (square) and 5-8 for the face buttons (round).
 
         content: None or ("pass",) for an empty slot, ("icon", ability) or ("role", name).
-        state: normal, cooldown, unusable, nomana, range, checked, pushed or hover; or
+        state: normal, cooldown, unusable, nomana, range, checked, pushed, hover or proc; or
         ("cooldown", "14") to print the seconds left as the addon's cooldown numbers do.
         """
         countdown = None
@@ -161,7 +161,7 @@ class Painter:
         if icon is not None:
             inner = round(size - 2 * ICON_INSET * k)
             clip = self.tex(shape + "-Mask", inner, inner).getchannel("A")
-            if round_shape:
+            if round_shape or content[0] == "role":  # the addon's own icons have no border to trim
                 icon = sized(icon, inner, inner)
             else:
                 w = icon.width
@@ -191,6 +191,9 @@ class Painter:
             paste(canvas, self.tex(shape + "-Checked", size, size), cx, cy, alpha)
         if state == "hover":
             paste(canvas, self.tex(shape + "-Highlight", size, size), cx, cy, alpha, add=True)
+        if state == "proc":  # the glow's picture is larger than the button: see proc() in make_art.py
+            glow = size * 128 / 88
+            paste(canvas, self.tex(shape + "-Proc", glow, glow), cx, cy, alpha, add=True)
         if count is not None:
             d = ImageDraw.Draw(canvas)
             d.text((cx + size / 2 - 4.5 * k, cy + size / 2 - 5 * k), count, anchor="rs", font=FONT(round(10 * k), "Bold"),

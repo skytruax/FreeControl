@@ -226,6 +226,26 @@ def button_art(shape):
 
 
 # ---------------------------------------------------------------------------
+# The glow of a proc: 128 x 128, with the button itself taking up the middle 88 pixels, so the
+# glow has room to spill past the rim. Drawn additively in game.
+# ---------------------------------------------------------------------------
+PROC_BOX = 88
+
+
+def proc(shape):
+    scale = PROC_BOX / B
+    edge = (B - PROC_BOX) / 2 + RING_OUT * scale  # where the rim's outer edge falls in this picture
+    line = subtract(shape_mask(B, B, shape, edge - 1.2, (R_OUT + 1.6) * scale),
+                    shape_mask(B, B, shape, edge + 2.4, (R_OUT - 3.2) * scale))
+    band = subtract(shape_mask(B, B, shape, edge - 4.5, (R_OUT + 6) * scale),
+                    shape_mask(B, B, shape, edge + 7.5, (R_OUT - 9) * scale))
+    # A wide soft halo, a narrower bright one, and a hot line where the rim is.
+    return over(layer(GOLD, blur(band, 5.5), 0.85),
+                layer((255, 232, 150), blur(line, 2.2), 0.95),
+                layer((255, 250, 226), blur(line, 0.7), 1.0))
+
+
+# ---------------------------------------------------------------------------
 # Glyphs: 64 x 64 discs naming a controller button
 # ---------------------------------------------------------------------------
 G = 64
@@ -642,6 +662,8 @@ def _drawings():
             out[prefix + "-" + part] = (img, B, B)
     out["Round-Mask"] = (round_mask(), B, B)
     out["Square-Mask"] = (square_mask(), B, B)
+    out["Round-Proc"] = (proc("round"), B, B)
+    out["Square-Proc"] = (proc("square"), B, B)
     for letter in "ABXY":
         out["Glyph-" + letter] = (glyph_letter(letter), G, G)
     for name in ("Cross", "Circle", "Square", "Triangle"):

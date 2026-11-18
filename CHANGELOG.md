@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.0
+
+- Fixed: when you learned a new rank of a spell, the copy on the bar stayed at the old rank. The game moves spells on its regular action bars up by itself, but not the ones on the controller's slots while you are outside Gamepad UI mode, and those are the slots FreeControl shows. FreeControl now moves them up itself, out of combat, and chat names the spells it moved.
+- The first time each character logs in with this version, every spell on its controller slots that is on a lower rank is moved up once, since nothing kept them current before. After that, a lower rank you put on a slot yourself is left alone. `/fc ranks` moves everything up on request, and "Keep spells at their newest rank" on the settings page switches the whole thing off.
+- New: a button glows gold while its spell has procced. FreeControl follows the game's own proc signal, the one its regular action bars use, so what lights up there lights up here.
+- New: Overpower, Victory Rush, Riposte, Counterattack and Mongoose Bite glow for the moment they can be used, and Ambush when it can be used outside stealth. The game only lights those buttons up, which is easy to miss. This part goes by the abilities' English names, so it works on an English client only.
+- "Glow when a spell procs" on the settings page, or `/fc glow off`, switches the glow off. `/fc status` says what is glowing and which spells are on a lower rank.
+
 ## v1.3.2
 
 - The mouse button now wears FreeControl's mascot where the arrow was: a little black dog that is half chihuahua, half beetle. The button does what it did: it brings the mouse pointer out, puts it away, and is lit while the pointer is out.

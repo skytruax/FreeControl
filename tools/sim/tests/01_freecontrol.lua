@@ -460,6 +460,92 @@ test("the click buttons are the stick clicks where the client has the settings, 
 	NothingRefused()
 end)
 
+test("a proc makes the button glow and pulse, in combat too, and nothing of ours is refused", function()
+	Reset()
+	A_Admin.SetActionSlot(38, SPELL)
+	A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", 38)
+	local fc = FreeControlButton0_2.fc
+	assertEquals(SPELL, fc.spell) -- read with GetActionInfo, as Blizzard's own buttons read it
+	Near(0, fc.proc:GetAlpha())
+	-- The simulator has no procs of its own; this stands in for the game saying one has begun.
+	local real, procced = C_SpellActivationOverlay.IsSpellOverlayed, false
+	C_SpellActivationOverlay.IsSpellOverlayed = function(spell) return procced and spell == SPELL end
+	A_Admin.SetInCombat(true)
+	procced = true
+	A_Admin.FireEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW", SPELL)
+	local shown, pulsing = fc.proc:GetAlpha(), fc.procPulse:IsPlaying()
+	procced = false
+	A_Admin.FireEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE", SPELL)
+	local hidden, still = fc.proc:GetAlpha(), fc.procPulse:IsPlaying()
+	A_Admin.SetInCombat(false)
+	C_SpellActivationOverlay.IsSpellOverlayed = real
+	Near(1, shown)
+	assertTrue(pulsing)
+	Near(0, hidden)
+	assertFalse(still)
+	assertEquals(0, #ns.GetProblems())
+	NothingRefused()
+end)
+
+test("moving a spell up a rank: the spell book hands it over, the slot takes it, and nothing is refused", function()
+	Reset()
+	-- Controller slots, as in the tests below.
+	local first = C_GamepadUI.GetFirstGamepadActionStorageSlotIndex()
+	local had = C_GamepadUI.IsValidGamepadActionStorageSlotIndex
+	C_GamepadUI.IsValidGamepadActionStorageSlotIndex = function(slot)
+		return slot >= first and slot < first + 124
+	end
+	ns.db.slotSource = "gamepad"
+	assertTrue(ns.RequestRefresh())
+
+	-- The simulator's character has no spell with two ranks, so two of its spells stand in for
+	-- them: the spell book is made to say that the first is a lower rank of the second. What is
+	-- real is the part that could go wrong in the game: picking the spell up from the spell
+	-- book, dropping it on the slot and clearing the cursor, from addon code.
+	local bank = Enum.SpellBookSpellBank.Player
+	local lower, newer
+	for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+		local info = C_SpellBook.GetSpellBookSkillLineInfo(line)
+		for index = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
+			local item = C_SpellBook.GetSpellBookItemInfo(index, bank)
+			if item and item.itemType == Enum.SpellBookItemType.Spell and not item.isPassive and not item.isOffSpec and item.name ~= "" then
+				if not lower then
+					lower = { index = index, spell = item.spellID or item.actionID }
+				elseif not newer and item.name ~= C_SpellBook.GetSpellBookItemInfo(lower.index, bank).name then
+					newer = { index = index, spell = item.spellID or item.actionID, name = item.name }
+				end
+			end
+		end
+	end
+	assertNotNil(lower)
+	assertNotNil(newer)
+	local realInfo, realLow = C_SpellBook.GetSpellBookItemInfo, C_SpellBook.IsSpellBookItemLowRank
+	C_SpellBook.GetSpellBookItemInfo = function(index, spellBank)
+		local item = realInfo(index, spellBank)
+		if item and index == lower.index then item.name = newer.name end
+		return item
+	end
+	C_SpellBook.IsSpellBookItemLowRank = function(index) return index == lower.index end
+
+	A_Admin.SetActionSlot(first + 4, lower.spell)
+	A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", first + 4)
+	SlashCmdList.FREECONTROL("ranks")
+	local _, now = GetActionInfo(first + 4)
+	local carried = GetCursorInfo()
+
+	C_SpellBook.GetSpellBookItemInfo, C_SpellBook.IsSpellBookItemLowRank = realInfo, realLow
+	A_Admin.ClearActionSlot(first + 4)
+	ns.db.ranks = {}
+	ns.db.slotSource = "bars"
+	ns.RequestRefresh()
+	C_GamepadUI.IsValidGamepadActionStorageSlotIndex = had
+
+	assertEquals(newer.spell, now)
+	assertNil(carried)
+	assertEquals(0, #ns.GetProblems())
+	NothingRefused()
+end)
+
 -- The simulator does not copy GameTooltip:SetText into the first line's font string, so these
 -- check the lines added after the title (AddLine), which it does model.
 test("tooltips work on slots and on command buttons", function()

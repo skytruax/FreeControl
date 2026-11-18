@@ -1834,3 +1834,594 @@ test("the game refusing a call is kept for status, with which call it was", func
 	truthy(Printed("2 time%(s%): The game refused to let FreeControl call SetGamePadCursorControl%(%)"), "and status names the call")
 	eq(#M.luaErrors, 0, "it is not a Lua error, so nothing goes to the error handler")
 end)
+
+---------------------------------------------------------------------------
+-- The glow of a proc
+---------------------------------------------------------------------------
+local function Glowing(button)
+	local fc = button.fc
+	eq(fc.procPulse:IsPlaying(), fc.proc:GetAlpha() == 1, "the glow pulses exactly while it shows")
+	return fc.proc:GetAlpha() == 1
+end
+
+-- Puts something in a slot the way the game reports it.
+local function Fill(slot, action)
+	M.actions[slot] = action
+	M.Fire("ACTIONBAR_SLOT_CHANGED", slot)
+end
+
+test("a button glows while the game says its spell has procced, in a fight too", function()
+	Load()
+	Fill(185, { texture = "icon", spell = 5001 })
+	Fill(186, { texture = "icon", spell = 5002 })
+	local button, other = M.frames.FreeControlButton1_1, M.frames.FreeControlButton1_2
+	eq(Glowing(button), false, "dark to begin with")
+	truthy(button.fc.proc:GetTexture():find("Square%-Proc$"), "the glow of a square button")
+	truthy(M.frames.FreeControlButton1_5.fc.proc:GetTexture():find("Round%-Proc$"), "and of a round one")
+	M.EnterCombat()
+	M.Proc(5001, true)
+	eq(Glowing(button), true, "glows when the game says so")
+	eq(Glowing(other), false, "and only the button with that spell")
+	M.Proc(5002, true)
+	eq(Glowing(other), true, "a second proc glows as well")
+	M.Proc(5001, false)
+	eq(Glowing(button), false, "and stops when the game says it is over")
+	eq(Glowing(other), true, "leaving the other alone")
+	M.LeaveCombat()
+end)
+
+test("a procced spell dropped on a slot glows at once, and taking it away ends the glow", function()
+	Load()
+	M.overlayed[5001] = true
+	local button = M.frames.FreeControlButton1_1
+	Fill(185, { texture = "icon", spell = 5001 })
+	eq(Glowing(button), true, "glows as soon as it is there")
+	Fill(185, { texture = "icon", spell = 5002 })
+	eq(Glowing(button), false, "another spell in the slot does not")
+	Fill(185, { texture = "icon", spell = 5001 })
+	eq(Glowing(button), true, "back again")
+	Fill(185, nil)
+	eq(Glowing(button), false, "an empty slot is dark")
+end)
+
+test("a macro that casts the spell glows, and an item never does", function()
+	Load()
+	Fill(185, { texture = "icon", macro = 4, macroSpell = 5001 })
+	Fill(186, { texture = "icon", item = 5001 })
+	Fill(187, { texture = "icon", macro = 5001 })
+	M.Proc(5001, true)
+	eq(Glowing(M.frames.FreeControlButton1_1), true, "the macro's spell")
+	eq(Glowing(M.frames.FreeControlButton1_2), false, "an item that happens to have the spell's number")
+	eq(Glowing(M.frames.FreeControlButton1_3), false, "nor a macro that happens to")
+end)
+
+test("the glow can be switched off, and status says what is glowing", function()
+	Load()
+	Fill(185, { texture = "icon", spell = 5001 })
+	M.Proc(5001, true)
+	local button = M.frames.FreeControlButton1_1
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Proc glow: yes %(the game's proc signal is there: yes%)%. Glowing right now: LT %+ D%-pad Left"), "status names the button")
+	SlashCmdList.FREECONTROL("glow off")
+	eq(ns.db.procGlow, false, "saved")
+	eq(Glowing(button), false, "dark")
+	M.Proc(5001, false)
+	M.Proc(5001, true)
+	eq(Glowing(button), false, "and it stays dark")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Proc glow: no .*Glowing right now: nothing"), "status says so")
+	SlashCmdList.FREECONTROL("glow on")
+	eq(Glowing(button), true, "switched on again, it picks up the proc that is still running")
+end)
+
+test("on a client that seals what is in a slot, nothing glows in a fight and nothing fails", function()
+	M.sealActionInfo = true
+	Load()
+	Fill(185, { texture = "icon", spell = 5001 })
+	local button = M.frames.FreeControlButton1_1
+	M.EnterCombat()
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 185)
+	M.Proc(5001, true)
+	eq(Glowing(button), false, "the spell cannot be read, so it is not asked about")
+	M.LeaveCombat()
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 185)
+	eq(Glowing(button), true, "once it can be read the glow is there")
+end)
+
+test("a client without the proc signal gets no glow from it, and no errors", function()
+	C_SpellActivationOverlay = nil
+	Load()
+	Fill(185, { texture = "icon", spell = 5001 })
+	M.Fire("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW", 5001)
+	eq(Glowing(M.frames.FreeControlButton1_1), false, "nothing to ask")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("the game's proc signal is there: no"), "and status says why")
+end)
+
+-- An ability that cannot be used until something has happened.
+local function Reactive(slot, name, spell)
+	M.spellNames[spell] = name
+	Fill(slot, { texture = "icon", spell = spell, usable = false })
+end
+
+local function ComeFree(slot)
+	M.actions[slot].usable, M.actions[slot].noMana = true, nil
+	M.Fire("ACTIONBAR_UPDATE_USABLE")
+end
+
+local function TakenBack(slot)
+	M.actions[slot].usable, M.actions[slot].noMana = false, nil
+	M.Fire("ACTIONBAR_UPDATE_USABLE")
+end
+
+test("an ability that comes free for a moment glows until the game takes it back", function()
+	Load()
+	Reactive(185, "Overpower", 7384)
+	Reactive(186, "Eviscerate", 2098) -- unusable without combo points, but not one of these
+	local button, finisher = M.frames.FreeControlButton1_1, M.frames.FreeControlButton1_2
+	eq(Glowing(button), false, "dark while it cannot be used")
+	M.EnterCombat()
+	ComeFree(185)
+	eq(Glowing(button), true, "glows when the target dodges and it comes free")
+	ComeFree(186)
+	eq(Glowing(finisher), false, "an ordinary ability becoming usable does not")
+	TakenBack(185)
+	eq(Glowing(button), false, "and stops when the moment has passed")
+	ComeFree(185)
+	eq(Glowing(button), true, "the next time, again")
+	M.LeaveCombat()
+end)
+
+test("an ability that was usable when first seen does not glow: nothing has just happened", function()
+	Load()
+	M.spellNames[7384] = "Overpower"
+	Fill(185, { texture = "icon", spell = 7384 })
+	local button = M.frames.FreeControlButton1_1
+	eq(Glowing(button), false, "no glow at login")
+	M.Fire("ACTIONBAR_UPDATE_USABLE")
+	eq(Glowing(button), false, "nor at the next look")
+end)
+
+test("an ability that comes free while there is no rage for it glows once there is", function()
+	Load()
+	Reactive(185, "Overpower", 7384)
+	local button = M.frames.FreeControlButton1_1
+	M.actions[185].noMana = true -- free, but not enough rage: the game reports that instead
+	M.Fire("ACTIONBAR_UPDATE_USABLE")
+	eq(Glowing(button), false, "not while it still cannot be pressed")
+	ComeFree(185)
+	eq(Glowing(button), true, "as soon as it can")
+	M.Advance(15)
+	M.actions[185].usable, M.actions[185].noMana = false, true
+	M.Fire("ACTIONBAR_UPDATE_USABLE")
+	eq(Glowing(button), false, "dark again when the rage is spent")
+	ComeFree(185)
+	eq(Glowing(button), true, "and back while the moment lasts")
+	M.Advance(5.5)
+	eq(Glowing(button), false, "which is counted from when it came free, not from when the rage came back")
+end)
+
+test("the glow of an ability that came free ends by itself after twenty seconds", function()
+	Load()
+	Reactive(185, "Victory Rush", 34428)
+	local button = M.frames.FreeControlButton1_1
+	ComeFree(185)
+	eq(Glowing(button), true, "glowing")
+	M.Advance(19)
+	eq(Glowing(button), true, "still, a second before")
+	M.Advance(1.1)
+	eq(Glowing(button), false, "and over, though the game never said so")
+	M.Fire("ACTIONBAR_UPDATE_USABLE")
+	eq(Glowing(button), false, "and it stays over while the ability stays usable")
+	TakenBack(185)
+	ComeFree(185)
+	eq(Glowing(button), true, "until it comes free afresh")
+end)
+
+test("a redraw in the middle of the moment does not end the glow, another spell in the slot does", function()
+	Load()
+	Reactive(185, "Riposte", 14251)
+	local button = M.frames.FreeControlButton1_1
+	ComeFree(185)
+	M.Fire("SPELL_UPDATE_ICON")
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 0)
+	eq(Glowing(button), true, "still glowing after everything was redrawn")
+	Fill(185, { texture = "icon", spell = 5002 })
+	eq(Glowing(button), false, "a different spell starts from nothing")
+	M.spellNames[14251] = "Riposte"
+	Fill(185, { texture = "icon", spell = 14251 })
+	eq(Glowing(button), false, "and so does the same one, put back while usable")
+end)
+
+test("an ability that is always usable from stealth glows only when it comes free outside it", function()
+	Load()
+	Reactive(185, "Ambush", 8676)
+	local button = M.frames.FreeControlButton1_1
+	M.stealthed = true
+	ComeFree(185)
+	eq(Glowing(button), false, "usable because of stealth: nothing to point out")
+	M.stealthed = false
+	TakenBack(185)
+	ComeFree(185)
+	eq(Glowing(button), true, "usable in the open: that is the proc")
+end)
+
+test("abilities that come free do not glow with the glow switched off", function()
+	Load({ procGlow = false })
+	Reactive(185, "Overpower", 7384)
+	ComeFree(185)
+	eq(Glowing(M.frames.FreeControlButton1_1), false, "dark")
+end)
+
+---------------------------------------------------------------------------
+-- Spell ranks
+---------------------------------------------------------------------------
+local function SpellIn(slot)
+	return M.actions[slot] and M.actions[slot].spell
+end
+
+-- A character that knows Fireball rank 1 and Frost Nova, with both on the left set.
+local function Mage(saved)
+	M.book = { { spell = 101, name = "Fireball" }, { spell = 201, name = "Frost Nova" } }
+	M.actions[185] = { texture = "icon", spell = 101 }
+	M.actions[186] = { texture = "icon", spell = 201 }
+	Load(saved)
+	M.Advance(0.02) -- the first look at the slots
+end
+
+test("a spell on the bar moves up when a new rank of it is learned", function()
+	Mage()
+	eq(#M.printed, 2, "nothing to say about ranks at login: only the first-login lines")
+	M.Learn(102, "Fireball")
+	eq(SpellIn(185), 101, "not on the spot: on the next frame")
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "the slot holds the new rank")
+	eq(SpellIn(186), 201, "another spell is not touched")
+	eq(M.cursor, nil, "and the old rank is not left on the cursor")
+	truthy(Printed("Moved up to the newest rank on your bar: Fireball%."), "chat says so")
+	eq(Printed("The game does not keep"), false, "without the explanation meant for the first time")
+	eq(ns.Buttons:GetSlot(1, 1), 185, "the button still shows its slot")
+	eq(M.frames.FreeControlButton1_1.fc.spell, 102, "and has drawn what is in it now")
+	M.Learn(103, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 103, "and again for the rank after that")
+end)
+
+test("a slot whose spell the game changed without announcing the slot is redrawn when the spell book changes", function()
+	Mage()
+	local button = M.frames.FreeControlButton1_1
+	eq(button.fc.spell, 101, "drawn as rank 1")
+	M.actions[185] = { texture = "icon two", spell = 102 } -- the game moved it up itself, and said nothing about the slot
+	M.book = { { spell = 101, name = "Fireball", low = true }, { spell = 102, name = "Fireball" }, { spell = 201, name = "Frost Nova" } }
+	M.Fire("SPELLS_CHANGED")
+	eq(button.fc.spell, 102, "the button knows what it holds now")
+	eq(button.fc.icon:GetTexture(), "icon two", "and shows it")
+	M.actions[185] = { texture = "icon three", spell = 103 }
+	M.Fire("LEARNED_SPELL_IN_SKILL_LINE", 103, 1, false)
+	eq(button.fc.icon:GetTexture(), "icon three", "the other event for a learned spell does the same")
+end)
+
+test("a spell that the book files under another number while something overrides it still counts as moved", function()
+	Mage()
+	local real = C_SpellBook.GetSpellBookItemInfo
+	C_SpellBook.GetSpellBookItemInfo = function(index, bank) -- the book's rank 2 is shown as an overriding spell
+		local item = real(index, bank)
+		if item and item.actionID == 102 then item.spellID = 9102 end
+		return item
+	end
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "the slot holds what the book handed over")
+	truthy(Printed("Moved up to the newest rank on your bar: Fireball"), "and that counts as moved")
+	eq(Printed("Could not be moved up"), false, "not as refused")
+	eq(ns.db.ranks[M.guid][185], 102, "remembered under the number the slot gives")
+end)
+
+test("before the game can say whose slots these are, nothing is decided", function()
+	M.book = { { spell = 101, name = "Fireball", low = true }, { spell = 102, name = "Fireball" } }
+	M.actions[185] = { texture = "icon", spell = 101 }
+	M.guid = nil
+	Load()
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "nothing moved")
+	eq(next(ns.db.ranks), nil, "and nothing recorded")
+	M.guid = "Player-1-00000001"
+	M.Fire("SPELLS_CHANGED")
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "moved up once the character is known")
+end)
+
+test("a lower rank the player put on a slot is left alone", function()
+	Mage()
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	Fill(187, { texture = "icon", spell = 101 }) -- rank 1 on purpose, next to rank 2
+	M.Advance(0.02)
+	eq(SpellIn(187), 101, "left as it was dropped")
+	M.Learn(103, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 103, "the slot that was on the newest rank moves up")
+	eq(SpellIn(187), 101, "the one chosen on purpose still does not")
+	Fill(187, { texture = "icon", spell = 103 })
+	M.Advance(0.02)
+	M.Learn(104, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(187), 104, "once the player puts the newest rank there, it is looked after like the rest")
+end)
+
+test("the first time a character is seen, every lower rank on the bar is moved up, and chat says why", function()
+	M.book = { { spell = 101, name = "Fireball", low = true }, { spell = 102, name = "Fireball" }, { spell = 201, name = "Frost Nova" } }
+	M.actions[185] = { texture = "icon", spell = 101 }
+	M.actions[190] = { texture = "icon", spell = 101 }
+	M.actions[186] = { texture = "icon", spell = 201 }
+	Load()
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "moved up")
+	eq(SpellIn(190), 102, "both of them")
+	eq(SpellIn(186), 201, "a spell with one rank is left")
+	truthy(Printed("Moved up to the newest rank on your bar: Fireball%."), "named once, though it was in two slots")
+	truthy(Printed("The game does not keep the controller's slots on the newest rank outside Gamepad UI mode"), "with the reason, this once")
+	M.printed = {}
+	Fill(187, { texture = "icon", spell = 101 })
+	M.Advance(0.02)
+	eq(SpellIn(187), 101, "from then on a lower rank is the player's choice")
+	eq(#M.printed, 0, "and nothing is said")
+end)
+
+test("what one character's slots held says nothing about another character's", function()
+	M.book = { { spell = 101, name = "Fireball", low = true }, { spell = 102, name = "Fireball" } }
+	M.actions[185] = { texture = "icon", spell = 101 }
+	Load({ ranks = { ["Player-1-0000BEEF"] = { [185] = 55 } } })
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "a character seen for the first time gets its lower ranks moved up")
+	eq(ns.db.ranks["Player-1-0000BEEF"][185], 55, "and the other character's record is untouched")
+	eq(ns.db.ranks[M.guid][185], 102, "next to its own")
+end)
+
+test("in a fight a new rank waits for the fight to end", function()
+	Mage()
+	M.EnterCombat()
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "slots cannot be filled in combat")
+	M.LeaveCombat()
+	eq(SpellIn(185), 102, "moved up when it is over")
+end)
+
+test("while the player is carrying something, a new rank waits for the cursor to be empty", function()
+	Mage()
+	M.SetCursor("action")
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "not while something is on the cursor")
+	eq(M.cursor, "action", "which is still there")
+	M.SetCursor(nil)
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "moved up once it is put down")
+end)
+
+test("a slot the game will not fill is reported once and not tried over and over", function()
+	Mage()
+	M.refusePlace = true
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "the game did not take it")
+	eq(M.cursor, nil, "and nothing is left on the cursor")
+	truthy(Printed("Could not be moved up to the newest rank: Fireball%. Drag it onto the slot from the spell book%."), "said, with what to do")
+	local lines, drops = #M.printed, #M.placed
+	M.Fire("SPELLS_CHANGED")
+	M.Advance(0.02)
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 185)
+	M.Advance(0.02)
+	eq(#M.printed, lines, "not said again")
+	eq(#M.placed, drops, "and not tried again")
+	M.refusePlace = false
+	M.printed = {}
+	SlashCmdList.FREECONTROL("ranks")
+	eq(SpellIn(185), 102, "asking for it by hand tries afresh")
+	truthy(Printed("Moved up to the newest rank on your bar: Fireball"), "and says so")
+end)
+
+test("if the spell book will not hand the spell over, nothing is dropped on the slot", function()
+	Mage()
+	M.refusePickup = true
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "unchanged")
+	eq(#M.placed, 0, "and nothing was dropped with an empty hand")
+	truthy(Printed("Could not be moved up to the newest rank: Fireball"), "said")
+end)
+
+test("a slot that held something else in between starts afresh", function()
+	Mage()
+	M.Learn(102, "Fireball")
+	M.Advance(0.02) -- slot 185 is on rank 2, and known to be
+	Fill(185, { texture = "icon", item = 900 })
+	M.Advance(0.02)
+	M.Learn(103, "Fireball")
+	M.Advance(0.02)
+	Fill(185, { texture = "icon", spell = 102 }) -- rank 2 again, now on purpose
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "what it held before the item no longer counts")
+end)
+
+test("a slot that held a chosen lower rank in between starts afresh too", function()
+	Mage()
+	M.Learn(102, "Fireball")
+	M.Advance(0.02) -- slot 185 is on rank 2, and known to be
+	Fill(185, { texture = "icon", spell = 101 }) -- rank 1 on purpose
+	M.Advance(0.02)
+	M.Learn(103, "Fireball")
+	M.Advance(0.02)
+	Fill(185, { texture = "icon", spell = 102 }) -- rank 2, now a lower rank, on purpose
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "that it once held rank 2 as the newest no longer counts")
+end)
+
+test("every page and the stance bars are looked after; the regular action bars are the game's own", function()
+	M.book = { { spell = 101, name = "Fireball" } }
+	for _, slot in ipairs({ 5, 185, 213, 241, 265, 304 }) do M.actions[slot] = { texture = "icon", spell = 101 } end
+	Load()
+	M.Advance(0.02)
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "the page that is showing")
+	eq(SpellIn(213), 102, "page 2")
+	eq(SpellIn(241), 102, "page 3")
+	eq(SpellIn(265), 102, "the first stance bar")
+	eq(SpellIn(304), 102, "the last slot of the last stance bar")
+	eq(SpellIn(5), 101, "a regular action bar slot is not FreeControl's to change")
+end)
+
+test("only spells are looked at: items, macros and empty slots are left as they are", function()
+	M.book = { { spell = 101, name = "Fireball", low = true }, { spell = 102, name = "Fireball" } }
+	M.actions[185] = { texture = "icon", item = 101 }
+	M.actions[186] = { texture = "icon", macro = 101 }
+	M.actions[187] = { texture = "icon", macro = 4, macroSpell = 101 }
+	Load()
+	M.Advance(0.02)
+	eq(M.actions[185].item, 101, "an item with the number of a lower rank")
+	eq(M.actions[186].macro, 101, "a macro with that number")
+	eq(M.actions[187].macroSpell, 101, "a macro that casts the lower rank: a macro names its spell itself")
+	eq(#M.placed, 0, "nothing was dropped anywhere")
+	eq(Printed("Moved up"), false, "and nothing is said")
+end)
+
+test("two different spells of one name: a lower rank is not moved to either", function()
+	M.book = { { spell = 101, name = "Blessing", low = true }, { spell = 102, name = "Blessing" }, { spell = 150, name = "Blessing" } }
+	M.actions[185] = { texture = "icon", spell = 101 }
+	Load()
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "there is no telling which of the two it belongs to")
+	eq(#M.placed, 0, "so nothing is tried")
+end)
+
+test("passive spells, another specialisation's spells and spells not yet learned are not ranks to move to", function()
+	M.book = {
+		{ spell = 101, name = "Fireball", low = true },
+		{ spell = 102, name = "Fireball", passive = true },
+		{ spell = 103, name = "Fireball", offSpec = true },
+		{ spell = 104, name = "Fireball", passive = "future" },
+	}
+	M.actions[185] = { texture = "icon", spell = 101 }
+	Load()
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "none of them replaces it")
+	eq(#M.placed, 0, "nothing was tried")
+end)
+
+test("before the spell book is loaded nothing is decided; once it is, the lower ranks move up", function()
+	M.actions[185] = { texture = "icon", spell = 101 }
+	Load()
+	M.Advance(0.02)
+	eq(ns.db.ranks[M.guid], nil, "an empty spell book is not a first look at the character")
+	M.book = { { spell = 101, name = "Fireball", low = true }, { spell = 102, name = "Fireball" } }
+	M.Fire("SPELLS_CHANGED")
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "moved up when the book arrives")
+end)
+
+test("looking after ranks can be switched off, and asked for by hand", function()
+	Mage()
+	SlashCmdList.FREECONTROL("ranks off")
+	eq(ns.db.keepRanks, false, "saved")
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "left alone")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Spell ranks: kept at the newest rank: no%. On a lower rank right now: Fireball%."), "status lists what is behind")
+	M.EnterCombat()
+	SlashCmdList.FREECONTROL("ranks")
+	truthy(Printed("In combat; type it again when the fight is over"), "not in a fight")
+	M.LeaveCombat()
+	M.SetCursor("action")
+	SlashCmdList.FREECONTROL("ranks")
+	truthy(Printed("Put down what is on the cursor first"), "nor with something on the cursor")
+	M.SetCursor(nil)
+	eq(SpellIn(185), 101, "nothing moved by either")
+	SlashCmdList.FREECONTROL("ranks")
+	eq(SpellIn(185), 102, "by hand it moves up")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("ranks")
+	truthy(Printed("Every spell on the controller's slots is at its newest rank"), "and a second time there is nothing to do")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("On a lower rank right now: none"), "as status agrees")
+	SlashCmdList.FREECONTROL("ranks on")
+	eq(ns.db.keepRanks, true, "switched on again")
+	M.Learn(103, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 103, "it follows the next rank by itself")
+end)
+
+test("asking for every rank by hand also moves a lower rank the player had chosen", function()
+	Mage()
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	Fill(187, { texture = "icon", spell = 101 })
+	M.Advance(0.02)
+	SlashCmdList.FREECONTROL("ranks")
+	eq(SpellIn(187), 102, "that is what was asked for")
+end)
+
+test("with FreeControl switched off no slot is touched", function()
+	Mage()
+	SlashCmdList.FREECONTROL("off")
+	M.Learn(102, "Fireball")
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "off: left alone")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("ranks")
+	truthy(Printed("FreeControl is switched off or idle"), "and the command says why")
+	eq(SpellIn(185), 101, "without doing anything")
+	SlashCmdList.FREECONTROL("on")
+	M.Advance(0.02)
+	eq(SpellIn(185), 102, "switched on again, it catches up")
+end)
+
+test("a client whose spell book does not tell lower ranks apart is left alone, and status says so", function()
+	C_SpellBook.IsSpellBookItemLowRank = nil
+	M.book = { { spell = 101, name = "Fireball", low = true }, { spell = 102, name = "Fireball" } }
+	M.actions[185] = { texture = "icon", spell = 101 }
+	Load()
+	M.Advance(0.02)
+	eq(SpellIn(185), 101, "nothing is moved")
+	SlashCmdList.FREECONTROL("ranks")
+	truthy(Printed("This client's spell book does not say which spells are lower ranks"), "the command says why")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Spell ranks: this client's spell book does not say which spells are lower ranks"), "and so does status")
+end)
+
+test("with the regular action bars as the slots there is nothing of the controller's to look after", function()
+	C_GamepadUI = nil
+	M.book = { { spell = 101, name = "Fireball", low = true }, { spell = 102, name = "Fireball" } }
+	M.actions[61] = { texture = "icon", spell = 101 }
+	Load()
+	M.Advance(0.02)
+	eq(SpellIn(61), 101, "the game looks after those itself")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Spell ranks: no controller slots to look after"), "status says so")
+end)
+
+test("a saved record of ranks that makes no sense is dropped", function()
+	Load({ ranks = { broken = 5, ["Player-1-0000BEEF"] = { [185] = 101 } } })
+	eq(ns.db.ranks.broken, nil, "dropped")
+	eq(ns.db.ranks["Player-1-0000BEEF"][185], 101, "a real one is kept")
+end)
+
+test("the settings page has the two spell options", function()
+	Load()
+	local panel = ns.Options.panel
+	panel:GetScript("OnShow")(panel)
+	local found = {}
+	for _, frame in ipairs(M.all) do
+		if frame.Text and frame.Text:GetText() then found[frame.Text:GetText()] = frame end
+	end
+	truthy(found["Glow when a spell procs"], "the glow")
+	truthy(found["Keep spells at their newest rank"], "and the ranks")
+	eq(found["Glow when a spell procs"]:GetChecked(), true, "both ticked to begin with")
+	found["Keep spells at their newest rank"]:SetChecked(false)
+	found["Keep spells at their newest rank"]:GetScript("OnClick")(found["Keep spells at their newest rank"])
+	eq(ns.db.keepRanks, false, "unticking saves it")
+end)
+
