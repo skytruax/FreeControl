@@ -18,6 +18,11 @@
 --   * learning a new rank of a spell changes the spell book and nothing else: the controller's
 --     slots keep the rank they hold, which is what players saw up to FreeControl 1.3.2. A slot is
 --     filled through the cursor, outside combat, as a hand would fill it.
+--   * a character has the stances or forms of its class (M.FORMS, the classic rules). Changing
+--     form changes which stance bar is up for the forms that have one, announces it the way the
+--     client does, and the state drivers follow on the client's next update;
+--   * a key with none of the addon's override bindings on it runs the player's own binding, which
+--     is saved the way the Key Bindings screen saves one and cannot be changed in a fight.
 --
 -- The secure click logic is a port of SecureActionButton_OnClick from Blizzard_FrameXML/
 -- SecureTemplates.lua (build 1.60.1). It is a model of the client, not the client: a pass here
@@ -26,7 +31,8 @@
 local M = {
 	combat = false,
 	secure = 0,            -- > 0 while Blizzard (secure) code is running
-	bonusbar = 0,
+	bonusbar = 0,          -- the stance (bonus) bar that is up: what [bonusbar:N] and GetBonusBarOffset go by
+	form = 0,              -- the shapeshift form the character is in: what [form:N] goes by
 	lockActionBars = true,
 	pickupModifier = false,
 	cursor = nil,
@@ -46,7 +52,10 @@ local M = {
 	actions = {},          -- [slot] = { texture, usable, noMana, cooldown, count, current, equipped, text }
 	used = {},             -- UseAction calls: { slot, unit, button }
 	commands = {},         -- binding commands run: { name, "down" | "up" }
-	bindings = {},         -- [key] = { owner, kind = "click" | "cmd", target, button }
+	bindings = {},         -- override bindings: [key] = { owner, kind = "click" | "cmd", target, button }
+	userBindings = {},     -- the player's own key bindings: [key] = command, as the Key Bindings screen sets them
+	savedBindings = {},    -- SaveBindings calls: the binding set each one saved
+	refuseBinding = false, -- a client that will not make a binding
 	held = {},             -- [key] = the binding it was pressed with
 	frames = {},           -- [name] = frame
 	printed = {},
@@ -219,9 +228,16 @@ function Frame:SetScale(scale) guard(self, "SetScale"); self.__scale = scale end
 function Frame:GetScale() return self.__scale end
 function Frame:SetAlpha(alpha) self.__alpha = alpha end
 function Frame:GetAlpha() return self.__alpha end
-function Frame:Show() guard(self, "Show"); self.__shown = true end
-function Frame:Hide() guard(self, "Hide"); self.__shown = false end
-function Frame:SetShown(shown) guard(self, "SetShown"); self.__shown = shown and true or false end
+-- A frame that becomes visible or stops being so has its OnShow or OnHide script run.
+local function setShown(self, shown)
+	if self.__shown == shown then return end
+	self.__shown = shown
+	local fn = self.__scripts[shown and "OnShow" or "OnHide"]
+	if fn then fn(self) end
+end
+function Frame:Show() guard(self, "Show"); setShown(self, true) end
+function Frame:Hide() guard(self, "Hide"); setShown(self, false) end
+function Frame:SetShown(shown) guard(self, "SetShown"); setShown(self, shown and true or false) end
 function Frame:IsShown() return self.__shown end
 function Frame:IsVisible()
 	local frame = self
@@ -268,9 +284,20 @@ function Frame:HookScript(name, fn)
 		self.__scripts[name] = fn
 	end
 end
+local RunSnippet, Handle
+
 function Frame:SetAttribute(name, value)
 	guard(self, "SetAttribute")
 	self.__attrs[name] = value
+	-- SecureHandlerStateTemplate (port of SecureHandler_StateOnAttributeChanged): a "state-<id>"
+	-- attribute runs the frame's "_onstate-<id>" snippet with the new value.
+	local stateid = self.__stateHandler and type(name) == "string" and name:match("^state%-(.+)")
+	if stateid then
+		local body = self.__attrs["_onstate-" .. stateid]
+		if body then
+			RunSnippet(self, "self,stateid,newstate", body, Handle(self), stateid, value)
+		end
+	end
 	local handler = self.__scripts.OnAttributeChanged
 	if handler then
 		-- Addon-installed handlers run tainted even when Blizzard code set the attribute.
@@ -319,6 +346,13 @@ for _, name in ipairs({ "SetMultiLine", "SetAutoFocus", "SetFontObject", "SetFoc
 	Frame[name] = function(self, ...) self.__calls[name] = { ... } end
 end
 
+-- A frame that asked for the keyboard or the controller's buttons gets every press while it is
+-- on screen, before any binding (M.KeyDown). Both calls are protected on a protected frame.
+function Frame:EnableKeyboard(enable) guard(self, "EnableKeyboard"); self.__keyboard = enable and true or false end
+function Frame:EnableGamePadButton(enable) guard(self, "EnableGamePadButton"); self.__gamepad = enable and true or false end
+function Frame:SetEnabled(enabled) self.__enabled = enabled and true or false end
+function Frame:IsEnabled() return self.__enabled ~= false end
+
 -- Cooldown frames. Blizzard's documentation marks the setters that take numbers as accepting
 -- sealed ones from Blizzard's own code only (SecretArguments = "AllowedWhenUntainted"), so addon
 -- code has to hand over a duration object instead. A frame that was given sealed timing seals
@@ -366,9 +400,7 @@ local RESTRICTED = {
 	format = string.format, strsub = string.sub, strlen = string.len, floor = math.floor, max = math.max, min = math.min,
 }
 
-local RunSnippet
-
-local function Handle(frame)
+function Handle(frame)
 	if frame.__handle then return frame.__handle end
 	local h = {}
 	frame.__handle = h
@@ -512,7 +544,7 @@ local TEMPLATES = {
 			f.__scripts[name] = noop
 		end
 	end,
-	SecureHandlerStateTemplate = function(f) f.__protected = true; addHandlerMethods(f) end,
+	SecureHandlerStateTemplate = function(f) f.__protected = true; f.__stateHandler = true; addHandlerMethods(f) end,
 	SecureHandlerClickTemplate = function(f)
 		f.__protected = true
 		addHandlerMethods(f)
@@ -622,8 +654,31 @@ function M.PointerVisible() return M.cursorControl and not M.freeLook end
 function M.GameShowsPointer() M.freeLook = false; M.cursorControl = true end
 function M.GameHidesPointer() M.cursorControl = false end
 
+-- What a key does right now: an override binding if there is one, else the player's own.
+local function bindingFor(key)
+	local binding = M.bindings[key]
+	if binding then return binding end
+	local command = M.userBindings and M.userBindings[key]
+	if not command then return nil end
+	local name, button = command:match("^CLICK (.-):(.+)$")
+	if name then return { kind = "click", target = name, button = button } end
+	return { kind = "cmd", target = command }
+end
+
 function M.KeyDown(key)
 	M.down[key] = true
+	-- A frame listening for input takes the press, and no binding runs.
+	for _, frame in ipairs(M.all) do
+		local pad = key:find("^PAD") ~= nil
+		if ((pad and frame.__gamepad) or (not pad and frame.__keyboard)) and frame:IsVisible() then
+			local fn = frame.__scripts[pad and "OnGamePadButtonDown" or "OnKeyDown"]
+			if fn then
+				M.held[key] = false
+				fn(frame, key)
+				return "caught"
+			end
+		end
+	end
 	-- Using the controller puts the client in camera mode, unless a stick is steering the pointer.
 	if key:find("^PAD") and not M.cursorControl then M.freeLook = true end
 	if isModifierStandIn(key) then
@@ -636,7 +691,7 @@ function M.KeyDown(key)
 		M.clicks[#M.clicks + 1] = { mouseButton, "down" }
 		return "mouse"
 	end
-	local binding = M.bindings[key]
+	local binding = bindingFor(key)
 	M.held[key] = binding or false
 	if not binding then return "unbound" end
 	if binding.kind == "click" then
@@ -745,15 +800,98 @@ function GetBindingAction(key, checkOverride)
 	end
 	return M.userBindings and M.userBindings[key] or ""
 end
-function GetBindingName(command) return "<" .. command .. ">" end
+-- The name a command has in the Key Bindings screen: the global the addon or the game gave it.
+function GetBindingName(command) return _G["BINDING_NAME_" .. command] or ("<" .. command .. ">") end
+
+-- The keys the player has bound to a command, in a fixed order.
+function GetBindingKey(command)
+	local keys = {}
+	for key, bound in pairs(M.userBindings or {}) do
+		if bound == command then keys[#keys + 1] = key end
+	end
+	table.sort(keys)
+	return unpack(keys)
+end
+
+-- One of the player's own bindings is made or (with no command) taken away. Nothing is kept
+-- past the session until SaveBindings.
+function SetBinding(key, command)
+	bindGuard("SetBinding")
+	assert(type(key) == "string" and key ~= "", "bad key")
+	assert(command == nil or (type(command) == "string" and command ~= ""), "a binding is a command name or nil")
+	if M.refuseBinding and command then return nil end
+	M.userBindings = M.userBindings or {}
+	M.userBindings[key] = command
+	local depth = M.secure
+	M.secure = 0
+	M.Fire("UPDATE_BINDINGS")
+	M.secure = depth
+	return true
+end
+function GetCurrentBindingSet() return 1 end -- Enum.BindingSet.Account
+function SaveBindings(which)
+	assert(which == 1 or which == 2, "SaveBindings wants the account's or the character's binding set")
+	M.savedBindings[#M.savedBindings + 1] = which
+end
 
 ---------------------------------------------------------------------------
--- State drivers
+-- State drivers (port of Blizzard_RestrictedAddOnEnvironment/SecureStateDriver.lua, build 1.60.1)
 ---------------------------------------------------------------------------
-function RegisterAttributeDriver(frame, attribute, values)
-	bindGuard("RegisterAttributeDriver")
-	UnregisterAttributeDriver(frame, attribute)
-	M.drivers[#M.drivers + 1] = { frame = frame, attribute = attribute, values = values }
+-- What a macro condition list comes to right now: the value after the first clause whose
+-- conditions all hold. Only the conditions the tests need are modelled; any other is an error,
+-- so that a condition this model cannot judge is never quietly taken for false.
+local function conditionHolds(condition)
+	local negated = condition:match("^no(.+)$")
+	local name, argument = (negated or condition):match("^(%a+):?(.*)$")
+	local holds
+	if name == "bonusbar" then
+		holds = argument == "" and M.bonusbar > 0 or tonumber(argument) == M.bonusbar
+	elseif name == "form" or name == "stance" then
+		holds = argument == "" and M.form > 0
+		for wanted in argument:gmatch("[^/]+") do
+			holds = holds or tonumber(wanted) == M.form
+		end
+	elseif name == "stealth" then
+		holds = M.stealthed
+	elseif name == "combat" then
+		holds = M.combat
+	else
+		error("mock does not model the macro condition [" .. condition .. "]")
+	end
+	if negated then return not holds end
+	return holds and true or false
+end
+
+function SecureCmdOptionParse(options)
+	for clause in (options .. ";"):gmatch("%s*([^;]*);") do
+		local conditions, value = clause:match("^%[(.-)%]%s*(.-)%s*$")
+		if not conditions then
+			return (clause:match("^%s*(.-)%s*$"))
+		end
+		local all = true
+		for condition in conditions:gmatch("[^,%s]+") do
+			all = all and conditionHolds(condition)
+		end
+		if all then return value end
+	end
+	return nil
+end
+
+local function resolveDriver(driver)
+	local newValue = SecureCmdOptionParse(driver.values)
+	if newValue == nil then return end
+	if newValue == "nil" then
+		newValue = nil
+	else
+		newValue = tonumber(newValue) or newValue
+	end
+	if driver.frame.__attrs[driver.attribute] ~= newValue then
+		-- The driver manager is Blizzard's code: it may set attributes in a fight.
+		M.secure = M.secure + 1
+		local ok, err = pcall(driver.frame.SetAttribute, driver.frame, driver.attribute, newValue)
+		M.secure = M.secure - 1
+		if not ok then error(err, 0) end
+	end
 end
 
 function UnregisterAttributeDriver(frame, attribute)
@@ -763,32 +901,25 @@ function UnregisterAttributeDriver(frame, attribute)
 	end
 end
 
--- What the client does on its next update: evaluate every driver and set changed attributes.
-function M.RunDrivers()
-	for _, driver in ipairs(M.drivers) do
-		local result
-		for clause in (driver.values .. ";"):gmatch("%s*([^;]+);") do
-			local condition, value = clause:match("^%[(.-)%]%s*(.+)$")
-			if not condition then
-				result = clause
-				break
-			end
-			local bar = tonumber(condition:match("^bonusbar:(%d+)$"))
-			assert(bar, "mock only understands [bonusbar:N], got " .. condition)
-			if bar == M.bonusbar then
-				result = value
-				break
-			end
-		end
-		result = result and result:match("^%s*(.-)%s*$")
-		if driver.frame.__attrs[driver.attribute] ~= result then
-			M.secure = M.secure + 1
-			driver.frame:SetAttribute(driver.attribute, result)
-			M.secure = M.secure - 1
-		end
-	end
+-- The value is worked out and set at once, and again whenever the client looks (M.RunDrivers).
+function RegisterAttributeDriver(frame, attribute, values)
+	bindGuard("RegisterAttributeDriver")
+	assert(attribute:sub(1, 1) ~= "_", "a driver cannot write an attribute that begins with an underscore")
+	UnregisterAttributeDriver(frame, attribute)
+	local driver = { frame = frame, attribute = attribute, values = values }
+	M.drivers[#M.drivers + 1] = driver
+	resolveDriver(driver)
 end
 
+function RegisterStateDriver(frame, state, values) RegisterAttributeDriver(frame, "state-" .. state, values) end
+function UnregisterStateDriver(frame, state) UnregisterAttributeDriver(frame, "state-" .. state) end
+
+-- What the client does on its next update: evaluate every driver and set changed attributes.
+function M.RunDrivers()
+	local drivers = {}
+	for i, driver in ipairs(M.drivers) do drivers[i] = driver end
+	for _, driver in ipairs(drivers) do resolveDriver(driver) end
+end
 
 ---------------------------------------------------------------------------
 -- Action bar API
@@ -980,6 +1111,9 @@ function C_Spell.GetSpellName(spell)
 	for _, item in ipairs(M.book) do
 		if item.spell == spell then return item.name end
 	end
+	for _, form in ipairs(M.GetForms()) do
+		if form[2] == spell then return form[1] end
+	end
 	return M.spellNames[spell]
 end
 
@@ -1001,6 +1135,56 @@ function M.Proc(spell, on)
 	M.secure = depth
 end
 function IsStealthed() return M.stealthed end
+
+---------------------------------------------------------------------------
+-- Stances and forms
+---------------------------------------------------------------------------
+-- By class, in the order the game lists them: { name, spell, bar } where bar is the stance
+-- (bonus) bar the form brings up, 0 for a form that has none. These are the classic rules; what
+-- Forever changed is not known here, so a test can put any list in M.forms.
+M.FORMS = {
+	DRUID = {
+		{ "Bear Form", 5487, 3 }, { "Aquatic Form", 1066, 0 }, { "Cat Form", 768, 1 }, { "Travel Form", 783, 0 },
+		{ "Moonkin Form", 24858, 4 },
+	},
+	WARRIOR = { { "Battle Stance", 2457, 1 }, { "Defensive Stance", 71, 2 }, { "Berserker Stance", 2458, 3 } },
+	ROGUE = { { "Stealth", 1784, 1 } },
+	PRIEST = { { "Shadowform", 15473, 1 } },
+}
+local function forms() return M.forms or M.FORMS[M.class] or {} end
+M.GetForms = forms
+
+function GetNumShapeshiftForms() return #forms() end
+function GetShapeshiftForm() return M.form end
+function GetShapeshiftFormInfo(index)
+	local form = forms()[index]
+	if not form then return nil end
+	return "icon " .. form[2], M.form == index, true, form[2]
+end
+
+-- The character changes form (0 leaves every form). The game says so with these events, the
+-- handlers of which are addon code; the state drivers are looked at on the client's next update,
+-- which is modelled as happening right after.
+function M.Shapeshift(index)
+	local form = index > 0 and assert(forms()[index], "this class has no form " .. index) or nil
+	M.form = index
+	M.bonusbar = form and form[3] or 0
+	M.stealthed = form ~= nil and form[1] == "Stealth"
+	local depth = M.secure
+	M.secure = 0
+	for _, event in ipairs({ "UPDATE_SHAPESHIFT_FORM", "UPDATE_BONUS_ACTIONBAR", "ACTIONBAR_UPDATE_USABLE" }) do M.Fire(event) end
+	M.secure = depth
+	M.RunDrivers()
+end
+
+-- By name, for tests that read better that way: M.ShapeshiftTo("Cat Form"), M.ShapeshiftTo(nil).
+function M.ShapeshiftTo(name)
+	if not name then return M.Shapeshift(0) end
+	for index, form in ipairs(forms()) do
+		if form[1] == name then return M.Shapeshift(index) end
+	end
+	error("this class has no form called " .. name)
+end
 function UnitGUID(unit)
 	assert(unit == "player", "mock only knows the player")
 	return M.guid
@@ -1072,6 +1256,13 @@ Settings = {
 	GetValue = function(name) assert(name == "lockActionBars"); return M.lockActionBars end,
 	RegisterCanvasLayoutCategory = function(frame, name) return { GetID = function() return name end, frame = frame } end,
 	RegisterAddOnCategory = function(category) M.category = category end,
+	RegisterCanvasLayoutSubcategory = function(parent, frame, name)
+		local category = { GetID = function() return name end, frame = frame, parent = parent }
+		M.subcategories = M.subcategories or {}
+		M.subcategories[#M.subcategories + 1] = category
+		return category, {}
+	end,
+	KEYBINDINGS_CATEGORY_ID = "Keybindings",
 	OpenToCategory = function(id) M.opened[#M.opened + 1] = id end,
 }
 

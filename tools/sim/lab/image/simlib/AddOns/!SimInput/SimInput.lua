@@ -131,6 +131,26 @@ function SimInput.PressKey(key)
     return d, u, (d or u) and (d and detail or detailUp) or detail
 end
 
+--- Put the character in a stance or form whose bar is number `bar` (0: none), as far as macro
+--- conditions go, and announce it the way the client does. The simulator has no stances of its
+--- own; see siminput_secure.lua. State drivers follow on the next OnUpdate ticks, so look at the
+--- result from SimInput.AfterTicks inside an async_test.
+--- This is a model of the client: [bonusbar:N] holds for N == bar. The action bar API is left
+--- as the simulator has it (C_ActionBar.GetBonusBarOffset() stays 0): Blizzard's own bars call
+--- it through the same table, and would act on a stance the simulator cannot give them.
+local stanceBar = 0
+function SimInput.SetStanceBar(bar)
+    stanceBar = bar
+    proxy():SetAttribute("sim-bonusbar", bar)
+    A_Admin.FireEvent("UPDATE_SHAPESHIFT_FORM")
+    A_Admin.FireEvent("UPDATE_BONUS_ACTIONBAR")
+end
+
+--- The stance bar SetStanceBar last put up.
+function SimInput.GetStanceBar()
+    return stanceBar
+end
+
 --- Run fn after n OnUpdate ticks. run-tests ticks OnUpdate (elapsed 0.016) only inside
 --- async_test, so use it there: SimInput.AfterTicks(15, function() done(function() ... end) end)
 function SimInput.AfterTicks(n, fn)

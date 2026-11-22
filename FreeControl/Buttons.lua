@@ -267,6 +267,132 @@ local function UpdateAll()
 end
 
 ---------------------------------------------------------------------------
+-- A shapeshift on a button that changes with the form
+---------------------------------------------------------------------------
+-- A Druid's forms, a Rogue's Stealth and a Warrior's stances are spells like any other, and can
+-- be dropped on a button that changes with the form. If the button then simply changed, the
+-- shapeshift would be gone the moment it was used, and the way back out with it: the first thing
+-- a player new to this trips over. So a shapeshift stays where it is in every stance that has
+-- nothing of its own on that button (UpdateKept, below), and the first time one is seen on such
+-- a button the character is told how that works.
+local function IsFormSpell(spell)
+	if not (GetNumShapeshiftForms and GetShapeshiftFormInfo) then
+		return false
+	end
+	for index = 1, GetNumShapeshiftForms() do
+		local _, _, _, formSpell = GetShapeshiftFormInfo(index)
+		if formSpell and not ns.IsSealed(formSpell) and formSpell == spell then
+			return true
+		end
+	end
+	return false
+end
+
+local function NoteFormSpell(button)
+	local fc = button.fc
+	if not (fc.group and fc.spell) or Layout.GetPage() ~= Layout.GetStancePage() then
+		return
+	end
+	local character = UnitGUID("player")
+	if not character or ns.db.formNotes[character] or not IsFormSpell(fc.spell) then
+		return
+	end
+	ns.db.formNotes[character] = true
+	ns.Print(("%s is on %s, a button that changes with your stance or form. It stays there in every one of them, until you put something else on that button while you are in one: that covers it there. On the %s set, the face buttons and the other pages nothing can cover it."):format(
+		C_Spell.GetSpellName(fc.spell) or "A stance or form", Layout.GetButtonName(fc.set, fc.index), Layout.GetSetName(Layout.SET_BOTH)))
+end
+
+-- True when a slot holds a stance or form, directly or through a macro.
+local function HoldsForm(slot)
+	if not C_ActionBar.HasAction(slot) then
+		return false
+	end
+	local kind, id, subKind = GetActionInfo(slot)
+	if not id or ns.IsSealed(id) then
+		return false
+	end
+	return (kind == "spell" or (kind == "macro" and subKind == "spell")) and IsFormSpell(id)
+end
+
+-- Out of combat. Works out, for every button that changes with the stance and every stance,
+-- whether the button keeps its page slot there: it holds a shapeshift, and the stance has
+-- nothing of its own on that button. The answers go to the secure header, which needs them in
+-- the middle of a fight and may not look for itself. Returns true when one of them changed.
+local function UpdateKept()
+	local header = ns.Bindings.header
+	local page = Layout.GetStancePage()
+	local changed = false
+	for _, button in ipairs(all) do
+		local fc = button.fc
+		local group = fc.group
+		local holdsForm = group ~= nil and HoldsForm(Layout.GetSlot(fc.set, fc.index, page))
+		for stance = 1, Layout.NUM_STANCES do
+			local name = ("fc-keep-%d-%d-%d"):format(stance, fc.set, fc.index)
+			local keep = holdsForm and not C_ActionBar.HasAction(Layout.GetStanceSlot(group, stance, fc.index)) or nil
+			if header:GetAttribute(name) ~= keep then
+				header:SetAttribute(name, keep)
+				changed = true
+			end
+		end
+	end
+	return changed
+end
+
+-- Something that decides the above may have changed: what is in a slot, or which forms the
+-- character has. It is looked at once, after the client has finished saying so, and never in a
+-- fight: nothing can be moved on the bar in one, and the header keeps what it was last told.
+-- The game announces slots for its own reasons all through a fight (a macro's icon changing is
+-- one), so in a fight the first such announcement books one look for when it ends, and every
+-- later one costs nothing.
+local keptPending = false
+
+local function LookAtKept()
+	keptPending = false
+	ns.RunOutOfCombat("kept", function()
+		if ns.IsActive() and UpdateKept() then
+			ns.Bindings.header:Execute([[ self:RunAttribute("fc-assign") ]])
+		end
+	end)
+end
+
+local function KeptMayHaveChanged()
+	if keptPending or not ns.IsBuilt() then
+		return
+	end
+	keptPending = true
+	if InCombatLockdown() then
+		ns.RunOutOfCombat("kept", LookAtKept)
+	else
+		C_Timer.After(0, function()
+			ns.Try(LookAtKept)
+		end)
+	end
+end
+
+-- The stance bar the secure header is following right now, on the page where stances change the
+-- buttons; 0 anywhere else.
+local function FollowedStance()
+	local header = ns.Bindings.header
+	local stance = tonumber(header:GetAttribute("state-fc-stance")) or 0
+	if stance < 1 or stance > Layout.NUM_STANCES or header:GetAttribute("fc-page") ~= header:GetAttribute("fc-stance-page") then
+		return 0
+	end
+	return stance
+end
+
+-- The slot that is a button's own right now: its stance slot in a stance, else the slot it
+-- shows. The two differ for a button that is keeping a shapeshift: what is dropped on it there
+-- becomes the stance's own, and covers the shapeshift in that stance alone.
+local function OwnSlot(button)
+	local fc = button.fc
+	local stance = fc.group and FollowedStance() or 0
+	if stance > 0 then
+		return Layout.GetStanceSlot(fc.group, stance, fc.index)
+	end
+	return fc.slot
+end
+
+---------------------------------------------------------------------------
 -- Which slot a button shows
 ---------------------------------------------------------------------------
 -- The client only reports range changes for slots that asked for them, and counts the requests,
@@ -302,8 +428,9 @@ local function SetSlot(button, slot)
 	Update(button)
 end
 
--- The "action" attribute is the single source of truth for the slot: it is set by us out of
--- combat and by the stance driver at any time, and the picture follows it from here.
+-- The "action" attribute is the single source of truth for the slot. The secure header sets it,
+-- when the page or the stance changes as much as when the settings do, and the picture follows
+-- it from here.
 local function OnAttributeChanged(button, name, value)
 	if name == "action" then
 		SetSlot(button, tonumber(value))
@@ -318,6 +445,9 @@ function ShowTooltip(button)
 	GameTooltip_SetDefaultAnchor(GameTooltip, button)
 	if fc.hasAction and GameTooltip:SetAction(fc.slot) then
 		GameTooltip:AddLine(Layout.GetButtonName(fc.set, fc.index), 0.37, 0.84, 1)
+		if OwnSlot(button) ~= fc.slot then
+			GameTooltip:AddLine("Kept from your normal buttons: this stance or form has nothing of its own here. Drop something on the button to give it that.", 0.6, 0.6, 0.6, true)
+		end
 		GameTooltip:Show()
 		button.UpdateTooltip = ShowTooltip -- the tooltip calls this while it stays up (cooldown text)
 	else
@@ -356,15 +486,14 @@ local function OnDragStart(button)
 end
 
 local function OnReceiveDrag(button)
-	local slot = button.fc.slot
-	if not slot or not GetCursorInfo() then
+	if not button.fc.slot or not GetCursorInfo() then
 		return
 	end
 	if InCombatLockdown() then
 		WarnInCombat()
 		return
 	end
-	PlaceAction(slot)
+	PlaceAction(OwnSlot(button))
 end
 
 ---------------------------------------------------------------------------
@@ -741,46 +870,56 @@ function Buttons:IsActionSlot(set, index)
 	return set ~= Layout.SET_NONE or Layout.ParseRole(ns.db.roles[index]) == "action"
 end
 
--- Out of combat. Points every button at its slot and shows the right widget for each position.
+-- Out of combat. Hands the secure header (Bindings.lua) everything it needs to point each button
+-- at its slot, has it do so, and shows the right widget for each position. From then on the
+-- header moves the buttons by itself whenever the page or the stance changes, fight or no fight.
 function Buttons:Assign()
 	Layout.Prepare()
+	local header = ns.Bindings.header
 	local groups = Layout.GetStanceGroups()
+	local pages = Layout.GetPageCount()
 	for _, set in ipairs(Layout.SETS) do
 		for index = 1, 8 do
 			local button, proxy = self.action[set][index], self.proxy[set][index]
-			if self:IsActionSlot(set, index) then
-				-- The plain slot is always written first. A stance driver only takes over on the
-				-- client's next update, and a button with no "action" would fall back to slot 1.
-				local slot = Layout.GetSlot(set, index)
-				UnregisterAttributeDriver(button, "action")
-				UnregisterAttributeDriver(proxy, "action")
-				button:SetAttribute("action", slot)
-				proxy:SetAttribute("action", slot)
-				local group = Layout.FindStanceGroup(groups, set, index)
-				if group then
-					local driver = Layout.GetStanceDriver(group, index)
-					RegisterAttributeDriver(button, "action", driver)
-					RegisterAttributeDriver(proxy, "action", driver)
-				end
-				button:Show()
-				proxy:Show()
-			else
-				UnregisterAttributeDriver(button, "action")
-				UnregisterAttributeDriver(proxy, "action")
-				button:Hide()
-				proxy:Hide()
-				SetSlot(button, nil)
+			local id = set .. "-" .. index
+			local isSlot = self:IsActionSlot(set, index)
+			local group = isSlot and Layout.FindStanceGroup(groups, set, index) or nil
+			for page = 1, Layout.NUM_PAGES do
+				header:SetAttribute(("fc-slot-%d-%s"):format(page, id), isSlot and page <= pages and Layout.GetSlot(set, index, page) or nil)
 			end
-			-- A driver may not have written the attribute yet; read back whatever is there now.
-			if button:IsShown() then
-				SetSlot(button, tonumber(button:GetAttribute("action")))
-			end
+			header:SetAttribute("fc-store-" .. id, group and group.store or nil)
+			header:SetAttribute("fc-offset-" .. id, group and group.offset + index - 1 or nil)
+			button.fc.group = group
+			button:SetShown(isSlot)
+			proxy:SetShown(isSlot)
 			if set == Layout.SET_NONE then
 				local widget = self.role[index]
-				widget:SetShown(not button:IsShown())
+				widget:SetShown(not isSlot)
 				UpdateRoleWidget(widget)
 			end
 		end
+	end
+	for stance = 1, Layout.NUM_STANCES do
+		header:SetAttribute("fc-pad-" .. stance, Layout.GetStanceFirst("pad", stance))
+		header:SetAttribute("fc-bar-" .. stance, Layout.GetStanceFirst("bar", stance))
+	end
+	header:SetAttribute("fc-pages", pages)
+	header:SetAttribute("fc-page", Layout.GetPage())
+	header:SetAttribute("fc-stance-page", Layout.GetStancePage())
+	UpdateKept()
+	-- The driver tells the header which stance bar is up, at once and from then on. With nothing
+	-- set to change there is nothing for it to do: no button has stance slots to go to.
+	if #groups > 0 then
+		RegisterStateDriver(header, "fc-stance", Layout.GetStanceCondition())
+	else
+		UnregisterStateDriver(header, "fc-stance")
+	end
+	header:Execute([[ self:RunAttribute("fc-assign") ]])
+
+	-- The pictures follow the "action" attribute as it changes; this draws each one afresh for
+	-- what did not change it (another controller style, a setting), and empties the hidden ones.
+	for _, button in ipairs(all) do
+		SetSlot(button, button:IsShown() and tonumber(button:GetAttribute("action")) or nil)
 	end
 	self:UpdateGlyphs()
 	watchRoleKeys = IsKeyDown ~= nil
@@ -814,7 +953,7 @@ function Buttons:OnSetChanged(set)
 	end
 end
 
--- Out of combat. Used when the bars are switched off: stops the stance drivers and stops asking
+-- Out of combat. Used when the bars are switched off: stops the stance driver and stops asking
 -- the client for range updates. Assign puts both back.
 function Buttons:Release()
 	watchRoleKeys = false
@@ -822,12 +961,9 @@ function Buttons:Release()
 		frame.fc.mouseDown = nil
 		Press(frame, "keyDown", false)
 	end
-	for _, set in ipairs(Layout.SETS) do
-		for index = 1, 8 do
-			UnregisterAttributeDriver(self.action[set][index], "action")
-			UnregisterAttributeDriver(self.proxy[set][index], "action")
-			SetRangeSlot(self.action[set][index], nil)
-		end
+	UnregisterStateDriver(ns.Bindings.header, "fc-stance")
+	for _, button in ipairs(all) do
+		SetRangeSlot(button, nil)
 	end
 end
 
@@ -856,9 +992,17 @@ ns.On("ACTIONBAR_SLOT_CHANGED", function(_, slot)
 	elseif bySlot[slot] then
 		for button in pairs(bySlot[slot]) do
 			Update(button)
+			NoteFormSpell(button)
 		end
 	end
+	KeptMayHaveChanged()
 end)
+
+-- A form was learned, or the spell book changed under a slot; at login the game lists the
+-- character's forms a little after the bar has been set up.
+for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_SHAPESHIFT_FORMS", "SPELLS_CHANGED" }) do
+	ns.On(event, KeptMayHaveChanged)
+end
 
 -- The last two are raised when the spell book changes: learning a new rank can change what a slot
 -- holds without the slot itself being announced.

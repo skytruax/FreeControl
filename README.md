@@ -123,6 +123,11 @@ because Blizzard's bar would be bound to the same buttons.
 
 - **Filling slots:** drag spells, items and macros from the spellbook or bags onto a slot. As on
   the regular action bars, dragging one *off* a slot needs Shift while the action bars are locked.
+- **Pages:** the bar has three pages, the Gamepad UI's three, each with its own buttons. The two
+  arrows in the middle of the bar turn the page, in a fight too, and the number between them says
+  which one is showing. To turn it from the controller, give two buttons the job: on the *Other
+  buttons* page of the settings, or in **Options > Key Bindings** under FreeControl. The bumpers
+  are the obvious pair.
 - **Same slots as the Gamepad UI:** the slots are the ones Blizzard's controller bars use, which
   are separate from your normal action bars. Anything you already set up in Gamepad UI mode is
   there when you log in, and your regular bars are left alone (the one exception is under
@@ -151,12 +156,19 @@ because Blizzard's bar would be bound to the same buttons.
   unless **Options > Gamepad > Stance bar** names another). A Druid cannot use a single caster
   spell in Cat or Bear form, so for a Druid the right set, the left set and the D-pad all
   change, and the both-triggers set and the face buttons stay the same in every form: that is
-  where shapeshifts, a mount or a trinket go. The left set and the D-pad show the slots of the
-  game's own action bar for that form, so a bar you already set up there is waiting for you.
-  *Stance sets* on the settings page offers the same to any class.
-- **Targeting and everything else:** bind the bumpers and stick clicks to whatever you like in
-  **Options > Key Bindings**; controller buttons can be bound there like keys. The stick clicks
-  keep those bindings except while the mouse pointer is out.
+  where a mount or a trinket goes. The left set and the D-pad show the slots of the game's own
+  action bar for that form, so a bar you already set up there is waiting for you. *Stance sets*
+  on the settings page offers the same to any class.
+  They change on one page only, as the game's own bars do: page 1, unless the Gamepad options
+  put the stance bar on another. The other pages are the same in every stance or form.
+  A shapeshift (a form, Stealth, a stance) that sits on a button that changes stays on that
+  button in every form that has nothing of its own there, so the way back out is never lost.
+  Drop something on the button while you are in a form to give that form its own.
+- **Your other buttons:** the bumpers, stick clicks, Start, Back and paddles are ordinary buttons.
+  FreeControl does not use them, and each does whatever it is bound to, like a key on the
+  keyboard. The *Other buttons* page of the settings (`/fc buttons`) lists them with what each
+  one does and offers the common jobs in a menu; **Options > Key Bindings** does the rest. The
+  stick clicks keep their jobs except while the mouse pointer is out.
 - **Changing the no-trigger buttons:** click one on the bar, or use the settings page. Each can be
   an action slot, a command (Jump, Interact, Cancel, Target nearest enemy or friend, Auto-run,
   World map, Bags, ...) or left to your own key binding.
@@ -170,7 +182,9 @@ because Blizzard's bar would be bound to the same buttons.
   the game's own choice for one of them, pick *Leave to the game* on the settings page.
 - **LB stands in for Ctrl out of the box** (`GamePadEmulateCtrl`). That lets you bind Ctrl
   combinations such as LB + D-pad in Key Bindings, but a button used that way only fires its own
-  binding on a quick tap. To use LB as an ordinary button: `/console GamePadEmulateCtrl none`.
+  binding on a quick tap, which is why LB can seem to do nothing. Give LB a job on the *Other
+  buttons* page, or bind it to one of FreeControl's page arrows, and FreeControl makes it an
+  ordinary button while it is active.
 - **LT stands in for Shift out of the box.** FreeControl switches that off for the buttons it
   uses while it is active, because a trigger used that way would not register as held.
 
@@ -186,7 +200,8 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc unlock`, `/fc lock` | Show or hide the handle for dragging the bar. |
 | `/fc scale 1.2` | Size of the bar (0.5 to 2). |
 | `/fc reset` | Put the bar back where it started. |
-| `/fc page 2` | Show another of Blizzard's three controller-bar pages. |
+| `/fc page 2` | Show another of the three pages. The arrows in the middle of the bar do the same. |
+| `/fc buttons` | Open the Other buttons page: jobs for the bumpers, stick clicks, Start, Back and paddles. |
 | `/fc slots bars` | Use the regular Left / Bottom Left / Bottom Right / Right action bar slots instead (`gamepad` to go back). |
 | `/fc numbers off` | Hide the countdown numbers on slots that are on cooldown (`on` to show them again). |
 | `/fc glow off` | Stop buttons glowing when a spell procs (`on` to bring it back). |
@@ -201,8 +216,9 @@ because Blizzard's bar would be bound to the same buttons.
 
 Other settings on the page: how much the held set grows, how far the others fade, button labels
 (Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, what changes
-with your stance or form (*Stance sets*: automatic unless you choose otherwise), and a **Mouse
-mode** section with the two click buttons and the pointer speed.
+with your stance or form (*Stance sets*: automatic unless you choose otherwise, and its tooltip
+says what that comes to on your character), and a **Mouse mode** section with the two click
+buttons and the pointer speed. **Other buttons** is a page of its own under FreeControl.
 
 ## What it changes, and puts back
 
@@ -212,7 +228,7 @@ when you switch it off:
 | Variable | Why |
 | --- | --- |
 | `GamePadEnable = 1` | Lets the game read the controller. This is controller *input*, not Gamepad UI mode. Forever ships with it on, so this usually changes nothing. |
-| `GamePadEmulateShift` / `Ctrl` / `Alt = none` | Only where one of them names a button FreeControl uses (by default: LT as Shift). |
+| `GamePadEmulateShift` / `Ctrl` / `Alt = none` | Only where one of them names a button FreeControl uses (by default: LT as Shift), a button you gave a job on the Other buttons page, or one you bound to a page arrow (by default LB is Ctrl). |
 | `GamePadCursorLeftClick`, `GamePadCursorRightClick` | The two buttons that click while the mouse pointer is out: the stick clicks unless you choose others. |
 | `GamePadCursorCentering = 0` | With it on, the game pins the mouse pointer to the middle of the screen. It is off unless something turned it on. |
 | `GamePadCursorSpeedStart`, `...Accel`, `...Max` | Only when you change the pointer speed: all three are scaled together from your own values. |
@@ -221,7 +237,9 @@ when you switch it off:
 
 The first and the Interact ones have checkboxes on the settings page. FreeControl binds the D-pad,
 face buttons and triggers with *override* bindings, which sit on top of your saved key bindings
-without changing them.
+without changing them. A job you pick on the Other buttons page is different: it is one of your
+own key bindings, saved by the game as if you had made it in the Key Bindings screen, and it stays
+when FreeControl is switched off.
 
 ## How it compares
 
@@ -244,7 +262,10 @@ without changing them.
 - A second changing set and the D-pad keep their stance actions in the slots of the game's own
   action bar for that stance, so what you drop on them in a form also shows on that bar. The
   rest of your regular action bars is never touched.
-- Stances and forms change the bar only with the controller-bar slots, not with `/fc slots bars`.
+- With `/fc slots bars` there is one page, and Automatic changes nothing with your stance: pick
+  a set under *Stance sets* yourself. One set and the D-pad can change there, not two sets.
+- Which bar each form of each class brings up is the game's own data. FreeControl follows what
+  the game reports; `/fc status`, typed while in a form, shows it.
 - No vehicle or possess bar yet: use the game's own bar for those.
 - Triggers are hold-to-select; there is no tap-to-toggle.
 - Hold-to-cast ("press and hold casting") is a client feature reserved for Blizzard's own bars.
@@ -299,13 +320,27 @@ The proc glow ([Buttons.lua](FreeControl/Buttons.lua)) asks what Blizzard's own 
 `C_SpellActivationOverlay.IsSpellOverlayed`, on the same two events. The short list of abilities
 that only come free for a moment is in `Layout.REACTIVE`.
 
-Stances ([Layout.lua](FreeControl/Layout.lua)) are state drivers on the buttons' `action`
-attribute, one `[bonusbar:N]` clause per stance, so they switch in a fight. A changing button
-needs somewhere to keep its action for each stance, and the game has two such places: the
-controller stance bars (eight slots per stance, the ones the Gamepad UI shows) and the twelve
-slots its regular action bar turns to in that stance (73 to 132). The first changing set uses the
-former; a second set and the D-pad use the latter. `/fc status` compares both with what the game
-reports for the stance you are in.
+Pages and stances ([Bindings.lua](FreeControl/Bindings.lua), [Layout.lua](FreeControl/Layout.lua)):
+which slot each button shows is decided by the same secure header that rebinds the keys, because
+both can change in a fight. `Buttons:Assign` hands it every button's slot on every page and where
+each stance keeps its slots; a restricted snippet then sets the buttons' `action` attribute, and
+the pictures follow the attribute. Three things run that snippet: a click on a page arrow (a
+secure button, so a key bound to it works in combat), a state driver that reports which stance
+bar is up (one `[bonusbar:N]` clause per stance), and a settings change. The snippet asks the game
+nothing: what it needs to know about a slot's contents (whether a shapeshift is to stay on its
+button) is worked out by ordinary code outside combat and handed over as attributes.
+
+A changing button needs somewhere to keep its action for each stance, and the game has two such
+places: the controller stance bars (eight slots per stance, the ones the Gamepad UI shows) and
+the twelve slots its regular action bar turns to in that stance (73 to 132). The first changing
+set uses the former; a second set and the D-pad use the latter. `/fc status` compares both with
+what the game reports for the stance you are in, and says which stance bar the header is
+following.
+
+The Other buttons page ([Options.lua](FreeControl/Options.lua)) sets the player's own key bindings
+with `SetBinding` and `SaveBindings`, as the Key Bindings screen does. A button the game uses as a
+stand-in for Shift, Ctrl or Alt (LB is Ctrl out of the box) is made a plain button by
+[CVars.lua](FreeControl/CVars.lua) once it has a job, and only then.
 
 An error while drawing the bar is never silent: it goes to the game's error handler as usual, the
 first one is also said in chat, and `/fc status` lists them. The game hides addon errors by
@@ -328,7 +363,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 156 scenarios, runs on every push):
+**Mock client** (fast, 214 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -336,13 +371,16 @@ Forever 1.60.1 client.
 It loads the addon into Lua 5.1 against `tools/tests/wowmock.lua`, a strict stand-in for the
 client set to a fresh Forever install's defaults: protected frames refuse protected calls in
 combat, secure snippets run in a restricted environment, a button standing in for Shift does not
-report being held, key presses travel through override bindings to button clicks, in combat
-cooldown numbers come back sealed and are refused by cooldown frames, using the controller puts
-the client in camera mode where the pointer stays hidden until that is ended, and while the stick
-pointer is out its two click buttons become mouse clicks. It is a model, so a pass shows the addon
-is consistent with that model, not that the game agrees.
+report being held, key presses travel through override bindings (and, where there is none, the
+player's own bindings) to button clicks, in combat cooldown numbers come back sealed and are
+refused by cooldown frames, using the controller puts the client in camera mode where the pointer
+stays hidden until that is ended, and while the stick pointer is out its two click buttons become
+mouse clicks. State drivers are a port of Blizzard's own. Each class has its stances or forms by
+the classic rules, and one scenario walks every class through every stance setting, page and form,
+in and out of combat, checking that each button shows and casts the slot the rules give it. It is
+a model, so a pass shows the addon is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 31 tests, about ten seconds):
+**Simulator** (Blizzard's real interface code, 41 tests, about ten seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh
@@ -355,16 +393,21 @@ This loads FreeControl next to all 272 of Blizzard's Forever interface addons (b
 containers with no network. The secure templates, the restricted environment, the state drivers
 and the settings panel are Blizzard's own Lua there, and the simulator models combat lockdown and
 taint, so it checks things the mock cannot: that the buttons really end up with Blizzard's secure
-click handler, that the trigger snippets are accepted and can rebind keys in combat, that a key
-press reaches `UseAction` untainted, and that nothing is refused along the way. It also compares
-every API, console variable and event the addon names against the Forever client's own lists.
+click handler, that the trigger, page and stance snippets are accepted and can rebind keys and
+move the buttons in combat, that a key press reaches `UseAction` untainted, and that nothing is
+refused along the way. It also compares every API, console variable and event the addon names
+against the Forever client's own lists.
 `docs/sim-screenshot.png` is the bar as that run draws it; the simulator has no game art, so
 filled slots are blank there.
 
 What it cannot show: it implements about half of the client's API, does not seal anything in
 combat, has no stick pointer of its own (the tests stand in for it), has no real key or controller
-input (the tests click the bound button from a secure call stack instead), has no controller-slot validity check (so FreeControl falls back to the regular
-bar slots there unless a test stands in for it), and never evaluates stance conditions as true.
+input (the tests click the bound button from a secure call stack instead), has no controller-slot
+validity check (so FreeControl falls back to the regular bar slots there unless a test stands in
+for it), and has no stances or forms. For those the test helper answers `[bonusbar:N]` from
+secure code, so Blizzard's state driver and the header's snippets do run for a stance coming up
+in a fight; which bar each form of each class brings up is the game's data, and is in neither
+suite.
 `tools/sim/lab/run-sim.sh --help` lists its options; `tools/sim/tests/` holds the tests and the
 screenshot scenario.
 

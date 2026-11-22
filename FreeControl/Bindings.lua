@@ -1,13 +1,16 @@
 local _, ns = ...
 local Layout = ns.Layout
 
--- Turns controller presses into button clicks.
+-- Turns controller presses into button clicks, and decides which slot each button shows.
 --
 -- The eight slot keys (D-pad and face buttons) are bound to whichever set is selected by the
 -- triggers. The triggers are ordinary bindable buttons here, not Shift/Ctrl stand-ins, so holding
 -- one changes nothing else in the game. Because the selection has to change in the middle of a
 -- fight, the rebinding is done by a secure header in the restricted environment; this file's
 -- normal Lua only hands it its settings, out of combat.
+--
+-- The same header points every button at its slot, for the same reason: the page can be turned
+-- and the stance can change in a fight, and only secure code may give a button another action then.
 local Bindings = {}
 ns.Bindings = Bindings
 
@@ -106,18 +109,131 @@ local MOUSE_ONCLICK = [=[
 	header:RunAttribute("fc-apply")
 ]=]
 
+-- Restricted snippet, self = header. Points every action button, and the key button over it, at
+-- the slot it shows now: its slot on the page being shown or, on the stance page while a stance
+-- bar is up, the stance's own. It runs when the page changes, when the stance does, and after
+-- Buttons:Assign has handed over new settings; the first two happen in the middle of a fight.
+--   fc-page, fc-pages          the page shown, and how many there are
+--   state-fc-stance            the stance bar that is up, 0 for none: kept by a state driver
+--   fc-stance-page             the one page whose buttons change with the stance
+--   fc-slot-<page>-<set>-<i>   a button's slot on each page; none for one that is not a slot
+--   fc-store-<set>-<i>         "pad" or "bar" for a button that changes with the stance
+--   fc-offset-<set>-<i>        how far into a stance's slots of that kind it sits
+--   fc-pad-<stance>            where each stance's slots of the two kinds begin
+--   fc-bar-<stance>
+--   fc-keep-<stance>-<set>-<i> set where the button keeps its page slot in that stance: it holds
+--                              a shapeshift there and the stance has nothing of its own for it
+-- The pictures follow the "action" attribute by themselves (Buttons.lua). Nothing here asks the
+-- game anything: what is in a slot is looked at by ordinary code, out of combat, which hands
+-- over the answer as fc-keep.
+local ASSIGN = [=[
+	local page = self:GetAttribute("fc-page") or 1
+	local stance = tonumber(self:GetAttribute("state-fc-stance")) or 0
+	if page ~= self:GetAttribute("fc-stance-page") then
+		stance = 0
+	end
+	for set = 0, 3 do
+		for i = 1, 8 do
+			local id = set .. "-" .. i
+			local slot
+			local store = stance > 0 and self:GetAttribute("fc-store-" .. id)
+			if store and not self:GetAttribute("fc-keep-" .. stance .. "-" .. id) then
+				local first = self:GetAttribute("fc-" .. store .. "-" .. stance)
+				if first then
+					slot = first + self:GetAttribute("fc-offset-" .. id)
+				end
+			end
+			if not slot then
+				slot = self:GetAttribute("fc-slot-" .. page .. "-" .. id)
+			end
+			local button = self:GetFrameRef("fc-button-" .. id)
+			if button:GetAttribute("action") ~= slot then
+				button:SetAttribute("action", slot)
+			end
+			local key = self:GetFrameRef("fc-key-" .. id)
+			if key:GetAttribute("action") ~= slot then
+				key:SetAttribute("action", slot)
+			end
+		end
+	end
+	self:CallMethod("FreeControl_OnPage", page)
+]=]
+
+-- Restricted snippet, self = one of the two page buttons. Like the triggers it is clicked on
+-- press and again on release, by the mouse or by a key bound to it; only the press counts.
+-- Past the last page comes the first again, as in the Gamepad UI; with one page that leaves
+-- the page where it is.
+local PAGE_ONCLICK = [=[
+	if not down then
+		return
+	end
+	local header = self:GetFrameRef("fc-header")
+	if not header:GetAttribute("fc-enabled") then
+		return
+	end
+	local pages = header:GetAttribute("fc-pages") or 1
+	local page = (header:GetAttribute("fc-page") or 1) + self:GetAttribute("fc-step")
+	if page > pages then
+		page = 1
+	elseif page < 1 then
+		page = pages
+	end
+	header:SetAttribute("fc-page", page)
+	header:RunAttribute("fc-assign")
+]=]
+
+-- What the two page buttons are called in the Key Bindings screen (Bindings.xml lists them).
+Bindings.PAGE_COMMANDS = {
+	next = "CLICK FreeControlPageNext:LeftButton",
+	prev = "CLICK FreeControlPagePrev:LeftButton",
+}
+-- The mouse button as a binding of the player's own, for a button other than the eight on the
+-- bar; not listed in the Key Bindings screen, offered on the Other buttons page.
+Bindings.MOUSE_COMMAND = "CLICK FreeControlMouse:LeftButton"
+_G["BINDING_NAME_" .. Bindings.MOUSE_COMMAND] = "FreeControl: mouse pointer on / off"
+_G["BINDING_NAME_" .. Bindings.PAGE_COMMANDS.next] = "FreeControl: next page"
+_G["BINDING_NAME_" .. Bindings.PAGE_COMMANDS.prev] = "FreeControl: previous page"
+
+-- True for a command that clicks one of FreeControl's own buttons.
+function Bindings:IsOwnCommand(command)
+	return command == self.PAGE_COMMANDS.next or command == self.PAGE_COMMANDS.prev or command == self.MOUSE_COMMAND
+end
+
 -- Out of combat. Needs the set frames and the buttons to exist.
 function Bindings:Create()
 	local header = CreateFrame("Frame", "FreeControlHeader", UIParent, "SecureHandlerStateTemplate")
 	self.header = header
 	header:SetAttribute("fc-apply", APPLY)
+	header:SetAttribute("fc-assign", ASSIGN)
+	-- The stance bar that is up changed: the state driver registered by Buttons:Assign said so.
+	header:SetAttribute("_onstate-fc-stance", [[ self:RunAttribute("fc-assign") ]])
 	for _, set in ipairs(Layout.SETS) do
 		header:SetFrameRef("fc-set" .. set, ns.Bars.sets[set])
+		for index = 1, 8 do
+			local id = set .. "-" .. index
+			header:SetFrameRef("fc-button-" .. id, ns.Buttons.action[set][index])
+			header:SetFrameRef("fc-key-" .. id, ns.Buttons.proxy[set][index])
+		end
 	end
 
-	-- Called from the snippet above for the parts that are not protected (glow, labels, badges).
+	-- Called from the snippets above for the parts that are not protected (glow, labels, badges,
+	-- the page number).
 	function header:FreeControl_OnSet(set)
 		ns.Bars:OnSetChanged(set)
+	end
+	function header:FreeControl_OnPage(page)
+		ns.OnPageShown(page)
+	end
+
+	-- The two page buttons in the middle of the bar. Bars.lua made them and gave them their
+	-- looks; what a click does is decided here, in secure code, so a page can be changed in a fight.
+	self.pageButtons = {}
+	for step, button in pairs(ns.Bars.pageButtons) do
+		button:RegisterForClicks("AnyDown", "AnyUp")
+		button:SetAttribute("fc-step", step)
+		button:SetFrameRef("fc-header", header)
+		button:SetAttribute("_onclick", PAGE_ONCLICK)
+		self.pageButtons[step] = button
 	end
 
 	self.triggers = {}
@@ -248,8 +364,8 @@ function Bindings:FindProblems()
 				Layout.GetButtonName(0, index))
 		end
 	end
-	if ns.Mouse:IsAvailable() and not ns.Mouse:GetBarButtonName() then
-		problems[#problems + 1] = "No button brings the mouse pointer out. Click a no-trigger button on the bar and choose \"Mouse pointer on / off\"."
+	if ns.Mouse:IsAvailable() and not ns.Mouse:GetBarButtonName() and not GetBindingKey(Bindings.MOUSE_COMMAND) then
+		problems[#problems + 1] = "No button brings the mouse pointer out. Click a no-trigger button on the bar and choose \"Mouse pointer on / off\", or give another button that job under Other buttons in the settings."
 	end
 	-- With this on, the game pins the pointer to the middle of the screen instead of letting the
 	-- stick move it. CVars.lua turns it off; this says so if something turned it back on.

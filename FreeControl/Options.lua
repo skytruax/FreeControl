@@ -1,8 +1,8 @@
 local _, ns = ...
 local Layout = ns.Layout
 
--- The settings page (Options > AddOns > FreeControl), the /fc command, and the menu for choosing
--- what a no-trigger button does.
+-- The settings pages (Options > AddOns > FreeControl, and Other buttons under it), the /fc
+-- command, and the menu for choosing what a no-trigger button does.
 local Options = {}
 ns.Options = Options
 
@@ -86,24 +86,32 @@ local function SetIndexed(key, index, value)
 	ns.RequestRefresh()
 end
 
--- Opens a menu of choices next to `owner`; get() returns the current value. Without the menu
--- system the button steps through the choices instead.
+-- Opens a menu of choices next to `owner`; get() returns the current value. A choice with a
+-- third field is something to do, not a value to have: it is a plain entry in the menu. Without
+-- the menu system the button steps through the values instead.
 local function Choose(owner, choices, get, onPick)
 	if MenuUtil and MenuUtil.CreateContextMenu then
 		MenuUtil.CreateContextMenu(owner, function(_, root)
 			for _, choice in ipairs(choices) do
-				root:CreateRadio(choice[2], function() return choice[1] == get() end, function() onPick(choice[1]) end)
+				if choice[3] then
+					root:CreateButton(choice[2], function() onPick(choice[1]) end)
+				else
+					root:CreateRadio(choice[2], function() return choice[1] == get() end, function() onPick(choice[1]) end)
+				end
 			end
 		end)
 		return
 	end
-	local position = 0
-	for index, choice in ipairs(choices) do
-		if choice[1] == get() then
-			position = index
+	local values, position = {}, 0
+	for _, choice in ipairs(choices) do
+		if not choice[3] then
+			values[#values + 1] = choice[1]
+			if choice[1] == get() then
+				position = #values
+			end
 		end
 	end
-	onPick(choices[position % #choices + 1][1])
+	onPick(values[position % #values + 1])
 end
 
 -- side 1 is the left click, 2 the right. Returns false, having said why, if the button cannot be used.
@@ -134,17 +142,27 @@ function Options:OpenRoleMenu(owner, index)
 	end)
 end
 
+-- What the Stance sets choice comes to on this character, said under its explanation.
+local function StanceTooltip()
+	local text = "What changes to different slots in each stance or form. Automatic is the left and right trigger sets and the D-pad for a Druid, and for every other class the one set picked in Options > Gamepad > Stance bar. A second set and the D-pad use the slots of the game's own action bar for that stance, so they are shared with it. They change on one page only, as the game's own bars do; the other pages, the both-triggers set and the face buttons are the same in every stance."
+	if Layout.GetSlotSource() ~= "gamepad" then
+		text = text .. " With the regular action bars as the slots, Automatic changes nothing: pick a set yourself, and the D-pad can join it."
+	end
+	return ("%s\n\nOn this character: %s."):format(text, Layout.DescribeStance())
+end
+
 ---------------------------------------------------------------------------
 -- Widgets
 ---------------------------------------------------------------------------
 local ROW = 26
 local controls = {} -- every widget with a Sync function
 
+-- `title` and `text` can be functions, for a tooltip that depends on the character or the moment.
 local function AddTooltip(widget, title, text)
 	widget:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText(title, 1, 1, 1)
-		GameTooltip:AddLine(text, nil, nil, nil, true)
+		GameTooltip:SetText(type(title) == "function" and title() or title, 1, 1, 1)
+		GameTooltip:AddLine(type(text) == "function" and text() or text, nil, nil, nil, true)
 		GameTooltip:Show()
 	end)
 	widget:SetScript("OnLeave", function()
@@ -177,15 +195,16 @@ local function Check(panel, x, y, label, tooltip, key)
 end
 
 -- A label with a button showing the current choice. get() returns the value, set(value) stores it.
-local function Choice(panel, x, y, label, tooltip, choices, get, set)
+-- Returns the next row's y, the button and the label.
+local function Choice(panel, x, y, label, tooltip, choices, get, set, width)
 	local text = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	text:SetPoint("TOPLEFT", x + 4, y - 6)
 	text:SetText(label)
 
 	local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	button:SetSize(170, 22)
+	button:SetSize(width or 170, 22)
 	button:SetPoint("TOPLEFT", x + 130, y - 2)
-	AddTooltip(button, label, tooltip)
+	AddTooltip(button, function() return text:GetText() end, tooltip)
 	button:SetScript("OnClick", function(self)
 		local list = type(choices) == "function" and choices() or choices
 		Choose(self, list, get, set)
@@ -195,7 +214,7 @@ local function Choice(panel, x, y, label, tooltip, choices, get, set)
 		self:SetText(LabelFor(list, get()))
 	end
 	controls[#controls + 1] = button
-	return y - ROW
+	return y - ROW, button, text
 end
 
 -- A label with - and + buttons around a percentage.
@@ -231,14 +250,20 @@ local function Stepper(panel, x, y, label, tooltip, key, minimum, maximum, step)
 	return y - ROW
 end
 
-local function Action(panel, x, y, label, tooltip, onClick)
+-- A button that does something, with an optional label in front of it.
+local function Action(panel, x, y, label, tooltip, onClick, caption)
+	if caption then
+		local text = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		text:SetPoint("TOPLEFT", x + 4, y - 6)
+		text:SetText(caption)
+	end
 	local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	button:SetSize(170, 22)
 	button:SetPoint("TOPLEFT", x + 130, y - 2)
 	button:SetText(label)
 	AddTooltip(button, label, tooltip)
 	button:SetScript("OnClick", onClick)
-	return y - ROW
+	return y - ROW, button
 end
 
 ---------------------------------------------------------------------------
@@ -253,7 +278,7 @@ local function Build(panel)
 	note:SetPoint("TOPLEFT", 18, -40)
 	note:SetPoint("RIGHT", -20, 0)
 	note:SetJustifyH("LEFT")
-	note:SetText("A controller cross hotbar for the normal interface. Hold a trigger to switch sets, drop spells, items and macros onto any slot. Changes made in combat apply when the fight ends.")
+	note:SetText("A controller cross hotbar for the normal interface. Hold a trigger to switch sets; drop spells, items and macros onto any slot. The bumpers, stick clicks, Start, Back and paddles stay ordinary buttons: give them jobs under Other buttons.")
 
 	local left, right = 16, 340
 	local y = -78
@@ -275,9 +300,9 @@ local function Build(panel)
 	y = Heading(panel, "Slots", left, y - 8)
 	y = Choice(panel, left, y, "Stored in", "Controller-bar slots are the ones Blizzard's Gamepad UI uses, separate from your action bars, so anything you set up there shows up here. Regular action bars uses the Left, Bottom Left, Bottom Right and Right bars instead.", SLOT_SOURCES,
 		function() return ns.db.slotSource end, function(value) Set("slotSource", value) end)
-	y = Choice(panel, left, y, "Page", "Which of the three controller-bar pages the bar shows.", PAGES,
+	y = Choice(panel, left, y, "Page", "Which of the three controller-bar pages the bar shows. Each page has its own buttons. The two arrows in the middle of the bar turn the page as well, in a fight too, and so does any button you give that job under Other buttons.", PAGES,
 		function() return ns.db.page end, function(value) Set("page", value) end)
-	y = Choice(panel, left, y, "Stance sets", "What changes to different slots in each stance or form. Automatic is the left and right trigger sets and the D-pad for a Druid, and for every other class the one set picked in Options > Gamepad > Stance bar. A second set and the D-pad use the slots of the game's own action bar for that stance, so they are shared with it. The both-triggers set and the face buttons never change.", STANCE_SETS,
+	y = Choice(panel, left, y, "Stance sets", StanceTooltip, STANCE_SETS,
 		function() return ns.db.stanceSet end, function(value) Set("stanceSet", value) end)
 
 	y = Heading(panel, "Mouse mode", left, y - 8)
@@ -308,6 +333,9 @@ local function Build(panel)
 		function() return ns.db.modKeys[1] end, function(value) SetIndexed("modKeys", 1, value) end)
 	y = Choice(panel, right, y, "Right trigger", "The button that selects the right set.", TRIGGER_KEYS,
 		function() return ns.db.modKeys[2] end, function(value) SetIndexed("modKeys", 2, value) end)
+	y = Action(panel, right, y, "Other buttons...", "The bumpers, stick clicks, Start, Back and paddles are ordinary buttons: FreeControl does not use them, and each does whatever you bind it to. This opens the page where you give them jobs, such as turning the bar's page.", function()
+		Options:OpenButtons()
+	end, "Bumpers, paddles")
 
 	y = Heading(panel, "With no trigger held", right, y - 8)
 	for index = 1, 8 do
@@ -326,25 +354,269 @@ local function Build(panel)
 	y = Check(panel, right, y, "Keep spells at their newest rank", "When you learn a new rank of a spell, the copies on these slots are moved up to it, as the game does for the regular action bars. A lower rank you put on a slot yourself is left alone.", "keepRanks")
 end
 
-function Options:Create()
+---------------------------------------------------------------------------
+-- The Other buttons page
+---------------------------------------------------------------------------
+-- FreeControl binds the D-pad, the face buttons and the two triggers itself. Every other button
+-- on a controller is an ordinary button to the game: it has one of the player's own key
+-- bindings, exactly as a key on the keyboard has. Players took their bumpers and paddles for
+-- missing, so this page lists them with what each one does and offers the common jobs in a
+-- menu. Picking one sets a real key binding, the same one the Key Bindings screen would set.
+
+-- What FreeControl itself uses a button for, in a few words, or nil for a button that is the
+-- player's own.
+local function OwnUse(key)
+	local db = ns.db
+	if key == db.modKeys[1] then
+		return "FreeControl's left trigger"
+	elseif key == db.modKeys[2] then
+		return "FreeControl's right trigger"
+	end
+	for index = 1, 8 do
+		if key == db.keys[index] then
+			return "FreeControl's " .. Layout.GetButtonName(Layout.SET_NONE, index)
+		end
+	end
+	return nil
+end
+
+-- The game can be set to use a controller button as a stand-in for Shift, Ctrl or Alt, and uses
+-- the left bumper for Ctrl unless told otherwise: the reason a bumper can seem to be missing.
+-- Such a button has no job of its own until the player gives it one here (CVars.lua then makes
+-- it a plain button for as long as FreeControl is active).
+local function StandIn(key)
+	if ns.db.plainKeys[key] then
+		return nil
+	end
+	return ns.CVars:GetStandIn(key)
+end
+
+-- The jobs in the menu: { binding command, label }. "" is no job at all.
+local function JobChoices(key)
+	local modifier = StandIn(key)
+	local choices = {
+		{ "", modifier and ("Stand in for the %s key"):format(modifier) or "Nothing" },
+		{ ns.Bindings.PAGE_COMMANDS.next, "FreeControl: next page" },
+		{ ns.Bindings.PAGE_COMMANDS.prev, "FreeControl: previous page" },
+	}
+	for _, command in ipairs(Layout.COMMANDS) do
+		if command[1] == Layout.CURSOR_COMMAND then
+			if ns.Mouse:IsAvailable() then
+				choices[#choices + 1] = { ns.Bindings.MOUSE_COMMAND, command[2] }
+			end
+		else
+			choices[#choices + 1] = { command[1], command[2] }
+		end
+	end
+	for _, job in ipairs(Layout.MORE_JOBS) do
+		choices[#choices + 1] = job
+	end
+	-- A binding made somewhere else is listed too, so the menu always shows what the button does.
+	local current = GetBindingAction(key)
+	local listed = false
+	for _, choice in ipairs(choices) do
+		listed = listed or choice[1] == current
+	end
+	if not listed then
+		table.insert(choices, 2, { current, GetBindingName(current) })
+	end
+	choices[#choices + 1] = { "keybindings", "Something else...", true }
+	return choices
+end
+
+function Options:OpenKeyBindings()
+	Settings.OpenToCategory(Settings.KEYBINDINGS_CATEGORY_ID)
+end
+
+-- Gives a button a job, as one of the player's own key bindings. Returns true when it was done.
+local function Bind(key, command)
+	if command == "keybindings" then
+		Options:OpenKeyBindings()
+		return false
+	elseif InCombatLockdown() then
+		ns.Print("Key bindings cannot be changed in combat.")
+		return false
+	end
+	local name = Layout.GetKeyName(key)
+	local modifier = ns.CVars:GetStandIn(key)
+	if command == "" then
+		SetBinding(key, nil)
+	elseif not SetBinding(key, command) then
+		ns.Print(("The game would not bind %s to that."):format(name))
+		return false
+	end
+	SaveBindings(GetCurrentBindingSet())
+	-- A button with a job is a plain button; one without is whatever the game makes of it.
+	ns.db.plainKeys[key] = command ~= "" or nil
+	if command ~= "" then
+		ns.Print(("%s now does this: %s.%s"):format(name, LabelFor(JobChoices(key), command),
+			modifier and (" It no longer stands in for the %s key while FreeControl is active."):format(modifier) or ""))
+	elseif modifier then
+		ns.Print(("%s has no job of its own now, and stands in for the %s key again, as the game has it set."):format(name, modifier))
+	else
+		ns.Print(("%s now does nothing."):format(name))
+	end
+	if ns.IsActive() then
+		ns.CVars:Apply() -- the stand-in follows the job
+	end
+	Options:Sync()
+	return true
+end
+Options.Bind = Bind
+
+-- A row for one button: its name, and a button showing its job that opens the menu of jobs.
+-- getKey() names the button; a row without one (nothing caught yet) hides itself.
+local function KeyRow(panel, x, y, getKey)
+	local function Job()
+		return GetBindingAction(getKey())
+	end
+	local function Tooltip()
+		local key = getKey()
+		local text = "What this button does. Pick a job from the list, or Something else to open the game's Key Bindings screen, where it can be given any command, spell or macro."
+		if key == ns.Mouse:GetManagedKey(1) or key == ns.Mouse:GetManagedKey(2) then
+			text = text .. (" While the mouse pointer is out it is the %s mouse button instead."):format(key == ns.Mouse:GetManagedKey(1) and "left" or "right")
+		end
+		local modifier, cvar = StandIn(key)
+		if modifier then
+			text = text .. (" Right now the game uses it as a stand-in for the %s key (its %s setting), so a job of its own would come late or not at all. Pick a job here and FreeControl makes it a plain button while it is active."):format(modifier, cvar)
+		end
+		return text
+	end
+	local nextY, button, label = Choice(panel, x, y, "", Tooltip, function() return JobChoices(getKey()) end, Job,
+		function(command) Bind(getKey(), command) end, 230)
+	local showJob = button.Sync
+	button:SetScript("OnClick", function(self)
+		local own = OwnUse(getKey())
+		if own then
+			ns.Print(("%s is %s, so a key binding on it would never be reached. The main page and /fc key change which buttons FreeControl uses."):format(Layout.GetKeyName(getKey()), own))
+			return
+		end
+		Choose(self, JobChoices(getKey()), Job, function(command) Bind(getKey(), command) end)
+	end)
+	button.Sync = function(self)
+		local key = getKey()
+		self:SetShown(key ~= nil)
+		label:SetShown(key ~= nil)
+		if not key then
+			return
+		end
+		label:SetText(Layout.GetKeyName(key))
+		local own = OwnUse(key)
+		if own then
+			self:SetText(own)
+		else
+			showJob(self) -- for a stand-in with no job, the first choice's label says what it stands in for
+		end
+	end
+	return nextY
+end
+
+-- Listens for the next button or key, for the row that takes any of them. It covers the page
+-- while it listens, so that the press goes nowhere else; Escape or a click ends it.
+local IGNORED_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true, LMETA = true, RMETA = true, UNKNOWN = true }
+
+local function CreateCatcher(panel, onKey)
+	local catcher = CreateFrame("Frame", nil, panel)
+	catcher:SetAllPoints()
+	catcher:SetFrameStrata("DIALOG")
+	catcher:EnableMouse(true)
+	catcher:EnableKeyboard(true)
+	if catcher.EnableGamePadButton then
+		catcher:EnableGamePadButton(true)
+	end
+	catcher:Hide()
+
+	local shade = catcher:CreateTexture(nil, "BACKGROUND")
+	shade:SetAllPoints()
+	shade:SetColorTexture(0, 0, 0, 0.85)
+	local text = catcher:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	text:SetPoint("CENTER")
+	text:SetText("Press the button or key you want to give a job.\n\nEscape or a click cancels.")
+
+	local function Caught(self, key)
+		if IGNORED_KEYS[key] then
+			return
+		end
+		self:Hide()
+		if key ~= "ESCAPE" then
+			onKey(key)
+		end
+	end
+	catcher:SetScript("OnKeyDown", Caught)
+	catcher:SetScript("OnGamePadButtonDown", Caught)
+	catcher:SetScript("OnMouseDown", catcher.Hide)
+	return catcher
+end
+
+local function BuildButtons(panel)
+	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalHuge")
+	title:SetPoint("TOPLEFT", 16, -14)
+	title:SetText("Other buttons")
+
+	local note = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", 18, -40)
+	note:SetPoint("RIGHT", -20, 0)
+	note:SetJustifyH("LEFT")
+	note:SetText("FreeControl uses the D-pad, the four face buttons and the two triggers. Every other button on your controller is an ordinary button: it does whatever it is bound to, like a key on the keyboard. Give each one a job here. A job picked here is a normal key binding, so it shows in the game's Key Bindings screen as well and stays when FreeControl is switched off.")
+
+	local left = 16
+	local y = -90
+	y = Heading(panel, "On most controllers", left, y)
+	for _, key in ipairs(Layout.OTHER_KEYS) do
+		y = KeyRow(panel, left, y, function() return key end)
+	end
+
+	y = Heading(panel, "Any other button or key", left, y - 8)
+	local catcher = CreateCatcher(panel, function(key)
+		Options.caughtKey = key
+		Options:Sync()
+	end)
+	Options.catcher = catcher
+	y = Action(panel, left, y, "Press it...", "For a button that is not in the list above, or a key on the keyboard: click this, then press it. It appears below with its job.", function()
+		if InCombatLockdown() then
+			ns.Print("Key bindings cannot be changed in combat.")
+			return
+		end
+		catcher:Show()
+	end, "Find a button")
+	y = KeyRow(panel, left, y, function() return Options.caughtKey end)
+
+	y = Heading(panel, "Everything else", left, y - 8)
+	Action(panel, left, y, "Open Key Bindings", "The game's own Key Bindings screen. Anything can be bound there, to any button: FreeControl's two page buttons are listed under FreeControl.", function()
+		Options:OpenKeyBindings()
+	end, "Key Bindings")
+end
+
+---------------------------------------------------------------------------
+-- Registering the pages
+---------------------------------------------------------------------------
+-- A page is built the first time it is opened; most sessions never open one.
+local function CreatePanel(build)
 	local panel = CreateFrame("Frame")
 	panel:Hide()
-	-- Built the first time the page is opened; most sessions never open it.
 	panel:SetScript("OnShow", function(self)
 		if not self.built then
 			self.built = true
-			Build(self)
+			build(self)
 		end
 		Options:Sync()
 	end)
-	self.panel = panel
-	self.category = Settings.RegisterCanvasLayoutCategory(panel, "FreeControl")
-	Settings.RegisterAddOnCategory(self.category)
+	return panel
 end
 
--- Brings the page in line with the saved settings.
+function Options:Create()
+	self.panel = CreatePanel(Build)
+	self.category = Settings.RegisterCanvasLayoutCategory(self.panel, "FreeControl")
+	Settings.RegisterAddOnCategory(self.category)
+	self.buttonsPanel = CreatePanel(BuildButtons)
+	self.buttonsCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.buttonsPanel, "Other buttons")
+end
+
+-- Brings the pages in line with the saved settings and the player's key bindings. A page that
+-- is not on screen is left for when it is opened: this is called on every setting change, and
+-- when the page is turned in a fight.
 function Options:Sync()
-	if not (self.panel and self.panel.built) then
+	if not ((self.panel and self.panel:IsVisible()) or (self.buttonsPanel and self.buttonsPanel:IsVisible())) then
 		return
 	end
 	for _, control in ipairs(controls) do
@@ -356,11 +628,36 @@ function Options:Open()
 	Settings.OpenToCategory(self.category:GetID())
 end
 
+function Options:OpenButtons()
+	Settings.OpenToCategory(self.buttonsCategory:GetID())
+end
+
+-- Bindings changed somewhere else, in the Key Bindings screen for one: the rows follow.
+ns.On("UPDATE_BINDINGS", function()
+	Options:Sync()
+end)
+
 ---------------------------------------------------------------------------
 -- /fc status
 ---------------------------------------------------------------------------
 local function YesNo(value)
 	return value and "yes" or "no"
+end
+
+-- The stances or forms the game lists for this character, and which one it is in. A form can be
+-- on this list without having a bar of its own (a travel form): the bar only changes for those
+-- that do.
+local function DescribeForms()
+	if not (GetNumShapeshiftForms and GetShapeshiftFormInfo) then
+		return nil
+	end
+	local names = {}
+	for index = 1, GetNumShapeshiftForms() do
+		local _, active, _, spell = GetShapeshiftFormInfo(index)
+		local name = spell and not ns.IsSealed(spell) and C_Spell.GetSpellName(spell) or ("number " .. index)
+		names[index] = name .. ((not ns.IsSealed(active) and active) and " (in it now)" or "")
+	end
+	return "Stances or forms the game lists: " .. (#names > 0 and table.concat(names, ", ") or "none") .. "."
 end
 
 local function PrintStatus()
@@ -383,31 +680,46 @@ local function PrintStatus()
 	local first = Layout.GetFirstGamepadSlot()
 	ns.Print(("Slots: %s (asked for %s). Controller-bar slots start at %s, usable: %s, stance slots usable: %s"):format(
 		source, db.slotSource, tostring(first), YesNo(Layout.HasGamepadSlots()), YesNo(Layout.HasStanceSlots())))
-	if source == "gamepad" then
-		local _, class = UnitClass("player")
-		ns.Print(("Page %d. Class: %s. Changes with your stance or form (setting: %s): %s"):format(db.page, tostring(class), db.stanceSet,
-			Layout.DescribeStanceGroups(Layout.GetStanceGroups()) or "nothing"))
-		-- Which slots a stance uses is worked out, not asked for; the client can confirm both
-		-- kinds for the stance you are in right now.
-		local bonus = C_ActionBar.GetBonusBarOffset()
-		local differ = " |cffff4040- these differ, please report it|r"
-		if bonus > 0 and Layout.HasStanceSlots() then
-			local reported = C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance
+	local _, class = UnitClass("player")
+	ns.Print(("Page %d of %d. Class: %s. Changes with your stance or form (setting: %s): %s"):format(Layout.GetPage(), Layout.GetPageCount(),
+		tostring(class), db.stanceSet, Layout.DescribeStance()))
+	ns.Print(("Page buttons: next page is on %s, previous page on %s."):format(
+		GetBindingKey(ns.Bindings.PAGE_COMMANDS.next) or "no button", GetBindingKey(ns.Bindings.PAGE_COMMANDS.prev) or "no button"))
+	local forms = DescribeForms()
+	if forms then
+		ns.Print(forms)
+	end
+	-- Which stance bar is up is asked of the game twice: here, and by the secure code that moves
+	-- the buttons (a macro condition). Which slots a stance uses is worked out, not asked for;
+	-- the client can confirm both kinds for the stance you are in right now.
+	local bonus = C_ActionBar.GetBonusBarOffset()
+	local differ = " |cffff4040- these differ, please report it|r"
+	if bonus > 0 then
+		if #Layout.GetStanceGroups() == 0 then
+			ns.Print(("Stance bar %d is up. Nothing on the bar is set to change with it."):format(bonus))
+		elseif ns.IsBuilt() then
+			local following = tonumber(ns.Bindings.header:GetAttribute("state-fc-stance")) or 0
+			ns.Print(("Stance bar %d is up. The bar is following stance bar %d%s"):format(bonus, following, following ~= bonus and differ or ""))
+		end
+		if bonus > Layout.NUM_STANCES then
+			ns.Print(("|cffff4040FreeControl has slots for stance bars 1 to %d only, please report this one.|r"):format(Layout.NUM_STANCES))
+		else
+			local reported = Layout.HasStanceSlots() and C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance
 				and C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance()
 			if reported then
-				local expected = Layout.GetStanceSlot({ store = "pad" }, bonus, 1)
+				local expected = Layout.GetStanceFirst("pad", bonus)
 				ns.Print(("Stance %d: its controller slots start at %d (the game says %d)%s"):format(bonus, expected, reported,
 					expected == reported and "" or differ))
 			end
 			local page = C_ActionBar.GetBonusBarIndex and C_ActionBar.GetBonusBarIndex()
 			if page then
-				local expected, reportedBar = Layout.GetStanceSlot({ store = "bar", offset = 0 }, bonus, 1), (page - 1) * 12 + 1
+				local expected, reportedBar = Layout.GetStanceFirst("bar", bonus), (page - 1) * 12 + 1
 				ns.Print(("Stance %d: its regular action bar slots start at %d (the game says %d)%s"):format(bonus, expected, reportedBar,
 					expected == reportedBar and "" or differ))
 			end
-		else
-			ns.Print("No stance or form bar is active right now.")
 		end
+	else
+		ns.Print("No stance or form bar is up right now.")
 	end
 
 	if ns.IsBuilt() then
@@ -477,7 +789,8 @@ local HELP = {
 	"/fc lock | unlock - hide or show the handle for dragging the bar",
 	"/fc scale <0.5-2> - size of the bar",
 	"/fc reset - put the bar back where it started",
-	"/fc page <1-3> - which controller-bar page to show",
+	"/fc page <1-3> - which controller-bar page to show (the arrows in the middle of the bar turn it too)",
+	"/fc buttons - give the bumpers, stick clicks, Start, Back and paddles their jobs",
 	"/fc slots gamepad | bars - where the slots are stored",
 	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
 	"/fc glow on | off - glow a button whose spell has procced or come free for a moment",
@@ -531,6 +844,8 @@ SlashCmdList.FREECONTROL = function(message)
 		Set("scale", math.max(0.5, math.min(2, tonumber(first))))
 	elseif command == "page" and ns.IsOneOf(tonumber(first), 1, 2, 3) then
 		Set("page", tonumber(first))
+	elseif command == "buttons" then
+		Options:OpenButtons()
 	elseif command == "slots" and ns.IsOneOf(first, "gamepad", "bars") then
 		Set("slotSource", first)
 	elseif command == "numbers" and ns.IsOneOf(first, "on", "off") then
@@ -548,7 +863,7 @@ SlashCmdList.FREECONTROL = function(message)
 		-- In combat the change waits for the fight to end, and RequestRefresh has said so.
 		Set("stanceSet", first)
 		if not InCombatLockdown() then
-			ns.Print(("Changes with your stance or form: %s."):format(Layout.DescribeStanceGroups(Layout.GetStanceGroups()) or "nothing"))
+			ns.Print(("Changes with your stance or form: %s."):format(Layout.DescribeStance()))
 		end
 	elseif command == "mouse" then
 		ns.Mouse:Toggle(false)

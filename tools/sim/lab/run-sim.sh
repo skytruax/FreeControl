@@ -47,8 +47,9 @@
 #       --settle SECONDS   simulated seconds to run after login in phase 1 (default 3, 0 = off)
 #       --class NAME       player class (default Paladin)   --race NAME   player race
 #       --solo             no demo party (the simulator starts with 4 fake party members)
-#       --siminput MODE    auto|on|off: load the SimInput test helper (secure-origin clicks and
-#                          CLICK-binding key presses). auto = on when a test mentions "SimInput".
+#       --siminput MODE    auto|on|off: load the SimInput test helper (secure-origin clicks,
+#                          CLICK-binding key presses, and a stance bar for macro conditions).
+#                          auto = on when a test mentions "SimInput".
 #       --allow-test-lua-errors   do not fail when tests pass but Lua errors were reported meanwhile
 #       --env KEY=VALUE    extra environment variable for the simulator (repeatable)
 #   -v, --verbose          print the full simulator logs

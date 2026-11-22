@@ -39,6 +39,11 @@ Layout.BUTTON_OFFSET = {
 -- The trigger label sits in the gap between the two lower buttons of a set.
 Layout.LABEL_OFFSET = { 0, -30 }
 
+-- The pager sits in the middle of the bar: an arrow, the page number, an arrow. Its height is
+-- what fits between the top and the bottom set whichever of them is held (a held set is larger).
+Layout.PAGER_SIZE = 20
+Layout.PAGER_STEP = 23 -- from the number to the middle of an arrow
+
 function Layout.IsRound(index)
 	return index > 4
 end
@@ -53,16 +58,19 @@ local STYLES = {
 		face = { "X", "Y", "B", "A" },         -- left, top, right, bottom
 		triggers = { "LT", "RT" },
 		bumpers = { "LB", "RB" },
+		middle = { "Back", "Start" },          -- the two small buttons in the middle, left and right
 	},
 	playstation = {
 		face = { "Square", "Triangle", "Circle", "Cross" },
 		triggers = { "L2", "R2" },
 		bumpers = { "L1", "R1" },
+		middle = { "Share", "Options" },
 	},
 	nintendo = {
 		face = { "Y", "X", "A", "B" },
 		triggers = { "ZL", "ZR" },
 		bumpers = { "L", "R" },
+		middle = { "Minus", "Plus" },
 	},
 }
 local DPAD = { "DpadLeft", "DpadUp", "DpadRight", "DpadDown" }
@@ -139,9 +147,37 @@ function Layout.GetKeyName(key)
 		return style.bumpers[1]
 	elseif key == "PADRSHOULDER" then
 		return style.bumpers[2]
+	elseif key == "PADBACK" then
+		return style.middle[1]
+	elseif key == "PADFORWARD" then
+		return style.middle[2]
 	end
 	return KEY_NAME[key] or key
 end
+
+---------------------------------------------------------------------------
+-- The controller's other buttons
+---------------------------------------------------------------------------
+-- FreeControl binds the D-pad, the face buttons and the two triggers. Every other button is an
+-- ordinary button to the game, bound like a key on the keyboard; these are the ones nearly every
+-- controller has, in the order the Other buttons page lists them.
+Layout.OTHER_KEYS = {
+	"PADLSHOULDER", "PADRSHOULDER", "PADLSTICK", "PADRSTICK", "PADBACK", "PADFORWARD",
+	"PADPADDLE1", "PADPADDLE2", "PADPADDLE3", "PADPADDLE4",
+}
+
+-- Game commands offered for them on top of Layout.COMMANDS: { binding name, label }. The names
+-- are the ones the Key Bindings screen uses (Blizzard_FrameXML/Bindings_Camelot.xml).
+Layout.MORE_JOBS = {
+	{ "ASSISTTARGET", "Target your target's target" },
+	{ "TOGGLECHARACTER0", "Character" },
+	{ "TOGGLESPELLBOOK", "Spellbook" },
+	{ "TOGGLETALENTS", "Talents" },
+	{ "TOGGLEQUESTLOG", "Quest log" },
+	{ "TOGGLESOCIAL", "Friends and guild" },
+	{ "DISMOUNT", "Dismount" },
+	{ "SITORSTAND", "Sit or stand" },
+}
 
 function Layout.GetSetName(set)
 	local style = STYLES[Layout.GetStyleKey()]
@@ -304,7 +340,8 @@ local function GamepadSlot(first, page, set, index)
 	local unit = set * 8 + index
 	if unit >= 5 and unit <= 8 then
 		-- Blizzard gives the top face buttons no storage, so when the player turns one into an
-		-- action slot it borrows the bottom-bar face slots of a page that is not being shown.
+		-- action slot it borrows the bottom-bar face slots of another page: page 3's on pages 1
+		-- and 2, page 2's on page 3. A page therefore never shows one slot on two buttons.
 		local donor = page == NUM_PAGES and NUM_PAGES - 1 or NUM_PAGES
 		return first + PAGE_SLOTS * (donor - 1) + 24 + (unit - 5)
 	end
@@ -315,10 +352,25 @@ local function GamepadSlot(first, page, set, index)
 	return first + PAGE_SLOTS * (page - 1) + offset
 end
 
--- Action slot shown by a button outside any stance.
-function Layout.GetSlot(set, index)
+---------------------------------------------------------------------------
+-- Pages
+---------------------------------------------------------------------------
+-- The controller's slots come in three pages, as in the Gamepad UI. The regular action bars
+-- have nothing of the kind: with them as the slots there is one page.
+function Layout.GetPageCount()
+	return Layout.GetSlotSource() == "gamepad" and NUM_PAGES or 1
+end
+
+-- The page being shown: the saved one, or the first when the slots in use have no such page.
+function Layout.GetPage()
+	local page = ns.db.page
+	return page <= Layout.GetPageCount() and page or 1
+end
+
+-- Action slot a button shows on a page (the one being shown, if none is given), outside any stance.
+function Layout.GetSlot(set, index, page)
 	if Layout.GetSlotSource() == "gamepad" then
-		return GamepadSlot(gamepad.first, ns.db.page, set, index)
+		return GamepadSlot(gamepad.first, page or Layout.GetPage(), set, index)
 	end
 	return BAR_FIRST[set] + index - 1
 end
@@ -339,8 +391,13 @@ end
 -- kept in the first eight "bar" slots, and the D-pad with no trigger held in the last four. The
 -- both-triggers set and the face buttons never change, so there is always somewhere for what is
 -- needed in every form.
+--
+-- They change on one page only, as the game's own bars do: the regular action bar turns to a
+-- stance's slots on its first page alone, and the Gamepad UI's stance bar sits on one bar of one
+-- page. Every other page is the same in every stance.
 local BAR_STANCE_FIRST = 73 -- the first slot of the regular action bar in stance 1
 local BAR_STANCE_SLOTS = 12
+Layout.NUM_STANCES = NUM_STANCE_BARS
 
 Layout.STANCE_CHOICES = { "auto", "none", "lt", "rt", "both", "ltrt", "all" }
 
@@ -353,14 +410,14 @@ function Layout.IsFormClass()
 	return FORM_CLASSES[class] or false
 end
 
--- The set picked in Options > Gamepad > Stance bar, or nil when that is none, another page, or
--- the top bar (its face buttons are not action slots).
-local function GetGamepadOptionSet()
+-- What Options > Gamepad > Stance bar says: the page its stance bar is on, and the set that bar
+-- takes the place of. No set for "none" and for a top bar, whose face buttons are not slots.
+local function GetGamepadOption()
 	-- Enum.GamepadStanceBarOverride: 1 none, 2-4 page 1 left/right/bottom, 5-8 page 2 top/left/right/bottom,
 	-- 9-12 page 3 top/left/right/bottom.
 	local value = tonumber(GetCVar("GamepadStanceBarOverride"))
 	if not value or value < 2 or value > 12 then
-		return nil
+		return 1, nil
 	end
 	local page, bar
 	if value <= 4 then
@@ -368,43 +425,56 @@ local function GetGamepadOptionSet()
 	else
 		page, bar = math.floor((value - 5) / 4) + 2, (value - 5) % 4
 	end
-	if page ~= ns.db.page or bar == 0 then
-		return nil
+	return page, bar ~= 0 and bar or nil
+end
+
+-- The one page whose buttons change with the stance: the page the Gamepad options put the stance
+-- bar on, which is the first unless the player moved it.
+function Layout.GetStancePage()
+	if Layout.GetPageCount() == 1 then
+		return 1
 	end
-	return bar
+	return (GetGamepadOption())
 end
 
 -- The groups of buttons that change with the stance, in the order described above. Each is
 --   { set =, last =, store = "pad" | "bar", offset = }
 -- where the group is buttons 1 to `last` of the set, and `offset` is how far into a stance's
--- "bar" slots it starts.
+-- slots of that kind it starts.
 function Layout.GetStanceGroups()
 	local groups = {}
-	if Layout.GetSlotSource() ~= "gamepad" or not gamepad.stanceValid then
+	local source = Layout.GetSlotSource()
+	local choice = ns.db.stanceSet
+	-- With the regular action bars as the slots nothing changes unless the player asks for it:
+	-- those bars have never followed the stance, and a Warrior is always in one.
+	if choice == "none" or (choice == "auto" and source ~= "gamepad") then
 		return groups
 	end
-	local choice = ns.db.stanceSet
+	local _, optionSet = GetGamepadOption()
 	local first, pair, dpad
 	if choice == "auto" then
 		-- What the Gamepad options say, so the bar matches what the Gamepad UI would show; and
 		-- for a class that needs it, the other trigger set and the D-pad as well.
-		first = GetGamepadOptionSet()
+		first = optionSet
 		pair = Layout.IsFormClass()
 		dpad = pair
 	elseif choice == "ltrt" or choice == "all" then
-		first = GetGamepadOptionSet()
+		first = optionSet
 		pair, dpad = true, choice == "all"
-	elseif choice ~= "none" then
+	else
 		first = Layout.SET_FROM_KEY[choice]
 	end
 	if pair and first ~= Layout.SET_LT and first ~= Layout.SET_RT then
 		first = Layout.SET_RT
 	end
+	-- Where the trigger sets keep their actions. Without the controller's stance bars (the regular
+	-- action bars are the slots, or this client has none) there is room for one set only.
+	local stores = (source == "gamepad" and gamepad.stanceValid) and { "pad", "bar" } or { "bar" }
 	if first then
-		groups[#groups + 1] = { set = first, last = 8, store = "pad", offset = 0 }
+		groups[#groups + 1] = { set = first, last = 8, store = stores[1], offset = 0 }
 	end
-	if pair then
-		groups[#groups + 1] = { set = first == Layout.SET_RT and Layout.SET_LT or Layout.SET_RT, last = 8, store = "bar", offset = 0 }
+	if pair and stores[2] then
+		groups[#groups + 1] = { set = first == Layout.SET_RT and Layout.SET_LT or Layout.SET_RT, last = 8, store = stores[2], offset = 0 }
 	end
 	if dpad then
 		groups[#groups + 1] = { set = Layout.SET_NONE, last = 4, store = "bar", offset = 8 }
@@ -422,21 +492,28 @@ function Layout.FindStanceGroup(groups, set, index)
 	return nil
 end
 
--- Slot shown by button `index` of a group while stance (bonus bar) number `stance` is active.
-function Layout.GetStanceSlot(group, stance, index)
-	if group.store == "pad" then
-		return gamepad.first + PAGE_SLOTS * NUM_PAGES + (stance - 1) * 8 + index - 1
+-- The first of the slots of one kind that stance (bonus bar) number `stance` has; nothing for
+-- the controller's stance bars on a client without them.
+function Layout.GetStanceFirst(store, stance)
+	if store == "pad" then
+		return gamepad.stanceValid and gamepad.first + PAGE_SLOTS * NUM_PAGES + (stance - 1) * 8 or nil
 	end
-	return BAR_STANCE_FIRST + (stance - 1) * BAR_STANCE_SLOTS + group.offset + index - 1
+	return BAR_STANCE_FIRST + (stance - 1) * BAR_STANCE_SLOTS
 end
 
--- Macro-condition string for RegisterAttributeDriver: the stance slots, then the normal slot.
-function Layout.GetStanceDriver(group, index)
+-- Slot shown by button `index` of a group while stance number `stance` is active.
+function Layout.GetStanceSlot(group, stance, index)
+	return Layout.GetStanceFirst(group.store, stance) + group.offset + index - 1
+end
+
+-- Macro conditions for the secure header's stance state (Bindings.lua): the number of the stance
+-- bar that is up, 0 for none.
+function Layout.GetStanceCondition()
 	local parts = {}
 	for stance = 1, NUM_STANCE_BARS do
-		parts[#parts + 1] = ("[bonusbar:%d] %d"):format(stance, Layout.GetStanceSlot(group, stance, index))
+		parts[#parts + 1] = ("[bonusbar:%d] %d"):format(stance, stance)
 	end
-	parts[#parts + 1] = tostring(Layout.GetSlot(group.set, index))
+	parts[#parts + 1] = "0"
 	return table.concat(parts, "; ")
 end
 
@@ -452,4 +529,16 @@ function Layout.DescribeStanceGroups(groups)
 		return names[1]
 	end
 	return table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
+end
+
+-- The same with the page they change on, where there is more than one page:
+-- "RT set, LT set and the D-pad, on page 1". "nothing" for none.
+function Layout.DescribeStance()
+	local described = Layout.DescribeStanceGroups(Layout.GetStanceGroups())
+	if not described then
+		return "nothing"
+	elseif Layout.GetPageCount() > 1 then
+		return ("%s, on page %d"):format(described, Layout.GetStancePage())
+	end
+	return described
 end

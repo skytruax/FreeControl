@@ -59,6 +59,7 @@ def read_layout():
         "set_offset": {int(offsets[i]): (offsets[i + 1], offsets[i + 2]) for i in range(0, len(offsets), 3)},
         "button_offset": pairs(numbers(r"Layout\.BUTTON_OFFSET = \{(.*?)\n\}")),
         "label_offset": numbers(r"Layout\.LABEL_OFFSET = \{(.*?)\}"),
+        "pager": (numbers(r"Layout\.PAGER_SIZE = (\d+)")[0], numbers(r"Layout\.PAGER_STEP = (\d+)")[0]),
     }
 
 
@@ -234,16 +235,27 @@ class Painter:
         bx, by = LAYOUT["button_offset"][index - 1]
         return cx + bx * k, cy - by * k
 
-    def bar(self, canvas, ox, oy, held, style, content, states=None, counts=None, glow=True):
+    def pager(self, canvas, ox, oy, page):
+        """The two page arrows and the page number, in the middle of the bar (Bars.lua)."""
+        size, step = LAYOUT["pager"]
+        paste(canvas, self.tex("Page-Prev", size * self.k, size * self.k), ox - step * self.k, oy)
+        paste(canvas, self.tex("Page-Next", size * self.k, size * self.k), ox + step * self.k, oy)
+        ImageDraw.Draw(canvas).text((ox, oy), str(page), anchor="mm", font=FONT(round(12 * self.k)),
+                                    fill=(255, 255, 255, 255), stroke_width=max(1, round(0.6 * self.k)), stroke_fill=(0, 0, 0, 255))
+
+    def bar(self, canvas, ox, oy, held, style, content, states=None, counts=None, glow=True, page=1):
         """The whole bar centred on (ox, oy). held is the set shown as selected: 0 none, 1 the left
         trigger, 2 the right, 3 both. content[set] lists what the eight buttons of a set hold;
-        states and counts are keyed by (set, button index)."""
+        states and counts are keyed by (set, button index). page is the number the pager shows, or
+        None for a bar without one (the regular action bars as the slots)."""
         states, counts = states or {}, counts or {}
         for set_id in (0, 1, 2, 3):
             cx, cy = self.set_centre(ox, oy, set_id)
             self.one_set(canvas, cx, cy, set_id, style, content.get(set_id, [None] * 8), set_id == held,
                          {i: v for (s, i), v in states.items() if s == set_id},
                          {i: v for (s, i), v in counts.items() if s == set_id}, glow)
+        if page:
+            self.pager(canvas, ox, oy, page)
 
 
 def spells(*names):

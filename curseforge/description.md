@@ -30,9 +30,13 @@ Interact loots the corpse next to you, talks to the NPC in front of you, opens t
 
 ![The Interact button: loot, talk, open, attack](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/04-interact.jpg?v=1.3.2)
 
+### Three pages, a button press apart
+
+The bar has the Gamepad UI's three pages, each with its own 28 slots. Two small arrows in the middle of the bar turn the page, in a fight too, and any button you like can do it for you: the bumpers are made for it.
+
 ### Your game stays in normal mode
 
-Bumpers, stick clicks and every button FreeControl does not use are yours. Bind them in the normal Key Bindings screen, to whatever targeting you prefer. The menus are the ones you know, and nothing in your layout is moved or replaced.
+The bumpers, stick clicks, Start, Back and paddles are ordinary buttons, and they are yours. The *Other buttons* page of the settings lists them with what each one does and gives them jobs from a menu: turn the page, target, open the map. The normal Key Bindings screen does the rest. The menus are the ones you know, and nothing in your layout is moved or replaced.
 
 ![A sketch of the normal interface with the FreeControl bar as the one thing added](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/05-normal-mode.jpg?v=1.3.2)
 
@@ -44,7 +48,9 @@ Every slot shows what a normal action bar shows: cooldowns with a countdown, ite
 
 ### Every stance and form has its own buttons
 
-Change stance or form and the bar changes with you, in the middle of a fight too. For most classes one set of eight swaps, as it does for a Rogue going into Stealth. A Druid gets more, because nothing a caster knows works in Cat or Bear form: the right set, the left set and the D-pad all change, 20 buttons for each form. The both-triggers set and the face buttons stay the same everywhere, which is where your shapeshifts, mount and trinkets go.
+Change stance or form and the bar changes with you, in the middle of a fight too. For most classes one set of eight swaps, as it does for a Rogue going into Stealth. A Druid gets more, because nothing a caster knows works in Cat or Bear form: the right set, the left set and the D-pad all change, 20 buttons for each form. The both-triggers set, the face buttons and pages 2 and 3 stay the same everywhere.
+
+Your shapeshifts stay put: a form, Stealth or a stance keeps its button in every form that has nothing of its own there, so the way back out is never lost.
 
 Already have Cat and Bear bars set up in the normal interface? They are on the left set and the D-pad the moment you shift. Any class can pick how much changes under *Stance sets* on the settings page.
 
@@ -65,6 +71,7 @@ And two more things:
 2. Log in with your controller connected. The bar appears above your action bars.
 3. Drag your spells onto the slots. Hold LT, RT or both to reach the other sets.
 4. With no trigger held, the D-pad is four more action slots, X is Interact, Y brings out the mouse pointer, B is Cancel / game menu, and A is Jump. Click any of them on the bar to change what it does.
+5. Give your bumpers and paddles their jobs under *Other buttons* in the settings (`/fc buttons`). Next page and previous page are at the top of the list.
 
 Type `/fc` for the settings, `/fc unlock` to drag the bar where you want it, and `/fc status` to see what the addon sees, which helps in a bug report.
 
@@ -84,7 +91,7 @@ Some things still want a mouse: a vendor, a quest window, your bags, dragging a 
 
 The triggers keep choosing your sets the whole time. The two click buttons and the pointer's speed are yours to change under *Mouse mode* on the settings page (`/fc`).
 
-There is nothing to set up: FreeControl binds Y itself, the same way it binds Interact, and nothing is added to the game's Key Bindings screen. To have Y do something else, click it on the bar; any other no-trigger button can be the mouse button instead (choose *Mouse pointer on / off*).
+There is nothing to set up: FreeControl binds Y itself, the same way it binds Interact. To have Y do something else, click it on the bar; any other no-trigger button can be the mouse button instead (choose *Mouse pointer on / off*), and so can a bumper or a paddle, from the *Other buttons* page.
 
 ## FreeControl, Gamepad UI mode or ConsolePort?
 
@@ -97,17 +104,18 @@ While it is active, FreeControl sets a few console variables, and puts your own 
 
 - controller input is turned on, if it was off (this is not Gamepad UI mode);
 - the Interact key behaviour is turned on, with the reach Gamepad UI mode uses;
-- the left trigger stops standing in for Shift, which is the game's default and would keep it from registering as held;
+- the left trigger stops standing in for Shift, which is the game's default and would keep it from registering as held; the left bumper stops standing in for Ctrl once you give it a job;
 - the game's two mouse-click buttons for its stick pointer are set to the stick clicks (the game starts with RT and RB, and RT is a hotbar trigger);
 - the game's option that pins that pointer to the middle of the screen is switched off, if something had switched it on.
 
-It binds the D-pad, the face buttons and the triggers with override bindings. Those sit on top of your saved key bindings without changing them.
+It binds the D-pad, the face buttons and the triggers with override bindings. Those sit on top of your saved key bindings without changing them. A job you pick on the *Other buttons* page is a key binding of your own, like one made in the Key Bindings screen.
 
 ## Good to know
 
 - Mouse mode is the game's own stick pointer, so the clicks are real mouse clicks. A click button has to be a single button: a trigger combination cannot be one.
 - Spell flyouts (one slot holding a group of spells) open below the button and need the mouse pointer to choose from. Put the individual spells on the bar instead.
 - A Druid's left set and D-pad keep their form actions in the slots of the game's own action bar for that form, so what you drop on them in a form shows on that bar as well.
+- Stances and forms change the buttons on one page: page 1, unless the Gamepad options put the stance bar on another.
 - There is no vehicle or possess bar yet. Use the game's own bar for those.
 - Triggers are hold-to-select. There is no tap-to-toggle yet.
 

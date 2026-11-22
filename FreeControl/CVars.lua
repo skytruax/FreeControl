@@ -25,6 +25,11 @@ local function IsOurKey(button)
 		return false
 	end
 	button = button:upper()
+	-- A button the player gave a job on the Other buttons page (Options.lua), or bound to one of
+	-- FreeControl's own commands in the game's Key Bindings screen.
+	if ns.db.plainKeys[button] or ns.Bindings:IsOwnCommand(GetBindingAction(button)) then
+		return true
+	end
 	for _, key in ipairs(ns.db.keys) do
 		if key:upper() == button then
 			return true
@@ -45,13 +50,28 @@ local function IsOurKey(button)
 end
 
 -- The client can make a controller button stand in for Shift, Ctrl or Alt, and out of the box the
--- left trigger is Shift. A button used that way only reports a press when it is tapped, so a held
--- trigger would never select a set. The stand-in is switched off for buttons FreeControl uses and
--- left alone for every other button.
+-- left trigger is Shift and the left bumper is Ctrl. A button used that way only reports a press
+-- when it is tapped, so a held trigger would never select a set, and a job given to the bumper
+-- would come late or not at all. The stand-in is switched off for the buttons FreeControl uses
+-- and for those the player gave a job on the Other buttons page, and left alone for every other.
+local STAND_INS = { { "GamePadEmulateShift", "Shift" }, { "GamePadEmulateCtrl", "Ctrl" }, { "GamePadEmulateAlt", "Alt" } }
+
 local function WithoutStandIn(name)
 	return function()
 		return IsOurKey(OwnValue(name)) and NO_BUTTON or nil
 	end
+end
+
+-- The modifier key ("Shift", "Ctrl" or "Alt") the player's own settings make this button stand
+-- in for, or nil; and the console variable that says so.
+function CVars:GetStandIn(button)
+	for _, entry in ipairs(STAND_INS) do
+		local own = OwnValue(entry[1])
+		if own and own:upper() == button then
+			return entry[2], entry[1]
+		end
+	end
+	return nil
 end
 
 -- How fast the stick moves the mouse cursor. The client has three settings for it: the speed it
@@ -148,6 +168,37 @@ function CVars:RestoreAll()
 		Release(entry[1])
 	end
 end
+
+-- The player's own key bindings changed. One of them may have put a page arrow on a button the
+-- game uses as a stand-in, or taken it off again, and the stand-in has to follow. This is looked
+-- at once, after the client has finished with the change; nobody's bindings change in a fight.
+local looking = false
+
+local function LookAtStandIns()
+	looking = false
+	if not ns.IsActive() then
+		return
+	end
+	for _, entry in ipairs(STAND_INS) do
+		local name = entry[1]
+		if WithoutStandIn(name)() ~= ns.db.cvarApplied[name] then
+			ns.RunOutOfCombat("cvars", function()
+				CVars:Apply()
+			end)
+			return
+		end
+	end
+end
+
+ns.On("UPDATE_BINDINGS", function()
+	if looking or not ns.db or InCombatLockdown() then
+		return
+	end
+	looking = true
+	C_Timer.After(0, function()
+		ns.Try(LookAtStandIns)
+	end)
+end)
 
 -- For the status report: name, current value, and the player's own value where we changed it.
 function CVars:Describe()

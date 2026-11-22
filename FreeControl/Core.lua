@@ -48,6 +48,8 @@ local DEFAULTS = {
 	mouseHintShown = false, -- the chat line that explains the clicks, said the first time the pointer comes out
 	mouseStep = 0,         -- how far this setup has been brought along by GiveMouseButton
 	stanceNoteShown = false, -- the chat line telling a Druid which buttons change with the form
+	formNotes = {},        -- per character: has been told about a shapeshift on a button that changes with the form
+	plainKeys = {},        -- buttons given a job on the Other buttons page: they are no modifier stand-ins while we are active
 	cvarBackup = {},       -- the player's own value of every console variable we changed
 	cvarApplied = {},      -- the value we changed it to
 	introShown = false,
@@ -126,6 +128,12 @@ local function Sanitize(db)
 	end
 	for character, record in pairs(db.ranks) do
 		if type(record) ~= "table" then db.ranks[character] = nil end
+	end
+	for character, told in pairs(db.formNotes) do
+		if told ~= true then db.formNotes[character] = nil end
+	end
+	for key, plain in pairs(db.plainKeys) do
+		if type(key) ~= "string" or key ~= key:upper() or plain ~= true then db.plainKeys[key] = nil end
 	end
 	db.mouseTipShown = nil -- used by 1.2.0 only
 	-- Version 1.3.0 kept its own notes on the mouse button. Its "given" meant the button had no
@@ -340,6 +348,17 @@ function ns.IsBuilt()
 	return built
 end
 
+-- Called by the secure header (in combat too) each time it has pointed the buttons at their
+-- slots, with the page they now show. The page is remembered for the next login; with the
+-- regular action bars as the slots there is only one, and the saved page is kept for later.
+function ns.OnPageShown(page)
+	ns.Bars:OnPageChanged(page)
+	if ns.Layout.GetPageCount() > 1 and ns.db.page ~= page then
+		ns.db.page = page
+		ns.Options:Sync()
+	end
+end
+
 -- The top face button: Y, Triangle, or X on a Nintendo pad.
 local MOUSE_INDEX = 6
 
@@ -410,8 +429,8 @@ local function SayStanceNote()
 		return
 	end
 	db.stanceNoteShown = true
-	ns.Print(("Druid: %s change with your form, so each form has its own buttons. The %s set and the face buttons stay the same in every form: put your shapeshifts there. Stance sets on the settings page (/fc) changes this."):format(
-		ns.Layout.DescribeStanceGroups(groups), ns.Layout.GetSetName(ns.Layout.SET_BOTH)))
+	ns.Print(("Druid: %s change with your form on page %d, so each form has its own buttons there. The %s set, the face buttons and the other pages stay the same in every form: put your shapeshifts there. Stance sets on the settings page (/fc) changes this."):format(
+		ns.Layout.DescribeStanceGroups(groups), ns.Layout.GetStancePage(), ns.Layout.GetSetName(ns.Layout.SET_BOTH)))
 end
 
 ns.On("PLAYER_LOGIN", function()

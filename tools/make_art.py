@@ -294,6 +294,23 @@ def glyph_dpad(direction):
     return img
 
 
+def page_arrow(direction, pushed):
+    """An arrow of the pager in the middle of the bar: the glyphs' dark disc with an open chevron,
+    which is not to be taken for the D-pad's solid arrowhead. Held, it is darker and sits a
+    pixel lower."""
+    img = disc()
+    d = ImageDraw.Draw(img)
+    c = G / 2
+    points = [(-12, 6), (0, -7), (12, 6)]
+    if direction == "Down":
+        points = [(x, -y) for x, y in points]
+    drop = 1.5 if pushed else 0
+    line(d, [(c + x, c + y + drop) for x, y in points], 5.5, (150, 156, 172, 255) if pushed else (240, 242, 248, 255))
+    if pushed:
+        img = over(img, layer(INK, shape_mask(G, G, "round", 3), 0.35))
+    return img
+
+
 # ---------------------------------------------------------------------------
 # Trigger badges: 64 x 32 pills
 # ---------------------------------------------------------------------------
@@ -670,6 +687,9 @@ def _drawings():
         out["Glyph-" + name] = (glyph_shape(name), G, G)
     for direction in ("Up", "Down", "Left", "Right"):
         out["Glyph-Dpad" + direction] = (glyph_dpad(direction), G, G)
+    for name, direction in (("Next", "Up"), ("Prev", "Down")):
+        out["Page-" + name] = (page_arrow(direction, False), G, G)
+        out["Page-" + name + "-Pushed"] = (page_arrow(direction, True), G, G)
     for text in ("LT", "RT", "L2", "R2", "ZL", "ZR"):
         out["Badge-" + text] = (badge(text), 64, 32)
     for name, entry in ROLES.items():

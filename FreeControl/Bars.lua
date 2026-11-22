@@ -12,6 +12,7 @@ ns.Bars = Bars
 
 Bars.sets = {} -- [set] = protected frame holding that set's buttons
 Bars.deco = {} -- [set] = unprotected frame behind it: shade and trigger label
+Bars.pageButtons = {} -- [1] = next page, [-1] = previous page: secure buttons, see Bindings.lua
 
 local ART = ns.ART
 local LABEL_SIZE = { 34, 17 }
@@ -92,6 +93,62 @@ local function CreateMover(bars)
 	return mover
 end
 
+---------------------------------------------------------------------------
+-- The pager
+---------------------------------------------------------------------------
+-- In the gap in the middle of the bar: an arrow down, the number of the page being shown, an
+-- arrow up. The arrows are secure buttons, so that a click (the mouse, the stick pointer, or a
+-- button bound to one of them) can change the page in a fight; what a click does is set up in
+-- Bindings.lua. The number sits on a frame of its own that nothing protected hangs on, because
+-- it changes in a fight too.
+local PAGER_SIZE, PAGER_STEP = Layout.PAGER_SIZE, Layout.PAGER_STEP
+
+local function PageTooltip(button)
+	local step = button.fc.step
+	GameTooltip_SetDefaultAnchor(GameTooltip, button)
+	GameTooltip:SetText(step > 0 and "Next page" or "Previous page", 0.37, 0.84, 1)
+	GameTooltip:AddLine(("Page %d of %d is showing. Each page has its own buttons."):format(Layout.GetPage(), Layout.GetPageCount()), 1, 1, 1, true)
+	local key = GetBindingKey(ns.Bindings.PAGE_COMMANDS[step > 0 and "next" or "prev"])
+	if key then
+		GameTooltip:AddLine(("%s does this."):format(Layout.GetKeyName(key)), 0.6, 0.6, 0.6, true)
+	else
+		GameTooltip:AddLine("No button does this yet: give it one under Other buttons in the settings (/fc).", 0.6, 0.6, 0.6, true)
+	end
+	GameTooltip:Show()
+end
+
+local function CreatePageButton(root, step)
+	local name = step > 0 and "Next" or "Prev"
+	local button = CreateFrame("Button", "FreeControlPage" .. name, root, "SecureHandlerClickTemplate")
+	button:SetSize(PAGER_SIZE, PAGER_SIZE)
+	button:SetPoint("CENTER", root, "CENTER", step * PAGER_STEP, 0)
+	button:SetFrameLevel(root:GetFrameLevel() + 3)
+	button:SetNormalTexture(ART .. "Page-" .. name)
+	button:SetPushedTexture(ART .. "Page-" .. name .. "-Pushed")
+	button:SetHighlightTexture(ART .. "Round-Highlight", "ADD")
+	button.fc = { step = step }
+	button:SetScript("OnEnter", PageTooltip)
+	button:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	return button
+end
+
+local function CreatePager(root)
+	local pager = CreateFrame("Frame", nil, root)
+	pager:SetSize(PAGER_SIZE, PAGER_SIZE)
+	pager:SetPoint("CENTER", root, "CENTER")
+	pager:SetFrameLevel(root:GetFrameLevel() + 3)
+	pager.number = pager:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	pager.number:SetPoint("CENTER")
+	return pager
+end
+
+-- Called (in combat too) when another page is shown. Text only.
+function Bars:OnPageChanged(page)
+	self.pager.number:SetText(tostring(page))
+end
+
 -- Out of combat.
 function Bars:Create()
 	local root = CreateFrame("Frame", "FreeControlBar", UIParent, "SecureFrameTemplate")
@@ -114,6 +171,10 @@ function Bars:Create()
 		frame:SetFrameLevel(root:GetFrameLevel() + 2)
 		self.sets[set] = frame
 	end
+
+	self.pager = CreatePager(root)
+	self.pageButtons[1] = CreatePageButton(root, 1)
+	self.pageButtons[-1] = CreatePageButton(root, -1)
 
 	self.mover = CreateMover(self)
 end
@@ -205,6 +266,12 @@ function Bars:Apply()
 	self:UpdateLabels()
 	self:OnSetChanged(activeSet)
 	self:UpdateMover()
+	-- Nothing to turn with the regular action bars as the slots: they have one page.
+	local paged = Layout.GetPageCount() > 1
+	self.pager:SetShown(paged)
+	for _, button in pairs(self.pageButtons) do
+		button:SetShown(paged)
+	end
 end
 
 -- Out of combat.

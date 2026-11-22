@@ -1,0 +1,8 @@
+<Bindings>
+	<!-- The two page buttons in the middle of the bar, so that any button or key can turn the page
+	     (Options > Key Bindings > FreeControl). They are click bindings on secure buttons, which is
+	     what lets them work in a fight; their names are set in Bindings.lua. Everything else the
+	     addon needs it binds itself. -->
+	<Binding name="CLICK FreeControlPageNext:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPagePrev:LeftButton" category="FreeControl"/>
+</Bindings>
