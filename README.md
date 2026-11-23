@@ -123,11 +123,11 @@ because Blizzard's bar would be bound to the same buttons.
 
 - **Filling slots:** drag spells, items and macros from the spellbook or bags onto a slot. As on
   the regular action bars, dragging one *off* a slot needs Shift while the action bars are locked.
-- **Pages:** the bar has three pages, the Gamepad UI's three, each with its own buttons. The two
-  arrows in the middle of the bar turn the page, in a fight too, and the number between them says
-  which one is showing. To turn it from the controller, give two buttons the job: on the *Other
+- **Pages:** the bar has three pages, the Gamepad UI's three, each with its own buttons. The small
+  plate under the LT + RT set shows which one is up, and the arrow at each end of it turns the
+  page, in a fight too. To turn it from the controller, give two buttons the job: on the *Other
   buttons* page of the settings, or in **Options > Key Bindings** under FreeControl. The bumpers
-  are the obvious pair.
+  are the obvious pair. The middle of the bar is left empty for whatever you keep there.
 - **Same slots as the Gamepad UI:** the slots are the ones Blizzard's controller bars use, which
   are separate from your normal action bars. Anything you already set up in Gamepad UI mode is
   there when you log in, and your regular bars are left alone (the one exception is under
@@ -161,9 +161,16 @@ because Blizzard's bar would be bound to the same buttons.
   on the settings page offers the same to any class.
   They change on one page only, as the game's own bars do: page 1, unless the Gamepad options
   put the stance bar on another. The other pages are the same in every stance or form.
-  A shapeshift (a form, Stealth, a stance) that sits on a button that changes stays on that
-  button in every form that has nothing of its own there, so the way back out is never lost.
-  Drop something on the button while you are in a form to give that form its own.
+  A stance or form (a Druid's forms, Stealth, a Warrior's stances) that you put on a button that
+  changes shows on that button in every stance that has nothing of its own there, whichever
+  stance you were in when you put it there, so the way back is never lost. Drop something on the
+  button while you are in a stance to give that stance its own.
+- **A button of its own for a stance:** any no-trigger button, bumper or paddle can be given
+  *Stance or form: Bear Form*, *Battle Stance* and so on: click the button on the bar, or use the
+  *Other buttons* page. It runs the game's own command for its stance bar, wears the stance's
+  icon, is lit while you are in it, and is the same button on every page and in every stance.
+  The D-pad with no trigger held makes a good stance switcher for a Druid or a Warrior. A
+  Paladin's auras are on the game's stance bar as well, so they work the same way.
 - **Your other buttons:** the bumpers, stick clicks, Start, Back and paddles are ordinary buttons.
   FreeControl does not use them, and each does whatever it is bound to, like a key on the
   keyboard. The *Other buttons* page of the settings (`/fc buttons`) lists them with what each
@@ -171,7 +178,7 @@ because Blizzard's bar would be bound to the same buttons.
   stick clicks keep their jobs except while the mouse pointer is out.
 - **Changing the no-trigger buttons:** click one on the bar, or use the settings page. Each can be
   an action slot, a command (Jump, Interact, Cancel, Target nearest enemy or friend, Auto-run,
-  World map, Bags, ...) or left to your own key binding.
+  World map, Bags, one of your stances or forms, ...) or left to your own key binding.
 
 <details>
 <summary><b>Three game defaults worth knowing when you set up the rest of your buttons</b></summary>
@@ -200,7 +207,7 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc unlock`, `/fc lock` | Show or hide the handle for dragging the bar. |
 | `/fc scale 1.2` | Size of the bar (0.5 to 2). |
 | `/fc reset` | Put the bar back where it started. |
-| `/fc page 2` | Show another of the three pages. The arrows in the middle of the bar do the same. |
+| `/fc page 2` | Show another of the three pages. The arrows under the LT + RT set do the same. |
 | `/fc buttons` | Open the Other buttons page: jobs for the bumpers, stick clicks, Start, Back and paddles. |
 | `/fc slots bars` | Use the regular Left / Bottom Left / Bottom Right / Right action bar slots instead (`gamepad` to go back). |
 | `/fc numbers off` | Hide the countdown numbers on slots that are on cooldown (`on` to show them again). |
@@ -327,8 +334,10 @@ each stance keeps its slots; a restricted snippet then sets the buttons' `action
 the pictures follow the attribute. Three things run that snippet: a click on a page arrow (a
 secure button, so a key bound to it works in combat), a state driver that reports which stance
 bar is up (one `[bonusbar:N]` clause per stance), and a settings change. The snippet asks the game
-nothing: what it needs to know about a slot's contents (whether a shapeshift is to stay on its
-button) is worked out by ordinary code outside combat and handed over as attributes.
+nothing: what it needs to know about a slot's contents (whether a button is to show a stance kept
+from another of its slots) is worked out by ordinary code outside combat and handed over as
+attributes. A button given a stance for good is not a slot at all: it is bound to the game's own
+stance bar command (`SHAPESHIFTBUTTON1` to `10`), like any other command button.
 
 A changing button needs somewhere to keep its action for each stance, and the game has two such
 places: the controller stance bars (eight slots per stance, the ones the Gamepad UI shows) and
@@ -363,7 +372,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 214 scenarios, runs on every push):
+**Mock client** (fast, 234 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -374,13 +383,15 @@ combat, secure snippets run in a restricted environment, a button standing in fo
 report being held, key presses travel through override bindings (and, where there is none, the
 player's own bindings) to button clicks, in combat cooldown numbers come back sealed and are
 refused by cooldown frames, using the controller puts the client in camera mode where the pointer
-stays hidden until that is ended, and while the stick pointer is out its two click buttons become
-mouse clicks. State drivers are a port of Blizzard's own. Each class has its stances or forms by
+stays hidden until that is ended, while the stick pointer is out its two click buttons become
+mouse clicks, and a font string that was given no text answers nil when asked for it (version
+1.5.0 took that answer for a tooltip's title, which the game refuses, as the model's tooltip now
+does). State drivers are a port of Blizzard's own. Each class has its stances or forms by
 the classic rules, and one scenario walks every class through every stance setting, page and form,
 in and out of combat, checking that each button shows and casts the slot the rules give it. It is
 a model, so a pass shows the addon is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 41 tests, about ten seconds):
+**Simulator** (Blizzard's real interface code, 45 tests, about fifteen seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh

@@ -52,6 +52,16 @@ local function ClickChoices()
 	return choices
 end
 
+-- The stances or forms this character has, as jobs for a button: { the game's command, label }.
+local function FormJobs()
+	local jobs = {}
+	for index = 1, math.min(Layout.GetNumForms(), Layout.NUM_FORM_COMMANDS) do
+		local command = Layout.GetFormCommand(index)
+		jobs[#jobs + 1] = { command, (Layout.GetCommandInfo(command)) }
+	end
+	return jobs
+end
+
 local function RoleChoices()
 	local choices = {
 		{ "action", "Action slot" },
@@ -59,6 +69,9 @@ local function RoleChoices()
 	}
 	for _, command in ipairs(Layout.COMMANDS) do
 		choices[#choices + 1] = { "cmd:" .. command[1], command[2] }
+	end
+	for _, job in ipairs(FormJobs()) do
+		choices[#choices + 1] = { "cmd:" .. job[1], job[2] }
 	end
 	return choices
 end
@@ -69,6 +82,12 @@ local function LabelFor(choices, value)
 		if choice[1] == value then
 			return choice[2]
 		end
+	end
+	-- A command that is not offered here: one typed by hand, or a stance this character lacks
+	-- (the buttons' jobs are shared by every character on the account).
+	local command = type(value) == "string" and value:match("^cmd:(.+)$")
+	if command then
+		return (Layout.GetCommandInfo(command))
 	end
 	return tostring(value)
 end
@@ -157,12 +176,23 @@ end
 local ROW = 26
 local controls = {} -- every widget with a Sync function
 
+-- A setting's label, tooltip or list of choices is given as it is, or as a function that works
+-- it out when it is wanted (a button's name follows the controller style, for one).
+local function Resolve(value)
+	if type(value) == "function" then
+		return value()
+	end
+	return value
+end
+
 -- `title` and `text` can be functions, for a tooltip that depends on the character or the moment.
+-- Version 1.5.0 read the title back from the label on the page, and the game has nothing to give
+-- back for a label that is empty: hovering a row without one raised an error instead.
 local function AddTooltip(widget, title, text)
 	widget:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText(type(title) == "function" and title() or title, 1, 1, 1)
-		GameTooltip:AddLine(type(text) == "function" and text() or text, nil, nil, nil, true)
+		GameTooltip:SetText(Resolve(title), 1, 1, 1)
+		GameTooltip:AddLine(Resolve(text), nil, nil, nil, true)
 		GameTooltip:Show()
 	end)
 	widget:SetScript("OnLeave", function()
@@ -195,23 +225,24 @@ local function Check(panel, x, y, label, tooltip, key)
 end
 
 -- A label with a button showing the current choice. get() returns the value, set(value) stores it.
--- Returns the next row's y, the button and the label.
+-- The label, the tooltip and the choices can each be a function (see Resolve); a label that is
+-- one is brought up to date whenever the page is. Returns the next row's y, the button and the
+-- label's font string.
 local function Choice(panel, x, y, label, tooltip, choices, get, set, width)
 	local text = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	text:SetPoint("TOPLEFT", x + 4, y - 6)
-	text:SetText(label)
+	text:SetText(Resolve(label))
 
 	local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	button:SetSize(width or 170, 22)
 	button:SetPoint("TOPLEFT", x + 130, y - 2)
-	AddTooltip(button, function() return text:GetText() end, tooltip)
+	AddTooltip(button, label, tooltip)
 	button:SetScript("OnClick", function(self)
-		local list = type(choices) == "function" and choices() or choices
-		Choose(self, list, get, set)
+		Choose(self, Resolve(choices), get, set)
 	end)
 	button.Sync = function(self)
-		local list = type(choices) == "function" and choices() or choices
-		self:SetText(LabelFor(list, get()))
+		text:SetText(Resolve(label))
+		self:SetText(LabelFor(Resolve(choices), get()))
 	end
 	controls[#controls + 1] = button
 	return y - ROW, button, text
@@ -339,14 +370,9 @@ local function Build(panel)
 
 	y = Heading(panel, "With no trigger held", right, y - 8)
 	for index = 1, 8 do
-		y = Choice(panel, right, y, "", "What this button does while no trigger is held. Action slot makes it a slot you can drop things into; My own key binding leaves it to the Key Bindings screen.", RoleChoices,
+		y = Choice(panel, right, y, function() return Layout.GetButtonName(Layout.SET_NONE, index) end,
+			"What this button does while no trigger is held. Action slot makes it a slot you can drop things into; My own key binding leaves it to the Key Bindings screen.", RoleChoices,
 			function() return ns.db.roles[index] end, function(value) SetIndexed("roles", index, value) end)
-		local name = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-		name:SetPoint("TOPLEFT", right + 4, y + ROW - 6)
-		name.Sync = function(self)
-			self:SetText(Layout.GetButtonName(0, index))
-		end
-		controls[#controls + 1] = name
 	end
 
 	y = Heading(panel, "Spells", right, y - 8)
@@ -408,6 +434,9 @@ local function JobChoices(key)
 			choices[#choices + 1] = { command[1], command[2] }
 		end
 	end
+	for _, job in ipairs(FormJobs()) do
+		choices[#choices + 1] = job
+	end
 	for _, job in ipairs(Layout.MORE_JOBS) do
 		choices[#choices + 1] = job
 	end
@@ -418,7 +447,8 @@ local function JobChoices(key)
 		listed = listed or choice[1] == current
 	end
 	if not listed then
-		table.insert(choices, 2, { current, GetBindingName(current) })
+		local form = Layout.GetCommandForm(current)
+		table.insert(choices, 2, { current, form and (Layout.GetCommandInfo(current)) or GetBindingName(current) })
 	end
 	choices[#choices + 1] = { "keybindings", "Something else...", true }
 	return choices
@@ -482,7 +512,11 @@ local function KeyRow(panel, x, y, getKey)
 		end
 		return text
 	end
-	local nextY, button, label = Choice(panel, x, y, "", Tooltip, function() return JobChoices(getKey()) end, Job,
+	local function Name()
+		local key = getKey()
+		return key and Layout.GetKeyName(key) or ""
+	end
+	local nextY, button, label = Choice(panel, x, y, Name, Tooltip, function() return JobChoices(getKey()) end, Job,
 		function(command) Bind(getKey(), command) end, 230)
 	local showJob = button.Sync
 	button:SetScript("OnClick", function(self)
@@ -500,12 +534,10 @@ local function KeyRow(panel, x, y, getKey)
 		if not key then
 			return
 		end
-		label:SetText(Layout.GetKeyName(key))
+		showJob(self) -- the name, and the job: for a stand-in with none, what it stands in for
 		local own = OwnUse(key)
 		if own then
 			self:SetText(own)
-		else
-			showJob(self) -- for a stand-in with no job, the first choice's label says what it stands in for
 		end
 	end
 	return nextY

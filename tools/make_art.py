@@ -294,21 +294,62 @@ def glyph_dpad(direction):
     return img
 
 
-def page_arrow(direction, pushed):
-    """An arrow of the pager in the middle of the bar: the glyphs' dark disc with an open chevron,
-    which is not to be taken for the D-pad's solid arrowhead. Held, it is darker and sits a
-    pixel lower."""
-    img = disc()
+# ---------------------------------------------------------------------------
+# The pager: a plate with the page number on it and an arrow at each end
+# ---------------------------------------------------------------------------
+# It is drawn like the page indicator of the game's own action bar: a small dark plate in a
+# bronze rim, gold arrowheads, a gold number. The plate is 128 x 32 and shown 64 x 16
+# (Layout.PAGER_SIZE), so nothing in it is finer than the rim.
+PLATE_W, PLATE_H = 128, 32
+GOLD_LIGHT, GOLD_DEEP = (255, 236, 156), (200, 134, 38)
+
+
+def capsule(inset):
+    m = mask(PLATE_W, PLATE_H)
+    ImageDraw.Draw(m).rounded_rectangle(s(inset, inset, PLATE_W - inset, PLATE_H - inset),
+                                        radius=(PLATE_H / 2 - inset) * SS, fill=255)
+    return m
+
+
+def page_plate():
+    w, h = PLATE_W, PLATE_H
+    # An ink line, the bronze rim (lighter above than below, with a bright line inside its outer
+    # edge, as the emblem's ring has), and a dark field that is a little lighter towards the top.
+    img = over(layer(INK, capsule(0.6)), layer(vgradient(w, h, BRONZE_LIGHT, BRONZE_DARK, 0.08, 0.92), capsule(1.7)))
+    ImageDraw.Draw(img).rounded_rectangle(s(2.7, 2.7, w - 2.7, h - 2.7), radius=(h / 2 - 2.7) * SS,
+                                          outline=(252, 236, 190, 150), width=max(1, round(0.7 * SS)))
+    field_mask = capsule(5.4)
+    img = over(img, layer(INK, capsule(4.6)), layer(vgradient(w, h, (34, 38, 52), (9, 10, 15)), field_mask))
+    # The rim's shadow on the field, and the two faint lines that set the number off from the arrows.
+    shadow = blur(subtract(capsule(5.4), capsule(8.6)), 0.9)
+    img = over(img, layer((0, 0, 0), ImageChops.multiply(shadow, field_mask), 0.55))
     d = ImageDraw.Draw(img)
+    for x in (w / 2 - 22, w / 2 + 22):
+        d.line(s(x, 8.5, x, h - 8.5), fill=(150, 118, 66, 150), width=max(1, round(0.9 * SS)))
+    return img
+
+
+def page_arrow(direction, pushed):
+    """A gold arrowhead for one end of the plate, on nothing: the plate is behind it. Held, it is
+    darker and sits a little lower."""
     c = G / 2
-    points = [(-12, 6), (0, -7), (12, 6)]
+    points = [(0, -19), (22, 15), (-22, 15)]
     if direction == "Down":
         points = [(x, -y) for x, y in points]
-    drop = 1.5 if pushed else 0
-    line(d, [(c + x, c + y + drop) for x, y in points], 5.5, (150, 156, 172, 255) if pushed else (240, 242, 248, 255))
-    if pushed:
-        img = over(img, layer(INK, shape_mask(G, G, "round", 3), 0.35))
-    return img
+    drop = 2.5 if pushed else 0
+    points = [(c + x, c + y + drop) for x, y in points]
+    shape = mask(G, G)
+    d = ImageDraw.Draw(shape)
+    d.polygon([(x * SS, y * SS) for x, y in points], fill=255)
+    line(d, points + points[:1], 7, 255)  # rounds the corners
+    light, deep = (GOLD_LIGHT, GOLD_DEEP) if not pushed else (mix(GOLD_LIGHT, INK, 0.38), mix(GOLD_DEEP, INK, 0.38))
+    body = layer(vgradient(G, G, light, deep, 0.18, 0.82), shape)
+    # An ink line round it, a soft shadow below, and a glint along the upper left edge.
+    edge = layer(INK, subtract(grow(shape, 2.6), shape), 0.95)
+    shadow = ImageChops.offset(layer(INK, blur(shape, 1.6), 0.55), 0, int(2.2 * SS))
+    glint_mask = ImageChops.multiply(shape, ImageChops.offset(ImageChops.invert(shape), int(2.4 * SS), int(2.4 * SS)))
+    glint = layer(WHITE, blur(glint_mask, 0.5), 0.0 if pushed else 0.5)
+    return over(blank(G, G), shadow, edge, body, glint)
 
 
 # ---------------------------------------------------------------------------
@@ -690,6 +731,7 @@ def _drawings():
     for name, direction in (("Next", "Up"), ("Prev", "Down")):
         out["Page-" + name] = (page_arrow(direction, False), G, G)
         out["Page-" + name + "-Pushed"] = (page_arrow(direction, True), G, G)
+    out["Page-Plate"] = (page_plate(), PLATE_W, PLATE_H)
     for text in ("LT", "RT", "L2", "R2", "ZL", "ZR"):
         out["Badge-" + text] = (badge(text), 64, 32)
     for name, entry in ROLES.items():

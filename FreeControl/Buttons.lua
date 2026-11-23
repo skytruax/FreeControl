@@ -270,11 +270,12 @@ end
 -- A shapeshift on a button that changes with the form
 ---------------------------------------------------------------------------
 -- A Druid's forms, a Rogue's Stealth and a Warrior's stances are spells like any other, and can
--- be dropped on a button that changes with the form. If the button then simply changed, the
--- shapeshift would be gone the moment it was used, and the way back out with it: the first thing
--- a player new to this trips over. So a shapeshift stays where it is in every stance that has
--- nothing of its own on that button (UpdateKept, below), and the first time one is seen on such
--- a button the character is told how that works.
+-- be dropped on a button that changes with the stance. If the button then simply changed, the
+-- stance would be gone the moment it was used, and the way back with it: the first thing a
+-- player new to this trips over. So a stance or form put on such a button shows there in every
+-- stance that has nothing of its own on that button (UpdateKept, below), whichever stance the
+-- character was in when it was put there: a Warrior is always in one. The first time one is
+-- seen on such a button the character is told how that works.
 local function IsFormSpell(spell)
 	if not (GetNumShapeshiftForms and GetShapeshiftFormInfo) then
 		return false
@@ -298,8 +299,8 @@ local function NoteFormSpell(button)
 		return
 	end
 	ns.db.formNotes[character] = true
-	ns.Print(("%s is on %s, a button that changes with your stance or form. It stays there in every one of them, until you put something else on that button while you are in one: that covers it there. On the %s set, the face buttons and the other pages nothing can cover it."):format(
-		C_Spell.GetSpellName(fc.spell) or "A stance or form", Layout.GetButtonName(fc.set, fc.index), Layout.GetSetName(Layout.SET_BOTH)))
+	ns.Print(("%s is on %s, a button that changes with your stance or form. It shows there in every one of them, until you put something else on that button while you are in one: that covers it there. A button can also be given a stance for good: click a no-trigger button on the bar, or see Other buttons in the settings (/fc)."):format(
+		C_Spell.GetSpellName(fc.spell) or "A stance or form", Layout.GetButtonName(fc.set, fc.index)))
 end
 
 -- True when a slot holds a stance or form, directly or through a macro.
@@ -314,21 +315,42 @@ local function HoldsForm(slot)
 	return (kind == "spell" or (kind == "macro" and subKind == "spell")) and IsFormSpell(id)
 end
 
+-- The slot a button that changes with the stance has in each stance: [0] is its slot on the
+-- stance page while no stance bar is up, [1] and up its slot in that stance.
+local function OwnSlots(fc)
+	local slots = { [0] = Layout.GetSlot(fc.set, fc.index, Layout.GetStancePage()) }
+	for stance = 1, Layout.NUM_STANCES do
+		slots[stance] = Layout.GetStanceSlot(fc.group, stance, fc.index)
+	end
+	return slots
+end
+
 -- Out of combat. Works out, for every button that changes with the stance and every stance,
--- whether the button keeps its page slot there: it holds a shapeshift, and the stance has
--- nothing of its own on that button. The answers go to the secure header, which needs them in
--- the middle of a fight and may not look for itself. Returns true when one of them changed.
+-- whether the button shows another of its slots there: the first of them that holds a stance or
+-- form, wherever this stance has nothing of its own on the button. The answers go to the secure
+-- header, which needs them in the middle of a fight and may not look for itself. Returns true
+-- when one of them changed.
 local function UpdateKept()
 	local header = ns.Bindings.header
-	local page = Layout.GetStancePage()
 	local changed = false
 	for _, button in ipairs(all) do
 		local fc = button.fc
-		local group = fc.group
-		local holdsForm = group ~= nil and HoldsForm(Layout.GetSlot(fc.set, fc.index, page))
-		for stance = 1, Layout.NUM_STANCES do
+		local slots, source = nil, nil
+		if fc.group then
+			slots = OwnSlots(fc)
+			for stance = 0, Layout.NUM_STANCES do
+				if HoldsForm(slots[stance]) then
+					source = slots[stance]
+					break
+				end
+			end
+		end
+		for stance = 0, Layout.NUM_STANCES do
 			local name = ("fc-keep-%d-%d-%d"):format(stance, fc.set, fc.index)
-			local keep = holdsForm and not C_ActionBar.HasAction(Layout.GetStanceSlot(group, stance, fc.index)) or nil
+			local keep = nil
+			if source and not C_ActionBar.HasAction(slots[stance]) then
+				keep = source
+			end
 			if header:GetAttribute(name) ~= keep then
 				header:SetAttribute(name, keep)
 				changed = true
@@ -369,25 +391,26 @@ local function KeptMayHaveChanged()
 	end
 end
 
--- The stance bar the secure header is following right now, on the page where stances change the
--- buttons; 0 anywhere else.
-local function FollowedStance()
+-- True while the page being shown is the one whose buttons change with the stance.
+local function FollowedPage()
 	local header = ns.Bindings.header
-	local stance = tonumber(header:GetAttribute("state-fc-stance")) or 0
-	if stance < 1 or stance > Layout.NUM_STANCES or header:GetAttribute("fc-page") ~= header:GetAttribute("fc-stance-page") then
-		return 0
-	end
-	return stance
+	return header:GetAttribute("fc-page") == header:GetAttribute("fc-stance-page")
 end
 
--- The slot that is a button's own right now: its stance slot in a stance, else the slot it
--- shows. The two differ for a button that is keeping a shapeshift: what is dropped on it there
--- becomes the stance's own, and covers the shapeshift in that stance alone.
+-- The stance bar the secure header is following right now, 0 for none. The state driver that
+-- tells it knows of no other answers (Layout.GetStanceCondition).
+local function FollowedStance()
+	return tonumber(ns.Bindings.header:GetAttribute("state-fc-stance")) or 0
+end
+
+-- The slot that is a button's own right now: its stance slot in a stance, its page slot in
+-- none. That differs from the slot it shows for a button that is showing a stance or form kept
+-- from elsewhere: what is dropped on it there becomes this stance's own, and covers the kept
+-- one in this stance alone.
 local function OwnSlot(button)
 	local fc = button.fc
-	local stance = fc.group and FollowedStance() or 0
-	if stance > 0 then
-		return Layout.GetStanceSlot(fc.group, stance, fc.index)
+	if fc.group and FollowedPage() then
+		return OwnSlots(fc)[FollowedStance()]
 	end
 	return fc.slot
 end
@@ -446,7 +469,7 @@ function ShowTooltip(button)
 	if fc.hasAction and GameTooltip:SetAction(fc.slot) then
 		GameTooltip:AddLine(Layout.GetButtonName(fc.set, fc.index), 0.37, 0.84, 1)
 		if OwnSlot(button) ~= fc.slot then
-			GameTooltip:AddLine("Kept from your normal buttons: this stance or form has nothing of its own here. Drop something on the button to give it that.", 0.6, 0.6, 0.6, true)
+			GameTooltip:AddLine("A stance or form you put on this button elsewhere. It shows here because this stance has nothing of its own on the button: drop something on it to give it that.", 0.6, 0.6, 0.6, true)
 		end
 		GameTooltip:Show()
 		button.UpdateTooltip = ShowTooltip -- the tooltip calls this while it stays up (cooldown text)
@@ -643,9 +666,10 @@ local function AddArt(frame, round, ownIcon)
 	fc.pressShade:SetAllPoints()
 	fc.pressShade:SetTexture(ART .. shape .. "-Pushed")
 
+	fc.iconPart = { texture = fc.icon, crop = (round or ownIcon) and 0 or ICON_CROP }
 	fc.pressParts = {
 		{ texture = fc.base, crop = 0 },
-		{ texture = fc.icon, crop = (round or ownIcon) and 0 or ICON_CROP },
+		fc.iconPart,
 		{ texture = fc.glyph, crop = 0 },
 		{ texture = frame:GetNormalTexture(), crop = 0 },
 		{ texture = frame:GetPushedTexture(), crop = 0 },
@@ -783,6 +807,8 @@ local function RoleTooltip(widget)
 		GameTooltip:AddLine(Layout.GetCommandInfo(command), 1, 1, 1, true)
 		if command == Layout.CURSOR_COMMAND then
 			GameTooltip:AddLine(("Press it to bring the mouse pointer out, and again to put it away. The right stick moves the pointer; %s."):format(ns.Mouse:DescribeClicks()), 0.8, 0.8, 0.8, true)
+		elseif Layout.GetCommandForm(command) then
+			GameTooltip:AddLine("This button changes to that stance or form on every page and in every stance: nothing on the bar can cover it.", 0.8, 0.8, 0.8, true)
 		end
 	else
 		local bound = GetBindingAction(ns.db.keys[index], true)
@@ -824,15 +850,40 @@ end
 
 local mouseLit = false -- the controller's mouse pointer is out
 
+-- A button that changes to a stance or form wears that stance's own icon from the game, is lit
+-- while the character is in it, and dark while it cannot be changed to. Like every other icon
+-- of the game's it is trimmed on a square button; the addon's own icons are drawn to the edge.
 local function UpdateRoleWidget(widget)
 	local fc = widget.fc
 	local kind, command = Layout.ParseRole(ns.db.roles[fc.index])
+	local lit, dark, gameIcon = false, false, false
 	if kind == "cmd" then
 		local _, art = Layout.GetCommandInfo(command)
-		fc.icon:SetTexture(ART .. art)
+		local form = Layout.GetCommandForm(command)
+		local name, texture, active, castable
+		if form then
+			name, texture, active, castable = Layout.GetFormInfo(form)
+		end
+		if texture then
+			fc.icon:SetTexture(texture)
+			gameIcon = true
+		elseif not (form and name) then
+			-- Not a stance, or one this character does not have. A stance whose icon the game
+			-- is not telling just now keeps the picture it has.
+			fc.icon:SetTexture(ART .. art)
+		end
+		lit = form and active or (mouseLit and command == Layout.CURSOR_COMMAND)
+		dark = form ~= nil and name ~= nil and castable == false
 	end
+	local crop = gameIcon and not fc.round and ICON_CROP or 0
+	if fc.iconPart.crop ~= crop then
+		fc.iconPart.crop = crop
+		ApplyPress(widget, pressed[widget] and 1 or 0)
+	end
+	local shade = dark and 0.4 or 1
+	fc.icon:SetVertexColor(shade, shade, shade)
 	ShowIcon(fc, kind == "cmd")
-	fc.lit:SetAlpha(mouseLit and kind == "cmd" and command == Layout.CURSOR_COMMAND and 1 or 0)
+	fc.lit:SetAlpha(lit and 1 or 0)
 end
 
 -- Called by Mouse.lua (in combat too) when the mouse pointer comes out or goes away. Alpha only.
@@ -997,6 +1048,17 @@ ns.On("ACTIONBAR_SLOT_CHANGED", function(_, slot)
 	end
 	KeptMayHaveChanged()
 end)
+
+-- A button that changes to a stance or form follows the game's own stance bar: which stances
+-- there are, which one the character is in, which can be changed to. Pictures only, so in a
+-- fight too.
+for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_SHAPESHIFT_FORM", "UPDATE_SHAPESHIFT_FORMS", "UPDATE_SHAPESHIFT_USABLE" }) do
+	ns.On(event, function()
+		for _, widget in pairs(Buttons.role) do
+			UpdateRoleWidget(widget)
+		end
+	end)
+end
 
 -- A form was learned, or the spell book changed under a slot; at login the game lists the
 -- character's forms a little after the bar has been set up.

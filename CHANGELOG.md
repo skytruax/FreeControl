@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6.0
+
+- Fixed: on the settings page, pointing at one of the eight "With no trigger held" buttons raised an error instead of showing its tooltip (new in 1.5.0; thanks to ichene for the report). Those tooltips are now headed by the button's name.
+- The page arrows have moved out of the middle of the bar, which is yours again. They hang under the LT + RT set now, smaller, and drawn like the page indicator of the game's own action bar: a small bronze-rimmed plate with the page number on it in gold and a gold arrow at each end.
+- New: a button of its own for a stance or form. Any no-trigger button (click it on the bar) and any bumper or paddle (Other buttons in the settings) can be given "Stance or form: Bear Form", "Battle Stance" and so on. It uses the game's own command for its stance bar, wears the stance's icon, is lit while you are in that stance, and is the same button on every page and in every stance. A Paladin's auras are on the game's stance bar too, so they can have buttons the same way.
+- A stance or form you put on a button that changes with your stance now shows there in every stance, whichever stance you were in when you put it there. In 1.5.0 this only worked for one put there while in no stance at all, which a Warrior never is: a Warrior's stance buttons, dropped on the right set in Battle Stance, were gone in the other two. As before, a stance that has something of its own on the button shows that instead.
+- The pictures on the page were drawn again with the pager where it is now.
+
 ## v1.5.0
 
 - New: pages. The bar has the Gamepad UI's three pages now, each with its own buttons. Two arrows in the middle of the bar turn the page, with the number of the page between them. They work in a fight, and after page 3 comes page 1 again. The page you were on is the page you log back in to. `/fc page` and the Page choice on the settings page still work.

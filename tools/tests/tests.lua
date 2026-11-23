@@ -2848,8 +2848,8 @@ test("a shapeshift dropped on a button that changes with the form is pointed out
 	M.actions[193] = { texture = "cat", spell = 768 } -- Cat Form on RT + D-pad Left, as a caster
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 193)
 	truthy(Printed("Cat Form is on RT %+ D%-pad Left, a button that changes with your stance or form"), "said when it happens")
-	truthy(Printed("It stays there in every one of them, until you put something else on that button while you are in one"), "with how that works")
-	truthy(Printed("On the LT %+ RT set, the face buttons and the other pages nothing can cover it"), "and where nothing can go wrong")
+	truthy(Printed("It shows there in every one of them, until you put something else on that button while you are in one"), "with how that works")
+	truthy(Printed("A button can also be given a stance for good: click a no%-trigger button on the bar, or see Other buttons"), "and where a stance can have a button of its own")
 	M.printed = {}
 	M.actions[194] = { texture = "bear", spell = 5487 }
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 194)
@@ -3233,7 +3233,7 @@ test("the list of jobs: the pages, the mouse pointer, the game's common commands
 	rows["Paddle 2"]:GetScript("OnClick")(rows["Paddle 2"])
 	local labels = {}
 	for index, item in ipairs(menus.last.items) do labels[index] = item.text end
-	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Target your target's target | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Something else...", "in this order")
+	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Something else...", "in this order, with the character's own stances among them")
 	eq(menus.last.items[#menus.last.items].plain, true, "the last is something to do, not a job to have")
 	Pick(menus.last, "Mouse pointer on / off")
 	eq(M.userBindings.PADPADDLE2, "CLICK FreeControlMouse:LeftButton", "the mouse button can go on any button")
@@ -3387,6 +3387,9 @@ test("any other button or key can be pressed to give it a job", function()
 	local row = rows[""]
 	truthy(row:IsShown(), "the button has a row now")
 	eq(row:GetText(), "Nothing", "showing its job")
+	local named = false
+	for _, text in ipairs(ns.Options.buttonsPanel.__texts) do named = named or text:GetText() == "PADSOCIAL" end
+	truthy(named, "and named for the button that was pressed")
 	row:GetScript("OnClick")(row)
 	Pick(menus.last, "World map")
 	eq(M.userBindings.PADSOCIAL, "TOGGLEWORLDMAP", "which can be changed like any other")
@@ -3529,7 +3532,7 @@ test("what is dropped on a kept shapeshift in a form becomes the form's own, and
 	local button = M.frames.FreeControlButton2_1
 	eq(button.fc.slot, 193, "kept")
 	button:GetScript("OnEnter")(button)
-	truthy(GameTooltip.lines[#GameTooltip.lines]:find("Kept from your normal buttons"), "the tooltip says why it is there")
+	truthy(GameTooltip.lines[#GameTooltip.lines]:find("A stance or form you put on this button elsewhere"), "the tooltip says why it is there")
 	M.SetCursor({ kind = "spell", spell = 1082 }) -- Claw
 	button:GetScript("OnReceiveDrag")(button)
 	eq(M.placed[#M.placed], 265, "dropped into Cat's own slot for the button, not onto the shapeshift")
@@ -3538,7 +3541,7 @@ test("what is dropped on a kept shapeshift in a form becomes the form's own, and
 	eq(button.fc.slot, 265, "Cat now has its own action there")
 	eq(button.fc.icon:GetTexture(), "spell 1082", "and shows it")
 	button:GetScript("OnEnter")(button)
-	eq(GameTooltip.lines[#GameTooltip.lines]:find("Kept from"), nil, "no note on a button that is the form's own")
+	eq(GameTooltip.lines[#GameTooltip.lines]:find("put on this button elsewhere"), nil, "no note on a button that is the form's own")
 	M.ShapeshiftTo("Bear Form")
 	eq(button.fc.slot, 193, "Bear has nothing there: the shapeshift is still on show")
 	M.ShapeshiftTo("Cat Form")
@@ -3602,17 +3605,18 @@ test("with nothing changing by stance nothing is kept, and switching the stance 
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 185)
 	M.Advance(0.01)
 	local header = M.frames.FreeControlHeader
-	eq(header:GetAttribute("fc-keep-1-1-1"), true, "kept in Cat")
-	eq(header:GetAttribute("fc-keep-3-1-1"), true, "and in Bear")
+	eq(header:GetAttribute("fc-keep-1-1-1"), 185, "in Cat the button shows the slot that holds the form")
+	eq(header:GetAttribute("fc-keep-3-1-1"), 185, "and in Bear")
+	eq(header:GetAttribute("fc-keep-0-1-1"), nil, "as a caster it is the button's own slot: nothing to borrow")
 	SlashCmdList.FREECONTROL("stance rt")
 	eq(header:GetAttribute("fc-keep-1-1-1"), nil, "the left set no longer changes: nothing to keep")
 	SlashCmdList.FREECONTROL("stance auto")
-	eq(header:GetAttribute("fc-keep-1-1-1"), true, "back on automatic")
+	eq(header:GetAttribute("fc-keep-1-1-1"), 185, "back on automatic")
 	M.actions[73] = { texture = "claw", spell = 1082 } -- the game's own Cat bar has something on that button
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 73)
 	M.Advance(0.01)
 	eq(header:GetAttribute("fc-keep-1-1-1"), nil, "Cat has its own: not kept there")
-	eq(header:GetAttribute("fc-keep-3-1-1"), true, "still kept in Bear")
+	eq(header:GetAttribute("fc-keep-3-1-1"), 185, "still kept in Bear")
 	M.ShapeshiftTo("Cat Form")
 	eq(ns.Buttons:GetSlot(1, 1), 73, "Cat shows its own")
 	M.ShapeshiftTo("Bear Form")
@@ -3687,7 +3691,7 @@ test("a shapeshift already on the bar at login is kept once the game has listed 
 	M.forms = nil -- now it has
 	M.Fire("PLAYER_ENTERING_WORLD")
 	M.Advance(0.01)
-	eq(header:GetAttribute("fc-keep-1-2-1"), true, "kept from then on")
+	eq(header:GetAttribute("fc-keep-1-2-1"), 193, "kept from then on")
 	M.ShapeshiftTo("Cat Form")
 	eq(ns.Buttons:GetSlot(2, 1), 193, "and there in the form")
 end)
@@ -3703,9 +3707,507 @@ test("slots announced all through a fight book one look for when it ends, and st
 	eq(#M.timers, before, "nothing is scheduled in the fight")
 	eq(M.frames.FreeControlHeader:GetAttribute("fc-keep-1-2-1"), nil, "and nothing handed over")
 	M.LeaveCombat()
-	eq(M.frames.FreeControlHeader:GetAttribute("fc-keep-1-2-1"), true, "one look when it ends")
+	eq(M.frames.FreeControlHeader:GetAttribute("fc-keep-1-2-1"), 193, "one look when it ends")
 	M.actions[193] = nil
 	M.Fire("ACTIONBAR_SLOT_CHANGED", 193)
 	M.Advance(0.01)
 	eq(M.frames.FreeControlHeader:GetAttribute("fc-keep-1-2-1"), nil, "and the usual look after that")
+end)
+
+---------------------------------------------------------------------------
+-- Tooltips on the settings pages
+---------------------------------------------------------------------------
+-- Every control on a settings page that answers the mouse, in the order it was made.
+local function Hoverable(panel)
+	local out = {}
+	for _, frame in ipairs(M.all) do
+		if frame:GetParent() == panel and frame:GetScript("OnEnter") then out[#out + 1] = frame end
+	end
+	return out
+end
+
+test("every control on the settings page has a tooltip with a title and an explanation", function()
+	Load()
+	local panel = ns.Options.panel
+	Open(panel)
+	local controls = Hoverable(panel)
+	truthy(#controls > 30, "the page's controls: " .. #controls)
+	for index, control in ipairs(controls) do
+		GameTooltip.lines = {}
+		control:GetScript("OnEnter")(control)
+		eq(type(GameTooltip.lines[1]), "string", "control " .. index .. ": a title")
+		truthy(GameTooltip.lines[1] ~= "", "control " .. index .. ": a title that says something")
+		eq(type(GameTooltip.lines[2]), "string", "control " .. index .. " (" .. GameTooltip.lines[1] .. "): an explanation")
+		control:GetScript("OnLeave")(control)
+	end
+	eq(#M.luaErrors, 0, "and hovering raises nothing")
+end)
+
+test("the eight no-trigger buttons on the settings page are headed by the button's name", function()
+	Load({ labelStyle = "playstation" })
+	Open(ns.Options.panel)
+	local titles = {}
+	for _, control in ipairs(Hoverable(ns.Options.panel)) do
+		control:GetScript("OnEnter")(control)
+		if GameTooltip.lines[2]:find("^What this button does while no trigger is held") then
+			titles[#titles + 1] = GameTooltip.lines[1]
+		end
+	end
+	eq(table.concat(titles, ", "), "D-pad Left, D-pad Up, D-pad Right, D-pad Down, Square, Triangle, Circle, Cross", "one tooltip for each, by the name printed on the controller")
+end)
+
+test("every row of the Other buttons page has a tooltip, before and after a button was found", function()
+	Load()
+	local panel = ns.Options.buttonsPanel
+	Open(panel)
+	local function HoverAll(what)
+		local seen = 0
+		for index, control in ipairs(Hoverable(panel)) do
+			if control:IsShown() then
+				GameTooltip.lines = {}
+				control:GetScript("OnEnter")(control)
+				eq(type(GameTooltip.lines[1]), "string", what .. ", control " .. index .. ": a title")
+				truthy(GameTooltip.lines[1] ~= "", what .. ", control " .. index .. ": a title that says something")
+				eq(type(GameTooltip.lines[2]), "string", what .. ", control " .. index .. ": an explanation")
+				control:GetScript("OnLeave")(control)
+				seen = seen + 1
+			end
+		end
+		return seen
+	end
+	eq(HoverAll("at first"), 12, "ten buttons, the one that listens and the one that opens Key Bindings")
+	ns.Options.caughtKey = "PADSOCIAL"
+	ns.Options:Sync()
+	eq(HoverAll("with a button found"), 13, "and the found button's own row")
+	eq(#M.luaErrors, 0, "hovering raises nothing")
+end)
+
+---------------------------------------------------------------------------
+-- Stances kept on their button, for every class that has them
+---------------------------------------------------------------------------
+test("a Warrior's stance buttons, put on the bar in one stance, are there in the other two", function()
+	M.class = "WARRIOR"
+	M.lockActionBars = false
+	M.form, M.bonusbar = 1, 1 -- a Warrior is always in a stance: Battle, to begin with
+	Load()
+	eq(Slots(2), "265 266 267 268 269 270 271 272", "in Battle Stance the right set is Battle's own")
+	-- Dropped on the bar in Battle Stance: the three stances, on three buttons of the right set.
+	for index, spell in ipairs({ 2457, 71, 2458 }) do
+		local button = M.frames[("FreeControlButton2_%d"):format(index)]
+		M.SetCursor({ kind = "spell", spell = spell })
+		button:GetScript("OnReceiveDrag")(button)
+	end
+	eq(M.actions[265].spell, 2457, "they went into Battle's slots: there are no others to be seen")
+	M.Advance(0.01)
+	M.EnterCombat()
+	M.ShapeshiftTo("Defensive Stance")
+	eq(Slots(2), "265 266 267 276 277 278 279 280", "in Defensive Stance the three stance buttons are still there, and the rest is Defensive's own")
+	M.KeyDown("PADRTRIGGER")
+	M.Tap("PADDRIGHT")
+	M.KeyUp("PADRTRIGGER")
+	eq(Used(), "267", "and the key casts it: Berserker Stance, from Defensive")
+	M.ShapeshiftTo("Berserker Stance")
+	eq(Slots(2), "265 266 267 284 285 286 287 288", "the same in Berserker Stance")
+	M.LeaveCombat()
+	-- Something of Berserker's own on the first of them covers it in Berserker only.
+	local first = M.frames.FreeControlButton2_1
+	M.SetCursor({ kind = "spell", spell = 1680 }) -- Whirlwind
+	first:GetScript("OnReceiveDrag")(first)
+	eq(M.placed[#M.placed], 281, "dropped into Berserker's own slot")
+	M.Advance(0.01)
+	eq(Slots(2), "281 266 267 284 285 286 287 288", "Berserker has its own there now")
+	M.ShapeshiftTo("Battle Stance")
+	eq(Slots(2), "265 266 267 268 269 270 271 272", "Battle is as it was")
+	M.ShapeshiftTo("Defensive Stance")
+	eq(Slots(2), "265 266 267 276 277 278 279 280", "and Defensive still shows all three")
+	eq(#M.luaErrors, 0, "nothing refused")
+end)
+
+test("a form put on a button while in another form shows as a caster too", function()
+	M.class = "DRUID"
+	M.lockActionBars = false
+	Load()
+	M.ShapeshiftTo("Bear Form")
+	local button = M.frames.FreeControlButton2_3
+	M.SetCursor({ kind = "spell", spell = 768 }) -- Cat Form, dropped while a bear
+	button:GetScript("OnReceiveDrag")(button)
+	eq(M.placed[#M.placed], 283, "into Bear's slot for the button")
+	M.Advance(0.01)
+	M.ShapeshiftTo(nil)
+	eq(ns.Buttons:GetSlot(2, 3), 283, "as a caster the button shows it, having nothing of its own there")
+	M.ShapeshiftTo("Cat Form")
+	eq(ns.Buttons:GetSlot(2, 3), 283, "and as a cat")
+	M.ShapeshiftTo(nil)
+	M.SetCursor({ kind = "spell", spell = 5176 }) -- Wrath, dropped as a caster
+	button:GetScript("OnReceiveDrag")(button)
+	eq(M.placed[#M.placed], 195, "what is dropped on it as a caster is the caster's own")
+	M.Advance(0.01)
+	eq(ns.Buttons:GetSlot(2, 3), 195, "and covers it there")
+	M.ShapeshiftTo("Cat Form")
+	eq(ns.Buttons:GetSlot(2, 3), 283, "but not as a cat")
+end)
+
+-- What a button that changes should show, from the rule alone: its own slot in the stance if
+-- that holds anything, else the first of its slots (no stance first, then stance 1 to 5) that
+-- holds a stance or form, else its own slot.
+local function ExpectKept(own, held, stance, isForm)
+	if held[own[stance]] then return own[stance] end
+	for other = 0, 5 do
+		local spell = held[own[other]]
+		if spell and isForm[spell] then return own[other] end
+	end
+	return own[stance]
+end
+
+test("stances scattered over a class's buttons at random: every button shows what the rule says, in every stance", function()
+	Load()
+	local seed = 20261123
+	local function Random(n) -- a small generator of its own, so the scenario is the same on every run
+		seed = (seed * 1103515245 + 12345) % 2147483648
+		return seed % n + 1
+	end
+	local checked = 0
+	for _, variant in ipairs(VARIANTS) do
+		M.class, M.forms = variant.class, variant.forms
+		local forms = M.GetForms()
+		local isForm = {}
+		for _, form in ipairs(forms) do isForm[form[2]] = true end
+		for round = 1, 6 do
+			M.Shapeshift(0)
+			ns.db.stanceSet, ns.db.page = "all", 1
+			M.actions = {}
+			ns.Refresh()
+			-- What each changing button's slots are, read off the bar itself in each stance while
+			-- every slot is empty (nothing is kept then).
+			local own = {}
+			for bar = 0, 5 do
+				M.bonusbar = bar
+				M.RunDrivers()
+				for set = 0, 2 do
+					for index = 1, set == 0 and 4 or 8 do
+						local id = set * 10 + index
+						own[id] = own[id] or {}
+						own[id][bar] = ns.Buttons:GetSlot(set, index)
+					end
+				end
+			end
+			-- Scatter stances, forms and ordinary spells over those slots.
+			local held = {}
+			for _, slots in pairs(own) do
+				for bar = 0, 5 do
+					local roll = Random(10)
+					if roll <= 2 and #forms > 0 then
+						held[slots[bar]] = forms[Random(#forms)][2]
+					elseif roll == 3 then
+						held[slots[bar]] = 5176
+					end
+				end
+			end
+			for slot, spell in pairs(held) do M.actions[slot] = { texture = "spell " .. spell, spell = spell } end
+			M.Fire("ACTIONBAR_SLOT_CHANGED", 0)
+			M.Advance(0.01)
+			M.EnterCombat()
+			for bar = 0, 5 do
+				M.bonusbar = bar
+				M.RunDrivers()
+				for id, slots in pairs(own) do
+					local set, index = math.floor(id / 10), id % 10
+					local expected = ExpectKept(slots, held, bar, isForm)
+					local what = ("%s, round %d, stance bar %d, button %d/%d"):format(variant.name, round, bar, set, index)
+					eq(ns.Buttons:GetSlot(set, index), expected, what)
+					eq(M.frames[("FreeControlKey%d_%d"):format(set, index)]:GetAttribute("action"), expected, what .. ": the key")
+					checked = checked + 1
+				end
+			end
+			M.LeaveCombat()
+		end
+	end
+	truthy(checked > 4000, "buttons looked at: " .. checked)
+	eq(#M.luaErrors, 0, "nothing refused")
+end)
+
+---------------------------------------------------------------------------
+-- A button of its own for a stance or form
+---------------------------------------------------------------------------
+local DRUID_SWITCHER = { "cmd:SHAPESHIFTBUTTON1", "cmd:SHAPESHIFTBUTTON3", "action", "action",
+	"cmd:INTERACTTARGET", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" }
+
+test("a no-trigger button can be a stance's own button: it changes to it, in a fight, on every page", function()
+	M.class = "DRUID"
+	Load({ roles = DRUID_SWITCHER, mouseStep = 2 })
+	eq(Binding("PADDLEFT"), "cmd:SHAPESHIFTBUTTON1", "D-pad Left runs the game's own command for the first stance or form")
+	eq(Binding("PADDUP"), "cmd:SHAPESHIFTBUTTON3", "D-pad Up the one for the third")
+	local bear, cat = ns.Buttons.role[1], ns.Buttons.role[2]
+	truthy(bear:IsShown() and cat:IsShown(), "both show on the bar, in place of action slots")
+	eq(bear.fc.icon:GetTexture(), "icon 5487", "wearing Bear Form's own icon")
+	eq(cat.fc.icon:GetTexture(), "icon 768", "and Cat Form's")
+	eq(bear.fc.lit:GetAlpha(), 0, "not lit: the character is in no form")
+	M.EnterCombat()
+	M.Tap("PADDLEFT")
+	eq(M.form, 1, "a press changes to Bear Form")
+	eq(bear.fc.lit:GetAlpha(), 1, "its button is lit while the character is a bear")
+	eq(cat.fc.lit:GetAlpha(), 0, "the other is not")
+	eq(Slots(2), "281 282 283 284 285 286 287 288", "and the bar has followed the form")
+	eq(Slots(0), "- - 107 108 - - - -", "the two D-pad buttons left as slots change with it; the stance buttons are not slots at all")
+	M.Tap("PADDUP")
+	eq(M.form, 3, "straight from bear to cat")
+	eq(cat.fc.lit:GetAlpha(), 1, "lit")
+	eq(bear.fc.lit:GetAlpha(), 0, "and the bear's is out")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Binding("PADDLEFT"), "cmd:SHAPESHIFTBUTTON1", "on page 2 the stance buttons are the same")
+	truthy(bear:IsShown(), "and on show")
+	M.Tap("PADDUP")
+	eq(M.form, 0, "pressed in the form it is for, a Druid's button leaves the form")
+	M.LeaveCombat()
+	eq(#M.luaErrors, 0, "nothing refused: the game runs its own command")
+end)
+
+test("a stance's button says what it is, and that nothing can cover it", function()
+	M.class = "DRUID"
+	Load({ roles = DRUID_SWITCHER, mouseStep = 2 })
+	local bear = ns.Buttons.role[1]
+	bear:GetScript("OnEnter")(bear)
+	eq(GameTooltip.lines[1], "D-pad Left", "the button")
+	eq(GameTooltip.lines[2], "Stance or form: Bear Form", "what it changes to")
+	truthy(GameTooltip.lines[3]:find("on every page and in every stance: nothing on the bar can cover it"), "and what makes it different from a slot")
+end)
+
+test("the menu of a no-trigger button offers the character's own stances and forms, by name", function()
+	local menus = UseMenus()
+	M.class = "WARRIOR"
+	M.form, M.bonusbar = 1, 1
+	Load()
+	ns.Options:OpenRoleMenu(ns.Buttons.action[0][1], 1)
+	local labels = {}
+	for index, item in ipairs(menus.last.items) do labels[index] = item.text end
+	local list = table.concat(labels, " | ")
+	truthy(list:find("Bags | Stance or form: Battle Stance | Stance or form: Defensive Stance | Stance or form: Berserker Stance$"), "after the commands: " .. list)
+	Pick(menus.last, "Stance or form: Defensive Stance")
+	eq(ns.db.roles[1], "cmd:SHAPESHIFTBUTTON2", "picking one gives the button the game's command for it")
+	eq(Binding("PADDLEFT"), "cmd:SHAPESHIFTBUTTON2", "bound")
+	eq(ns.Buttons.role[1].fc.icon:GetTexture(), "icon 71", "and wearing the stance's icon")
+	M.Tap("PADDLEFT")
+	eq(M.form, 2, "a press changes stance")
+	eq(Slots(2), "273 274 275 276 277 278 279 280", "and the right set follows")
+	M.Tap("PADDLEFT")
+	eq(M.form, 2, "pressed again, a Warrior stays in the stance")
+	eq(ns.Buttons.role[1].fc.lit:GetAlpha(), 1, "its button lit")
+end)
+
+test("a stance's button on a character without that stance is named for what it is, and does nothing", function()
+	M.class = "MAGE"
+	Load({ roles = DRUID_SWITCHER, mouseStep = 2 }) -- the buttons' jobs are shared by every character
+	local widget = ns.Buttons.role[1]
+	eq(widget.fc.icon:GetTexture(), "Interface\\AddOns\\FreeControl\\Art\\Role-Generic", "a plain icon")
+	eq(widget.fc.lit:GetAlpha(), 0, "never lit")
+	widget:GetScript("OnEnter")(widget)
+	eq(GameTooltip.lines[2], "Stance or form 1 (this character has none)", "the tooltip says why")
+	M.Tap("PADDLEFT")
+	eq(M.form, 0, "a press does nothing")
+	local menus = UseMenus()
+	ns.Options:OpenRoleMenu(widget, 1)
+	for _, item in ipairs(menus.last.items) do
+		eq(item.text:find("Stance or form"), nil, "and the menu offers no stances to a class that has none")
+	end
+	Open(ns.Options.panel)
+	local found = false
+	for _, frame in ipairs(M.all) do
+		found = found or frame:GetText() == "Stance or form 1 (this character has none)"
+	end
+	truthy(found, "the settings page names the job the same way instead of showing the command")
+end)
+
+test("a stance that cannot be changed to right now is dark, and one the game learns of later gets its icon", function()
+	M.class = "DRUID"
+	M.forms = { { "Bear Form", 5487, 3 } }
+	M.uncastable[1] = true
+	Load({ roles = DRUID_SWITCHER, mouseStep = 2 })
+	local bear, cat = ns.Buttons.role[1], ns.Buttons.role[2]
+	eq(bear.fc.icon.calls.SetVertexColor[1], 0.4, "Bear Form cannot be used here: dark")
+	eq(cat.fc.icon:GetTexture(), "Interface\\AddOns\\FreeControl\\Art\\Role-Generic", "the third form is not learned yet: a plain icon")
+	M.uncastable[1] = nil
+	M.Fire("UPDATE_SHAPESHIFT_USABLE")
+	eq(bear.fc.icon.calls.SetVertexColor[1], 1, "usable again: bright")
+	M.forms = { { "Bear Form", 5487, 3 }, { "Aquatic Form", 1066, 0 }, { "Cat Form", 768, 1 } }
+	M.Fire("UPDATE_SHAPESHIFT_FORMS")
+	eq(cat.fc.icon:GetTexture(), "icon 768", "learned: the button wears the form's icon")
+end)
+
+test("the game's icon on a square button is trimmed like a spell's, and the addon's own icons are not", function()
+	M.class = "DRUID"
+	Load({ roles = DRUID_SWITCHER, mouseStep = 2 })
+	local bear = ns.Buttons.role[1]
+	eq(bear.fc.icon.calls.SetTexCoord[1], 0.07, "D-pad Left is square: the form's icon is trimmed")
+	SlashCmdList.FREECONTROL("off")
+	SlashCmdList.FREECONTROL("on")
+	ns.db.roles[1] = "cmd:TARGETNEARESTENEMY"
+	ns.RequestRefresh()
+	eq(bear.fc.icon.calls.SetTexCoord[1], 0, "one of the addon's own icons is shown whole again")
+	ns.db.roles[6] = "cmd:SHAPESHIFTBUTTON3"
+	ns.RequestRefresh()
+	eq(ns.Buttons.role[6].fc.icon.calls.SetTexCoord[1], 0, "a round button's icon is cut to shape by its mask, not trimmed")
+end)
+
+test("on a client that seals what it says about stances in a fight, the buttons keep their pictures and nothing fails", function()
+	M.class = "DRUID"
+	M.sealForms = true
+	Load({ roles = DRUID_SWITCHER, mouseStep = 2 })
+	local bear = ns.Buttons.role[1]
+	eq(bear.fc.icon:GetTexture(), "icon 5487", "outside a fight everything is known")
+	M.EnterCombat()
+	M.Tap("PADDLEFT")
+	eq(M.form, 1, "the button still changes stance")
+	eq(bear.fc.icon:GetTexture(), "icon 5487", "and keeps its icon")
+	eq(bear.fc.lit:GetAlpha(), 0, "what is not known is not shown: no light")
+	bear:GetScript("OnEnter")(bear)
+	eq(GameTooltip.lines[2], "Stance or form: Stance or form 1", "the tooltip falls back on the number")
+	M.LeaveCombat()
+	M.Fire("UPDATE_SHAPESHIFT_FORM")
+	eq(bear.fc.lit:GetAlpha(), 1, "after the fight the light is right again")
+	eq(#M.luaErrors, 0, "no sealed value was read")
+end)
+
+test("a bumper or a paddle can be given a stance from the Other buttons page", function()
+	local menus = UseMenus()
+	M.class = "DRUID"
+	Load()
+	local rows = ButtonRows()
+	rows["Paddle 1"]:GetScript("OnClick")(rows["Paddle 1"])
+	Pick(menus.last, "Stance or form: Cat Form")
+	eq(M.userBindings.PADPADDLE1, "SHAPESHIFTBUTTON3", "the game's own command, as a key binding of the player's")
+	eq(rows["Paddle 1"]:GetText(), "Stance or form: Cat Form", "named on the row")
+	M.EnterCombat()
+	M.Tap("PADPADDLE1")
+	eq(M.form, 3, "the paddle changes form, in a fight")
+	M.LeaveCombat()
+	M.class, M.forms = "MAGE", nil
+	ns.Options:Sync()
+	eq(rows["Paddle 1"]:GetText(), "Stance or form 3 (this character has none)", "on a character without it, the row still says what the binding is")
+end)
+
+---------------------------------------------------------------------------
+-- The pictures, and where the pager is
+---------------------------------------------------------------------------
+test("every picture the addon asks for is a file in its Art folder", function()
+	M.class = "DRUID"
+	Load({ roles = { "cmd:TARGETNEARESTENEMY", "cmd:TARGETNEARESTFRIEND", "cmd:STARTATTACK", "cmd:TOGGLEAUTORUN",
+		"cmd:INTERACTTARGET", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" }, mouseStep = 2 })
+	-- Bring everything on show at least once: both label styles, a held button, a proc, the pages.
+	for _, style in ipairs({ "xbox", "playstation", "nintendo" }) do
+		SlashCmdList.FREECONTROL("off")
+		ns.db.labelStyle = style
+		SlashCmdList.FREECONTROL("on")
+	end
+	ns.db.roles = { "cmd:TOGGLEWORLDMAP", "cmd:OPENALLBAGS", "cmd:SOMETHINGTYPEDBYHAND", "pass", "action", "action", "action", "action" }
+	ns.RequestRefresh()
+	for _, name in ipairs({ "Next", "Prev" }) do
+		local arrow = M.frames["FreeControlPage" .. name]
+		arrow:GetScript("OnMouseDown")(arrow)
+		arrow:GetScript("OnMouseUp")(arrow)
+	end
+	local prefix = "Interface\\AddOns\\FreeControl\\Art\\"
+	local count = 0
+	for texture in pairs(M.textures) do
+		if texture:sub(1, #prefix) == prefix then
+			local file = "FreeControl/Art/" .. texture:sub(#prefix + 1) .. ".tga"
+			truthy(FileExists(file), "the file for " .. texture .. " (" .. file .. ")")
+			count = count + 1
+		end
+	end
+	truthy(count >= 40, "pictures asked for: " .. count)
+end)
+
+test("the pager hangs under the both-triggers set, and nothing of it is in the middle of the bar", function()
+	Load()
+	local root = M.frames.FreeControlBar
+	local function Place(frame)
+		local point = frame.__calls.SetPoint
+		eq(point[1], "CENTER", "by its middle")
+		eq(point[2], root, "on the bar")
+		return point[4], point[5]
+	end
+	local x, y = Place(ns.Bars.pager)
+	eq(x, 0, "centred under the bottom set")
+	-- The bottom set's middle is 54 below the bar's; its labels reach 38.5 below that, 1.2 times
+	-- as far while the set is held.
+	truthy(y < -54 - 38.5 * 1.2 - 8, "its top is below the set and its labels at their held size: " .. y)
+	truthy(y > -118, "and it is still on the bar: " .. y)
+	local nextX, nextY = Place(M.frames.FreeControlPageNext)
+	local prevX, prevY = Place(M.frames.FreeControlPagePrev)
+	eq(nextY, y, "the arrow up is level with it")
+	eq(prevY, y, "and the arrow down")
+	truthy(prevX < 0 and nextX > 0 and prevX == -nextX, "one at each end of the plate: previous on the left, next on the right")
+	truthy(ns.Bars.pager.__calls.SetSize[2] <= 16, "smaller than half a button")
+	eq(ns.Bars.pager.plate:GetTexture(), "Interface\\AddOns\\FreeControl\\Art\\Page-Plate", "the number sits on a plate, not on nothing")
+	eq(M.frames.FreeControlPageNext.fc.arrow:GetTexture(), "Interface\\AddOns\\FreeControl\\Art\\Page-Next", "an arrowhead on each end")
+	-- A larger held set pushes the pager further down, so the two never overlap.
+	SlashCmdList.FREECONTROL("off")
+	ns.db.activeScale = 1.5
+	SlashCmdList.FREECONTROL("on")
+	local _, lower = Place(ns.Bars.pager)
+	truthy(lower < y, "with a larger held set the pager sits lower: " .. lower)
+	truthy(lower < -54 - 38.5 * 1.5 - 8, "clear of the labels at that size")
+	local _, arrowY = Place(M.frames.FreeControlPageNext)
+	eq(arrowY, lower, "arrows and all")
+end)
+
+test("an arrow of the pager darkens while the mouse holds it", function()
+	Load()
+	local next = M.frames.FreeControlPageNext
+	next:GetScript("OnMouseDown")(next)
+	eq(next.fc.arrow:GetTexture(), "Interface\\AddOns\\FreeControl\\Art\\Page-Next-Pushed", "held")
+	next:GetScript("OnMouseUp")(next)
+	eq(next.fc.arrow:GetTexture(), "Interface\\AddOns\\FreeControl\\Art\\Page-Next", "let go")
+	local prev = M.frames.FreeControlPagePrev
+	prev:GetScript("OnMouseDown")(prev)
+	eq(prev.fc.arrow:GetTexture(), "Interface\\AddOns\\FreeControl\\Art\\Page-Prev-Pushed", "the other arrow has its own pictures")
+end)
+
+test("the names on the settings page follow the controller style while the page is open", function()
+	Load()
+	local panel = ns.Options.panel
+	Open(panel)
+	local function Has(name)
+		for _, text in ipairs(panel.__texts) do
+			if text:GetText() == name then return true end
+		end
+		return false
+	end
+	truthy(Has("X") and Has("D-pad Left"), "Xbox names to begin with")
+	eq(Has("Square"), false, "no PlayStation ones")
+	SlashCmdList.FREECONTROL("off")
+	ns.db.labelStyle = "playstation"
+	SlashCmdList.FREECONTROL("on")
+	truthy(Has("Square") and Has("Triangle"), "changed to PlayStation: the rows are renamed")
+	eq(Has("X"), false, "and the old names are gone")
+end)
+
+test("a kept stance shows on the stance page only: the other pages are untouched", function()
+	M.class = "DRUID"
+	Load()
+	M.actions[193] = { texture = "cat", spell = 768 }
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 193)
+	M.Advance(0.01)
+	M.ShapeshiftTo("Cat Form")
+	eq(ns.Buttons:GetSlot(2, 1), 193, "page 1 in Cat: kept")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	ShowsPage(2, "page 2 in Cat is page 2, with nothing kept on it")
+	M.ShapeshiftTo(nil)
+	ShowsPage(2, "and as a caster")
+end)
+
+test("where the Gamepad options put the stance bar on page 2, it is page 2's buttons that keep a stance", function()
+	M.class = "DRUID"
+	M.cvars.GamepadStanceBarOverride = "7" -- page 2, right bar
+	Load()
+	M.actions[221] = { texture = "cat", spell = 768 }  -- page 2, right set, first button
+	M.actions[193] = { texture = "bear", spell = 5487 } -- the same button on page 1, which no form changes
+	M.Fire("ACTIONBAR_SLOT_CHANGED", 221)
+	M.Advance(0.01)
+	local header = M.frames.FreeControlHeader
+	eq(header:GetAttribute("fc-keep-1-2-1"), 221, "the stance on page 2 is the one kept")
+	M.ShapeshiftTo("Cat Form")
+	eq(ns.Buttons:GetSlot(2, 1), 193, "page 1 does not change with the form at all")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Slots(2), "221 266 267 268 269 270 271 272", "page 2 does, and keeps its stance button")
 end)

@@ -306,8 +306,8 @@ async_test("a shapeshift on a button that changes with the stance stays there wh
 				UseRegularBars()
 				done(function()
 					assertNotNil(form)
-					assertTrue(kept)   -- the shapeshift is kept in a stance with nothing of its own there
-					assertNil(other)   -- the ordinary spell is not
+					assertEquals(first + 12, kept) -- in a stance with nothing of its own there, the button shows the slot that holds the stance
+					assertNil(other)               -- the ordinary spell next to it is not kept
 					assertEquals("12 93 94 95 96 97 98 99", right) -- its button keeps the page slot, the rest are the stance's
 					assertEquals(tostring(first + 12), pressed)    -- and the key casts it, in the fight
 					assertEquals("", wasRefused)
@@ -351,6 +351,126 @@ test("the Other buttons page builds in Blizzard's settings panel, and a job pick
 	assertEquals("number", type(Settings.KEYBINDINGS_CATEGORY_ID))
 	ns.Options:OpenKeyBindings()
 	HideUIPanel(SettingsPanel)
+	Clean()
+end)
+
+async_test("a stance put on a button in one stance is there in the next, as for a Warrior who is always in one", function(done)
+	Reset()
+	UseControllerSlots("rt")
+	local _, _, _, form = GetShapeshiftFormInfo(1)
+	local seen = {}
+	SimInput.SetStanceBar(1)
+	SimInput.AfterTicks(20, function()
+		seen.inFirst = Slots(2)
+		A_Admin.SetActionSlot(first + 84, form) -- the first stance's own slot for the right set's first button
+		A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", first + 84)
+		SimInput.AfterTicks(3, function()
+			seen.keptInSecond = FreeControlHeader:GetAttribute("fc-keep-2-2-1")
+			seen.keptInNone = FreeControlHeader:GetAttribute("fc-keep-0-2-1")
+			seen.keptInFirst = FreeControlHeader:GetAttribute("fc-keep-1-2-1")
+			A_Admin.SetInCombat(true)
+			SimInput.SetStanceBar(2)
+			SimInput.AfterTicks(20, function()
+				seen.inSecond = Slots(2)
+				SimInput.KeyDown("PADRTRIGGER")
+				SimInput.PressKey("PADDLEFT")
+				SimInput.KeyUp("PADRTRIGGER")
+				seen.pressed = table.concat(used, " ")
+				seen.refused = table.concat(refused, " | ")
+				A_Admin.SetInCombat(false)
+				SimInput.SetStanceBar(0)
+				A_Admin.ClearActionSlot(first + 84)
+				A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", first + 84)
+				SimInput.AfterTicks(20, function()
+					UseRegularBars()
+					done(function()
+						assertEquals("84 85 86 87 88 89 90 91", seen.inFirst)  -- the first stance's own slots
+						assertEquals(first + 84, seen.keptInSecond)            -- the second stance borrows the one that holds the stance
+						assertEquals(first + 84, seen.keptInNone)              -- and so does no stance at all
+						assertNil(seen.keptInFirst)                            -- the first has it as its own
+						assertEquals("84 93 94 95 96 97 98 99", seen.inSecond) -- in the second stance: that button, and the second's own for the rest
+						assertEquals(tostring(first + 84), seen.pressed)       -- the key casts it, in the fight
+						assertEquals("", seen.refused)
+						Clean()
+					end)
+				end)
+			end)
+		end)
+	end)
+end)
+
+test("a no-trigger button given a stance runs the game's own command for it and wears its icon", function()
+	Reset()
+	local was = ns.db.roles[1]
+	local texture = GetShapeshiftFormInfo(1)
+	ns.db.roles[1] = "cmd:" .. ns.Layout.GetFormCommand(1)
+	assertTrue(ns.RequestRefresh())
+	assertEquals("SHAPESHIFTBUTTON1", GetBindingAction("PADDLEFT", true))
+	local widget = ns.Buttons.role[1]
+	assertTrue(widget:IsShown())
+	assertNotNil(texture)
+	assertNotNil(widget.fc.icon:GetTexture())
+	assertEquals(1, ns.Layout.GetCommandForm("SHAPESHIFTBUTTON1"))
+	assertEquals("string", type((ns.Layout.GetCommandInfo("SHAPESHIFTBUTTON1"))))
+	widget:GetScript("OnEnter")(widget)
+	assertTrue(GameTooltip:IsShown())
+	widget:GetScript("OnLeave")(widget)
+	A_Admin.FireEvent("UPDATE_SHAPESHIFT_FORM")
+	A_Admin.FireEvent("UPDATE_SHAPESHIFT_USABLE")
+	ns.db.roles[1] = was
+	assertTrue(ns.RequestRefresh())
+	assertEquals("CLICK FreeControlKey0_1:LeftButton", GetBindingAction("PADDLEFT", true))
+	Clean()
+end)
+
+test("the pager is a plate under the both-triggers set, with an arrow at each end", function()
+	Reset()
+	UseControllerSlots("none")
+	local _, _, _, x, y = ns.Bars.pager:GetPoint(1)
+	assertEquals(0, x)
+	assertTrue(y < -100) -- below the bottom set (54 below the middle) and its labels at their held size
+	local _, _, _, nextX, nextY = FreeControlPageNext:GetPoint(1)
+	local _, _, _, prevX, prevY = FreeControlPagePrev:GetPoint(1)
+	assertTrue(nextX > 0 and prevX < 0)
+	assertAlmostEquals(y, nextY, 0.001)
+	assertAlmostEquals(y, prevY, 0.001)
+	assertTrue(ns.Bars.pager:IsVisible())
+	assertNotNil(ns.Bars.pager.plate:GetTexture())
+	assertNotNil(FreeControlPageNext.fc.arrow:GetTexture())
+	FreeControlPageNext:GetScript("OnMouseDown")(FreeControlPageNext)
+	FreeControlPageNext:GetScript("OnMouseUp")(FreeControlPageNext)
+	UseRegularBars()
+	Clean()
+end)
+
+test("every control on both settings pages shows a tooltip when the mouse is over it", function()
+	Reset()
+	-- With Blizzard's own tooltip code. The error version 1.5.0 raised here (a tooltip handed a
+	-- function for its title, because the game has no text to give back for an empty label) does
+	-- not show in the simulator, which answers differently for an empty label; tools/tests is
+	-- where that one is caught.
+	local empty = UIParent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	empty:SetText("")
+	local emptyText = empty:GetText()
+	local hovered = 0
+	for _, open in ipairs({ "Open", "OpenButtons" }) do
+		ns.Options[open](ns.Options)
+		local panel = open == "Open" and ns.Options.panel or ns.Options.buttonsPanel
+		assertTrue(panel:IsVisible())
+		for _, control in ipairs({ panel:GetChildren() }) do
+			local onEnter = control:IsShown() and control:GetScript("OnEnter")
+			if onEnter then
+				onEnter(control)
+				assertTrue(GameTooltip:IsShown())
+				assertEquals("string", type(GameTooltipTextLeft1:GetText()))
+				control:GetScript("OnLeave")(control)
+				hovered = hovered + 1
+			end
+		end
+	end
+	HideUIPanel(SettingsPanel)
+	assertTrue(hovered > 40)
+	assertTrue(emptyText == nil or emptyText == "")
 	Clean()
 end)
 

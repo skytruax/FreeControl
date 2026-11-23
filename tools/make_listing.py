@@ -553,7 +553,7 @@ def sets():
     for i, (held, label, badges, sub) in enumerate(panels):
         x, y = x0 + (i % 2) * (pw + gap), 336 + (i // 2) * (ph + 20)
         box(canvas, (x, y, x + pw, y + ph), 28, (255, 255, 255, 10), (255, 255, 255, 32))
-        bars.bar(canvas, x + pw / 2, y + 198, held, "xbox", CONTENT, STATES, COUNTS)
+        bars.bar(canvas, x + pw / 2, y + 180, held, "xbox", CONTENT, STATES, COUNTS)  # the pager hangs below the bar
         hold_label(canvas, x + 34, y + 46, label, badges)
         text(canvas, (x + pw - 34, y + 46), sub, 22, SOFT, "Medium", "rm")
     return canvas
@@ -864,7 +864,10 @@ def controls():
     callout("No trigger", "4 action slots · Interact · Mouse pointer · Cancel · Jump", cx0, cy0 - half - 112)
     callout("Hold LT", "8 action slots", cx1, cy1 + half + 76)
     callout("Hold RT", "8 action slots (shown held)", cx2, cy2 + half * 1.2 + 86, GOLD)
-    callout("Hold LT + RT", "8 action slots", cx3, cy3 + half + 76)
+    # The pager hangs under the bottom set, so that set's words go below it, and it gets a few of its own.
+    px, py = bars.pager_centre(ox, oy)
+    callout("Hold LT + RT", "8 action slots", cx3, cy3 + half + 112)
+    text(canvas, (px + LAYOUT["pager"]["plate"][0] * bars.k / 2 + 22, py), "three pages of buttons", 24, SOFT, "Medium", "lm")
 
     text(canvas, (W / 2, H - 98), "Drop spells, items and macros onto any slot · Gamepad UI mode stays off", 29, WHITE, "Medium")
     text(canvas, (W / 2, H - 46), "Diagram drawn from the addon's own artwork, with every slot empty. Not a screenshot.", 21, DIM, "Medium")
@@ -886,8 +889,8 @@ def demo_frames():
             x = w / 2 - 128 + (side - 1) * 132
             lit = held in (side, 3)
             canvas.alpha_composite(preview.faded(sized(big("Badge-" + name), 116, 58), 1.0 if lit else 0.32), (round(x), 17))
-        bars.bar(canvas, w / 2, 258, held, "xbox", CONTENT, STATES, COUNTS)
-        text(canvas, (w / 2, h - 20), note(short=True), 15, DIM, "Medium")
+        bars.bar(canvas, w / 2, 246, held, "xbox", CONTENT, STATES, COUNTS)  # room for the pager under the bar
+        text(canvas, (w / 2, h - 16), note(short=True), 15, DIM, "Medium")
         frames.append(canvas.convert("RGB"))
     return frames
 

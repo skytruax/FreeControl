@@ -15,7 +15,7 @@ Bars.deco = {} -- [set] = unprotected frame behind it: shade and trigger label
 Bars.pageButtons = {} -- [1] = next page, [-1] = previous page: secure buttons, see Bindings.lua
 
 local ART = ns.ART
-local LABEL_SIZE = { 34, 17 }
+local LABEL_SIZE = Layout.LABEL_SIZE
 local activeSet = 0
 
 ---------------------------------------------------------------------------
@@ -96,12 +96,13 @@ end
 ---------------------------------------------------------------------------
 -- The pager
 ---------------------------------------------------------------------------
--- In the gap in the middle of the bar: an arrow down, the number of the page being shown, an
--- arrow up. The arrows are secure buttons, so that a click (the mouse, the stick pointer, or a
--- button bound to one of them) can change the page in a fight; what a click does is set up in
--- Bindings.lua. The number sits on a frame of its own that nothing protected hangs on, because
--- it changes in a fight too.
-local PAGER_SIZE, PAGER_STEP = Layout.PAGER_SIZE, Layout.PAGER_STEP
+-- Under the bottom set: a small plate with the number of the page being shown, an arrow down at
+-- its left end and an arrow up at its right. The arrows are secure buttons, so that a click (the
+-- mouse, the stick pointer, or a button bound to one of them) can change the page in a fight;
+-- what a click does is set up in Bindings.lua. The plate and the number sit on a frame of their
+-- own that nothing protected hangs on, because the number changes in a fight too.
+--
+-- Version 1.5.0 had the pager in the middle of the bar, which players use for things of their own.
 
 local function PageTooltip(button)
 	local step = button.fc.step
@@ -117,16 +118,30 @@ local function PageTooltip(button)
 	GameTooltip:Show()
 end
 
+-- An arrow is a gold arrowhead on its end of the plate. The button is that whole end, a larger
+-- target than the arrowhead; under the mouse the arrowhead brightens, and held it darkens.
 local function CreatePageButton(root, step)
 	local name = step > 0 and "Next" or "Prev"
 	local button = CreateFrame("Button", "FreeControlPage" .. name, root, "SecureHandlerClickTemplate")
-	button:SetSize(PAGER_SIZE, PAGER_SIZE)
-	button:SetPoint("CENTER", root, "CENTER", step * PAGER_STEP, 0)
-	button:SetFrameLevel(root:GetFrameLevel() + 3)
-	button:SetNormalTexture(ART .. "Page-" .. name)
-	button:SetPushedTexture(ART .. "Page-" .. name .. "-Pushed")
-	button:SetHighlightTexture(ART .. "Round-Highlight", "ADD")
-	button.fc = { step = step }
+	button:SetSize(Layout.PAGER_HIT, Layout.PAGER_SIZE[2])
+	button:SetFrameLevel(root:GetFrameLevel() + 4)
+
+	local arrow = button:CreateTexture(nil, "ARTWORK")
+	arrow:SetSize(Layout.PAGER_ARROW, Layout.PAGER_ARROW)
+	arrow:SetPoint("CENTER")
+	arrow:SetTexture(ART .. "Page-" .. name)
+	local glow = button:CreateTexture(nil, "HIGHLIGHT")
+	glow:SetAllPoints(arrow)
+	glow:SetTexture(ART .. "Page-" .. name)
+	glow:SetBlendMode("ADD")
+
+	button.fc = { step = step, arrow = arrow }
+	button:SetScript("OnMouseDown", function(self)
+		self.fc.arrow:SetTexture(ART .. "Page-" .. name .. "-Pushed")
+	end)
+	button:SetScript("OnMouseUp", function(self)
+		self.fc.arrow:SetTexture(ART .. "Page-" .. name)
+	end)
 	button:SetScript("OnEnter", PageTooltip)
 	button:SetScript("OnLeave", function()
 		GameTooltip:Hide()
@@ -136,12 +151,27 @@ end
 
 local function CreatePager(root)
 	local pager = CreateFrame("Frame", nil, root)
-	pager:SetSize(PAGER_SIZE, PAGER_SIZE)
-	pager:SetPoint("CENTER", root, "CENTER")
+	pager:SetSize(unpack(Layout.PAGER_SIZE))
 	pager:SetFrameLevel(root:GetFrameLevel() + 3)
-	pager.number = pager:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	pager.plate = pager:CreateTexture(nil, "BACKGROUND")
+	pager.plate:SetAllPoints()
+	pager.plate:SetTexture(ART .. "Page-Plate")
+	-- The game's own small gold lettering, as on the page indicator of its action bar.
+	pager.number = pager:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	pager.number:SetPoint("CENTER")
 	return pager
+end
+
+-- Out of combat. The pager goes where the bottom set ends, which depends on how much a held
+-- set grows.
+local function PlacePager(bars)
+	local x, y = Layout.GetPagerOffset()
+	bars.pager:ClearAllPoints()
+	bars.pager:SetPoint("CENTER", bars.root, "CENTER", x, y)
+	for step, button in pairs(bars.pageButtons) do
+		button:ClearAllPoints()
+		button:SetPoint("CENTER", bars.root, "CENTER", x + step * Layout.PAGER_STEP, y)
+	end
 end
 
 -- Called (in combat too) when another page is shown. Text only.
@@ -268,6 +298,7 @@ function Bars:Apply()
 	self:UpdateMover()
 	-- Nothing to turn with the regular action bars as the slots: they have one page.
 	local paged = Layout.GetPageCount() > 1
+	PlacePager(self)
 	self.pager:SetShown(paged)
 	for _, button in pairs(self.pageButtons) do
 		button:SetShown(paged)

@@ -121,23 +121,22 @@ local MOUSE_ONCLICK = [=[
 --   fc-offset-<set>-<i>        how far into a stance's slots of that kind it sits
 --   fc-pad-<stance>            where each stance's slots of the two kinds begin
 --   fc-bar-<stance>
---   fc-keep-<stance>-<set>-<i> set where the button keeps its page slot in that stance: it holds
---                              a shapeshift there and the stance has nothing of its own for it
+--   fc-keep-<stance>-<set>-<i> the slot the button shows in that stance (0: in none) instead of
+--                              its own there: one that holds a stance or form the player put on
+--                              the button elsewhere, where this stance has nothing of its own
 -- The pictures follow the "action" attribute by themselves (Buttons.lua). Nothing here asks the
 -- game anything: what is in a slot is looked at by ordinary code, out of combat, which hands
 -- over the answer as fc-keep.
 local ASSIGN = [=[
 	local page = self:GetAttribute("fc-page") or 1
 	local stance = tonumber(self:GetAttribute("state-fc-stance")) or 0
-	if page ~= self:GetAttribute("fc-stance-page") then
-		stance = 0
-	end
+	local changing = page == self:GetAttribute("fc-stance-page")
 	for set = 0, 3 do
 		for i = 1, 8 do
 			local id = set .. "-" .. i
-			local slot
-			local store = stance > 0 and self:GetAttribute("fc-store-" .. id)
-			if store and not self:GetAttribute("fc-keep-" .. stance .. "-" .. id) then
+			local slot = changing and self:GetAttribute("fc-keep-" .. stance .. "-" .. id)
+			local store = not slot and changing and stance > 0 and self:GetAttribute("fc-store-" .. id)
+			if store then
 				local first = self:GetAttribute("fc-" .. store .. "-" .. stance)
 				if first then
 					slot = first + self:GetAttribute("fc-offset-" .. id)

@@ -38,11 +38,23 @@ Layout.BUTTON_OFFSET = {
 
 -- The trigger label sits in the gap between the two lower buttons of a set.
 Layout.LABEL_OFFSET = { 0, -30 }
+Layout.LABEL_SIZE = { 34, 17 }
 
--- The pager sits in the middle of the bar: an arrow, the page number, an arrow. Its height is
--- what fits between the top and the bottom set whichever of them is held (a held set is larger).
-Layout.PAGER_SIZE = 20
-Layout.PAGER_STEP = 23 -- from the number to the middle of an arrow
+-- The pager hangs under the bottom set: a small plate with the page number on it and an arrow
+-- at each end, like the page indicator of the game's own action bar. The middle of the bar is
+-- left free: players put things of their own there.
+Layout.PAGER_SIZE = { 64, 16 } -- the plate
+Layout.PAGER_ARROW = 12        -- an arrowhead, drawn on its end of the plate
+Layout.PAGER_STEP = 23         -- from the middle of the plate to the middle of an arrow
+Layout.PAGER_HIT = 24          -- how wide an arrow's click target is: its end of the plate
+Layout.PAGER_GAP = 2           -- between the pager and what is above it
+
+-- Where the middle of the pager is, from the middle of the bar: just under the bottom set at
+-- the size that set has while it is held. The set's trigger labels reach lower than its buttons.
+function Layout.GetPagerOffset()
+	local lowest = Layout.LABEL_OFFSET[2] - Layout.LABEL_SIZE[2] / 2
+	return 0, Layout.SET_OFFSET[Layout.SET_BOTH][2] + lowest * ns.db.activeScale - Layout.PAGER_GAP - Layout.PAGER_SIZE[2] / 2
+end
 
 function Layout.IsRound(index)
 	return index > 4
@@ -233,11 +245,60 @@ function Layout.ParseRole(role)
 	return role, nil
 end
 
+---------------------------------------------------------------------------
+-- A button of its own for a stance or form
+---------------------------------------------------------------------------
+-- The game has ten commands that change to the first, the second, ... stance or form the
+-- character has: the ones its own stance bar is bound through ("Special Action Button 1" to 10
+-- in the Key Bindings screen; each runs StanceBar:Select). A no-trigger button, a bumper or a
+-- paddle that is given one is that stance's button on every page and in every stance: nothing
+-- on the bar can cover it. That goes for a Paladin's auras too, which are on the game's stance
+-- bar without changing any buttons.
+local FORM_COMMAND = "SHAPESHIFTBUTTON"
+Layout.NUM_FORM_COMMANDS = 10
+
+function Layout.GetFormCommand(index)
+	return FORM_COMMAND .. index
+end
+
+-- The number of the stance or form a command changes to; nil for any other command.
+function Layout.GetCommandForm(command)
+	return tonumber(command:match("^" .. FORM_COMMAND .. "(%d+)$"))
+end
+
+-- How many stances or forms the character has.
+function Layout.GetNumForms()
+	return GetNumShapeshiftForms and GetShapeshiftFormInfo and GetNumShapeshiftForms() or 0
+end
+
+-- What the game says about stance or form number `index`: its name, its icon, whether the
+-- character is in it and whether it can be changed to right now. Nothing for one the character
+-- does not have. What the game seals in a fight comes back as nil: not known just now.
+function Layout.GetFormInfo(index)
+	if index > Layout.GetNumForms() then
+		return nil
+	end
+	local texture, active, castable, spell = GetShapeshiftFormInfo(index)
+	local function Known(value)
+		if ns.IsSealed(value) then
+			return nil
+		end
+		return value
+	end
+	spell = Known(spell)
+	return spell and C_Spell.GetSpellName(spell) or ("Stance or form " .. index), Known(texture), Known(active), Known(castable)
+end
+
 -- Label and art file for a command; commands typed by hand get a generic icon and their binding name.
 function Layout.GetCommandInfo(command)
 	local known = COMMAND_BY_NAME[command]
 	if known then
 		return known[2], known[3]
+	end
+	local form = Layout.GetCommandForm(command)
+	if form then
+		local name = Layout.GetFormInfo(form)
+		return name and ("Stance or form: " .. name) or ("Stance or form %d (this character has none)"):format(form), "Role-Generic"
 	end
 	return GetBindingName(command), "Role-Generic"
 end

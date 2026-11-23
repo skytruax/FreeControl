@@ -155,7 +155,14 @@ for _, name in ipairs({ "SetPoint", "ClearAllPoints", "SetAllPoints", "SetSize",
 	"SetWordWrap", "SetJustifyH", "SetFontObject" }) do
 	Region[name] = function(self, ...) self.calls[name] = { ... } end
 end
-function Region:SetTexture(texture) self.texture = texture end
+-- Every picture the addon asks for is noted, so a test can check that the file is there: a
+-- texture the game cannot find is drawn as a bright green square.
+M.textures = {}
+local function noteTexture(texture)
+	if type(texture) == "string" then M.textures[texture] = true end
+	return texture
+end
+function Region:SetTexture(texture, ...) self.texture = noteTexture(texture) end
 function Region:GetTexture() return self.texture end
 function Region:SetAlpha(alpha) self.alpha = alpha end
 function Region:GetAlpha() return self.alpha end
@@ -164,7 +171,12 @@ function Region:Hide() self.shown = false end
 function Region:SetShown(shown) self.shown = shown and true or false end
 function Region:IsShown() return self.shown end
 function Region:SetText(text) self.text = text end
-function Region:GetText() return self.text end
+-- The client has no text to give back for a font string that was never given any, or was given
+-- the empty string: it answers nil, not "". (FreeControl 1.5.0 took that answer for a title.)
+function Region:GetText()
+	if self.text == "" then return nil end
+	return self.text
+end
 
 -- Animations: only what is played matters here, not how it looks.
 local Animation = {}
@@ -327,19 +339,22 @@ function Frame:RegisterForClicks(...)
 		if kind:find("Up$") then self.__clicks.up = true end
 	end
 end
-function Frame:SetNormalTexture(texture) self.__normal = NewRegion("Texture"); self.__normal.texture = texture end
+function Frame:SetNormalTexture(texture) self.__normal = NewRegion("Texture"); self.__normal.texture = noteTexture(texture) end
 function Frame:GetNormalTexture() return self.__normal end
-function Frame:SetPushedTexture(texture) self.__pushed = NewRegion("Texture"); self.__pushed.texture = texture end
+function Frame:SetPushedTexture(texture) self.__pushed = NewRegion("Texture"); self.__pushed.texture = noteTexture(texture) end
 function Frame:GetPushedTexture() return self.__pushed end
-function Frame:SetHighlightTexture(texture, mode) self.__highlight = texture end
-function Frame:SetCheckedTexture(texture) self.__checkedTexture = NewRegion("Texture"); self.__checkedTexture.texture = texture end
+function Frame:SetHighlightTexture(texture, mode) self.__highlight = noteTexture(texture) end
+function Frame:SetCheckedTexture(texture) self.__checkedTexture = NewRegion("Texture"); self.__checkedTexture.texture = noteTexture(texture) end
 function Frame:GetCheckedTexture() return self.__checkedTexture end
 function Frame:SetChecked(checked) self.__checked = checked and true or false end
 function Frame:GetChecked() return self.__checked end
 function Frame:SetButtonState(state) self.__state = state end
 function Frame:GetButtonState() return self.__state end
 function Frame:SetText(text) self.__text = text end
-function Frame:GetText() return self.__text end
+function Frame:GetText()
+	if self.__text == "" then return nil end
+	return self.__text
+end
 
 -- Edit boxes
 for _, name in ipairs({ "SetMultiLine", "SetAutoFocus", "SetFontObject", "SetFocus", "ClearFocus", "HighlightText" }) do
@@ -698,6 +713,14 @@ function M.KeyDown(key)
 		M.Click(assert(M.frames[binding.target], "binding to unknown frame " .. binding.target), binding.button or "LeftButton", true)
 	else
 		M.commands[#M.commands + 1] = { binding.target, "down" }
+		-- The game's own commands are run by the game: the ones for the stance bar change stance.
+		local form = tonumber(binding.target:match("^SHAPESHIFTBUTTON(%d+)$"))
+		if form then
+			M.secure = M.secure + 1
+			local ok, err = pcall(CastShapeshiftForm, form)
+			M.secure = M.secure - 1
+			if not ok then error(err, 0) end
+		end
 	end
 end
 
@@ -1156,10 +1179,18 @@ M.GetForms = forms
 
 function GetNumShapeshiftForms() return #forms() end
 function GetShapeshiftForm() return M.form end
+-- Icon, in it now, can be changed to now, spell. A test can make a form unusable
+-- (M.uncastable[index]) or have the client seal the lot in a fight (M.sealForms), which nobody
+-- here has seen it do: the addon has to cope either way.
+M.uncastable = {}
 function GetShapeshiftFormInfo(index)
 	local form = forms()[index]
 	if not form then return nil end
-	return "icon " .. form[2], M.form == index, true, form[2]
+	local texture, active, castable, spell = "icon " .. form[2], M.form == index, not M.uncastable[index], form[2]
+	if M.sealForms and restricted() and insecure() then
+		return Seal(texture), Seal(active), Seal(castable), Seal(spell)
+	end
+	return texture, active, castable, spell
 end
 
 -- The character changes form (0 leaves every form). The game says so with these events, the
@@ -1175,6 +1206,20 @@ function M.Shapeshift(index)
 	for _, event in ipairs({ "UPDATE_SHAPESHIFT_FORM", "UPDATE_BONUS_ACTIONBAR", "ACTIONBAR_UPDATE_USABLE" }) do M.Fire(event) end
 	M.secure = depth
 	M.RunDrivers()
+end
+
+-- What the game's stance bar does when one of its buttons is used (StanceBar:Select, which the
+-- commands SHAPESHIFTBUTTON1 to 10 run): change to that stance. A form the character is already
+-- in is left by using it again; a Warrior is always in a stance and stays in it. A protected
+-- call: addon code may not make it in a fight.
+function CastShapeshiftForm(index)
+	if M.combat and insecure() then error("BLOCKED: CastShapeshiftForm from tainted code in combat", 2) end
+	if not forms()[index] then return end
+	if M.form == index then
+		if M.class ~= "WARRIOR" then M.Shapeshift(0) end
+		return
+	end
+	M.Shapeshift(index)
 end
 
 -- By name, for tests that read better that way: M.ShapeshiftTo("Cat Form"), M.ShapeshiftTo(nil).
@@ -1269,8 +1314,17 @@ Settings = {
 GameTooltip = { owner = nil, lines = {} }
 function GameTooltip:SetOwner(owner) self.owner = owner; self.lines = {} end
 function GameTooltip:GetOwner() return self.owner end
-function GameTooltip:SetText(text) self.lines = { text } end
-function GameTooltip:AddLine(text) self.lines[#self.lines + 1] = text end
+-- A tooltip takes text and nothing else: handed nil, a function or a table, the client raises
+-- "bad argument #1 to 'SetText' (Usage: self:SetText(text [, color, alpha, wrap]))".
+local function tooltipText(method, text)
+	local kind = type(text)
+	if kind ~= "string" and kind ~= "number" then
+		error(("bad argument #1 to '%s' (Usage: self:%s(text [, color, alpha, wrap])), got %s"):format(method, method, kind), 3)
+	end
+	return text
+end
+function GameTooltip:SetText(text) self.lines = { tooltipText("SetText", text) } end
+function GameTooltip:AddLine(text) self.lines[#self.lines + 1] = tooltipText("AddLine", text) end
 function GameTooltip:SetAction(slot) self.lines = { "action " .. slot }; return M.actions[slot] ~= nil end
 function GameTooltip:Show() self.shown = true end
 function GameTooltip:Hide() self.shown = false; self.owner = nil end

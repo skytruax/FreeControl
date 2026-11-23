@@ -23,6 +23,7 @@ def read(path):
 def new_state():
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.globals().ReadFile = read
+    lua.globals().FileExists = lambda path: os.path.isfile(os.path.join(ROOT, path))
     load = lua.eval("function(src, name) return assert(loadstring(src, name))() end")
     for name in ("wowmock.lua", "tests.lua"):
         load(read(os.path.join("tools", "tests", name)), "@tools/tests/" + name)
