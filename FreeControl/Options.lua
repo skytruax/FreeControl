@@ -1,8 +1,8 @@
 local _, ns = ...
 local Layout = ns.Layout
 
--- The settings pages (Options > AddOns > FreeControl, and Other buttons under it), the /fc
--- command, and the menu for choosing what a no-trigger button does.
+-- The settings pages (Options > AddOns > FreeControl, with Mouse mode and Other buttons under
+-- it), the /fc command, and the menu for choosing what a no-trigger button does.
 local Options = {}
 ns.Options = Options
 
@@ -68,7 +68,10 @@ local function RoleChoices()
 		{ "pass", "My own key binding" },
 	}
 	for _, command in ipairs(Layout.COMMANDS) do
-		choices[#choices + 1] = { "cmd:" .. command[1], command[2] }
+		-- The mouse pointer is not a job to offer on a client without one, or with mouse mode off.
+		if command[1] ~= Layout.CURSOR_COMMAND or ns.Mouse:IsEnabled() then
+			choices[#choices + 1] = { "cmd:" .. command[1], command[2] }
+		end
 	end
 	for _, job in ipairs(FormJobs()) do
 		choices[#choices + 1] = { "cmd:" .. job[1], job[2] }
@@ -161,6 +164,26 @@ function Options:OpenRoleMenu(owner, index)
 	end)
 end
 
+-- The controller's slots have no place for a face button with no trigger held; the regular
+-- action bars do, and have one page.
+local function MouseModeTip()
+	local text = "A button on the bar (Y unless you changed it) brings out a mouse pointer that the right stick steers. Untick it and that button is an ordinary action slot instead"
+	if Layout.GetSlotSource() ~= "gamepad" then
+		return text .. ": it holds whatever you drop on it."
+	end
+	return text .. ": on each page it holds whatever you drop on it. It keeps that in the LT + RT slot of the same button on the page before, the one spare place the game's controller slots have."
+end
+
+-- The explanation of a page setting, which says so while there are no pages for it to act on.
+local function PageTip(text)
+	return function()
+		if Layout.GetSlotSource() ~= "gamepad" then
+			return text .. " With the regular action bars as the slots there is one page, so this changes nothing."
+		end
+		return text
+	end
+end
+
 -- What the Stance sets choice comes to on this character, said under its explanation.
 local function StanceTooltip()
 	local text = "What changes to different slots in each stance or form. Automatic is the left and right trigger sets and the D-pad for a Druid, and for every other class the one set picked in Options > Gamepad > Stance bar. A second set and the D-pad use the slots of the game's own action bar for that stance, so they are shared with it. They change on one page only, as the game's own bars do; the other pages, the both-triggers set and the face buttons are the same in every stance."
@@ -207,7 +230,9 @@ local function Heading(panel, text, x, y)
 	return y - ROW
 end
 
-local function Check(panel, x, y, label, tooltip, key)
+-- A tick box for the setting `key`. `store(value)` is for a setting that takes more than being
+-- written down; without it the value is saved and the settings applied.
+local function Check(panel, x, y, label, tooltip, key, store)
 	local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
 	check:SetSize(26, 26)
 	check:SetPoint("TOPLEFT", x, y)
@@ -215,7 +240,12 @@ local function Check(panel, x, y, label, tooltip, key)
 	check.Text:SetFontObject("GameFontHighlight")
 	AddTooltip(check, label, tooltip)
 	check:SetScript("OnClick", function(self)
-		Set(key, self:GetChecked() and true or false)
+		local value = self:GetChecked() and true or false
+		if store then
+			store(value)
+		else
+			Set(key, value)
+		end
 	end)
 	check.Sync = function(self)
 		self:SetChecked(ns.db[key])
@@ -331,29 +361,18 @@ local function Build(panel)
 	y = Heading(panel, "Slots", left, y - 8)
 	y = Choice(panel, left, y, "Stored in", "Controller-bar slots are the ones Blizzard's Gamepad UI uses, separate from your action bars, so anything you set up there shows up here. Regular action bars uses the Left, Bottom Left, Bottom Right and Right bars instead.", SLOT_SOURCES,
 		function() return ns.db.slotSource end, function(value) Set("slotSource", value) end)
-	y = Choice(panel, left, y, "Page", "Which of the three controller-bar pages the bar shows. Each page has its own buttons. The two arrows in the middle of the bar turn the page as well, in a fight too, and so does any button you give that job under Other buttons.", PAGES,
+	y = Check(panel, left, y, "Pages", PageTip("The bar has three pages, each with its own buttons, and the page can be turned: by the selector under the LT + RT set, or by any button you give that job under Other buttons. Untick it to keep the bar on one page, the one picked under Page below. Nothing turns it then."), "pages")
+	y = Check(panel, left, y, "Page selector on the bar", PageTip("The small plate under the LT + RT set that shows the page and turns it. Untick it to take it off the bar: the page can still be turned by a button you gave that job."), "showPager")
+	y = Choice(panel, left, y, "Page", PageTip("Which of the three controller-bar pages the bar shows. Each page has its own buttons. With Pages ticked, the selector under the LT + RT set turns the page as well, in a fight too, and so does any button you give that job under Other buttons."), PAGES,
 		function() return ns.db.page end, function(value) Set("page", value) end)
 	y = Choice(panel, left, y, "Stance sets", StanceTooltip, STANCE_SETS,
 		function() return ns.db.stanceSet end, function(value) Set("stanceSet", value) end)
 
 	y = Heading(panel, "Mouse mode", left, y - 8)
-	local mouseNote = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	mouseNote:SetPoint("TOPLEFT", left + 4, y - 2)
-	mouseNote:SetWidth(296)
-	mouseNote:SetJustifyH("LEFT")
-	mouseNote.Sync = function(self)
-		local button = ns.Mouse:GetBarButtonName()
-		local how = button and (button .. " brings the mouse pointer out and puts it away. FreeControl binds it; there is nothing to set up.")
-			or "No button brings the mouse pointer out. Give one \"Mouse pointer on / off\" in the list on the right."
-		self:SetText(how .. " While it is out, the right stick moves it and these two buttons click.")
-	end
-	controls[#controls + 1] = mouseNote
-	y = y - 52
-	y = Choice(panel, left, y, "Left click", "The left mouse button while the mouse pointer is out. Pick a button you can hold while your right thumb steers, such as a stick click or a bumper, so you can drag spells and items. The rest of the time the button does whatever you bound it to.", ClickChoices,
-		function() return ns.db.clickLeft end, function(value) SetClick(1, value) end)
-	y = Choice(panel, left, y, "Right click", "The right mouse button while the mouse pointer is out. The rest of the time the button does whatever you bound it to.", ClickChoices,
-		function() return ns.db.clickRight end, function(value) SetClick(2, value) end)
-	y = Stepper(panel, left, y, "Pointer speed", "How fast the right stick moves the mouse pointer. 100% is the game's own speed, or whatever you had set it to.", "cursorSpeed", 0.5, 3, 0.25)
+	y = Check(panel, left, y, "Mouse mode", MouseModeTip, "mouseMode", ns.SetMouseMode)
+	y = Action(panel, left, y, "Clicks and speed...", "Opens the Mouse mode page: which two buttons click while the mouse pointer is out, and how fast the stick moves it.", function()
+		Options:OpenMouse()
+	end, "Mouse pointer")
 
 	y = -78
 	y = Heading(panel, "Controller", right, y)
@@ -427,7 +446,7 @@ local function JobChoices(key)
 	}
 	for _, command in ipairs(Layout.COMMANDS) do
 		if command[1] == Layout.CURSOR_COMMAND then
-			if ns.Mouse:IsAvailable() then
+			if ns.Mouse:IsEnabled() then
 				choices[#choices + 1] = { ns.Bindings.MOUSE_COMMAND, command[2] }
 			end
 		else
@@ -447,8 +466,14 @@ local function JobChoices(key)
 		listed = listed or choice[1] == current
 	end
 	if not listed then
-		local form = Layout.GetCommandForm(current)
-		table.insert(choices, 2, { current, form and (Layout.GetCommandInfo(current)) or GetBindingName(current) })
+		local label = GetBindingName(current)
+		if Layout.GetCommandForm(current) then
+			label = (Layout.GetCommandInfo(current))
+		elseif current == ns.Bindings.MOUSE_COMMAND then
+			-- Given the job earlier; it does nothing now, and the row says why.
+			label = ns.Mouse:IsAvailable() and "Mouse pointer on / off (mouse mode is off)" or "Mouse pointer on / off (this client has no pointer)"
+		end
+		table.insert(choices, 2, { current, label })
 	end
 	choices[#choices + 1] = { "keybindings", "Something else...", true }
 	return choices
@@ -620,6 +645,50 @@ local function BuildButtons(panel)
 end
 
 ---------------------------------------------------------------------------
+-- The Mouse mode page
+---------------------------------------------------------------------------
+-- What mouse mode is at the moment, in a few sentences: the first thing on its page.
+local function MouseNote()
+	if not ns.Mouse:IsAvailable() then
+		return "This client has no controller mouse pointer, so there is no mouse mode here."
+	elseif not ns.Mouse:IsEnabled() then
+		return "Mouse mode is switched off. No button of FreeControl's brings the mouse pointer out, and the button that did is an ordinary action slot that holds whatever you drop on it. The game still brings its own pointer out when a window needs one, and the two buttons below are what click then."
+	end
+	local button = ns.Mouse:GetBarButtonName()
+	local how = button and (button .. " brings the mouse pointer out and puts it away; jumping puts it away too. FreeControl binds it: there is nothing to set up.")
+		or "No button brings the mouse pointer out. Click a no-trigger button on the bar and choose \"Mouse pointer on / off\", or give a bumper or a paddle that job under Other buttons."
+	return how .. " While the pointer is out, the right stick moves it and the two buttons below click."
+end
+
+local function BuildMouse(panel)
+	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalHuge")
+	title:SetPoint("TOPLEFT", 16, -14)
+	title:SetText("Mouse mode")
+
+	local note = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", 18, -40)
+	note:SetPoint("RIGHT", -20, 0)
+	note:SetJustifyH("LEFT")
+	note.Sync = function(self)
+		self:SetText(MouseNote())
+	end
+	controls[#controls + 1] = note
+	Options.mouseNote = note
+
+	local left = 16
+	local y = -90
+	y = Heading(panel, "The pointer", left, y)
+	y = Check(panel, left, y, "Mouse mode", MouseModeTip, "mouseMode", ns.SetMouseMode)
+
+	y = Heading(panel, "While the pointer is out", left, y - 8)
+	y = Choice(panel, left, y, "Left click", "The left mouse button while the mouse pointer is out. Pick a button you can hold while your right thumb steers, such as a stick click or a bumper, so you can drag spells and items. The rest of the time the button does whatever you bound it to.", ClickChoices,
+		function() return ns.db.clickLeft end, function(value) SetClick(1, value) end)
+	y = Choice(panel, left, y, "Right click", "The right mouse button while the mouse pointer is out. The rest of the time the button does whatever you bound it to.", ClickChoices,
+		function() return ns.db.clickRight end, function(value) SetClick(2, value) end)
+	Stepper(panel, left, y, "Pointer speed", "How fast the right stick moves the mouse pointer. 100% is the game's own speed, or whatever you had set it to.", "cursorSpeed", 0.5, 3, 0.25)
+end
+
+---------------------------------------------------------------------------
 -- Registering the pages
 ---------------------------------------------------------------------------
 -- A page is built the first time it is opened; most sessions never open one.
@@ -640,6 +709,8 @@ function Options:Create()
 	self.panel = CreatePanel(Build)
 	self.category = Settings.RegisterCanvasLayoutCategory(self.panel, "FreeControl")
 	Settings.RegisterAddOnCategory(self.category)
+	self.mousePanel = CreatePanel(BuildMouse)
+	self.mouseCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.mousePanel, "Mouse mode")
 	self.buttonsPanel = CreatePanel(BuildButtons)
 	self.buttonsCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.buttonsPanel, "Other buttons")
 end
@@ -648,7 +719,11 @@ end
 -- is not on screen is left for when it is opened: this is called on every setting change, and
 -- when the page is turned in a fight.
 function Options:Sync()
-	if not ((self.panel and self.panel:IsVisible()) or (self.buttonsPanel and self.buttonsPanel:IsVisible())) then
+	local showing = false
+	for _, panel in ipairs({ self.panel, self.mousePanel, self.buttonsPanel }) do
+		showing = showing or panel:IsVisible()
+	end
+	if not showing then
 		return
 	end
 	for _, control in ipairs(controls) do
@@ -662,6 +737,10 @@ end
 
 function Options:OpenButtons()
 	Settings.OpenToCategory(self.buttonsCategory:GetID())
+end
+
+function Options:OpenMouse()
+	Settings.OpenToCategory(self.mouseCategory:GetID())
 end
 
 -- Bindings changed somewhere else, in the Key Bindings screen for one: the rows follow.
@@ -713,8 +792,8 @@ local function PrintStatus()
 	ns.Print(("Slots: %s (asked for %s). Controller-bar slots start at %s, usable: %s, stance slots usable: %s"):format(
 		source, db.slotSource, tostring(first), YesNo(Layout.HasGamepadSlots()), YesNo(Layout.HasStanceSlots())))
 	local _, class = UnitClass("player")
-	ns.Print(("Page %d of %d. Class: %s. Changes with your stance or form (setting: %s): %s"):format(Layout.GetPage(), Layout.GetPageCount(),
-		tostring(class), db.stanceSet, Layout.DescribeStance()))
+	ns.Print(("Page %d of %d (pages: %s, page selector: %s). Class: %s. Changes with your stance or form (setting: %s): %s"):format(Layout.GetPage(), Layout.GetStoredPages(),
+		db.pages and "on" or "off", db.showPager and "shown" or "hidden", tostring(class), db.stanceSet, Layout.DescribeStance()))
 	ns.Print(("Page buttons: next page is on %s, previous page on %s."):format(
 		GetBindingKey(ns.Bindings.PAGE_COMMANDS.next) or "no button", GetBindingKey(ns.Bindings.PAGE_COMMANDS.prev) or "no button"))
 	local forms = DescribeForms()
@@ -821,7 +900,7 @@ local HELP = {
 	"/fc lock | unlock - hide or show the handle for dragging the bar",
 	"/fc scale <0.5-2> - size of the bar",
 	"/fc reset - put the bar back where it started",
-	"/fc page <1-3> - which controller-bar page to show (the arrows in the middle of the bar turn it too)",
+	"/fc page <1-3> - which controller-bar page to show (the page selector under the LT + RT set turns it too)",
 	"/fc buttons - give the bumpers, stick clicks, Start, Back and paddles their jobs",
 	"/fc slots gamepad | bars - where the slots are stored",
 	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
@@ -829,7 +908,9 @@ local HELP = {
 	"/fc ranks - move every spell on the bar up to its newest rank now (on | off: do it by itself whenever you learn one)",
 	"/fc key <1-8 | lt | rt> <KEY> - use a different key for a slot or trigger (1-4 D-pad left/up/right/down, 5-8 face left/top/right/bottom)",
 	"/fc stance auto | none | lt | rt | both | ltrt | all - what changes with your stance or form (ltrt = both trigger sets, all = those and the D-pad)",
-	"/fc mouse - bring the controller's mouse pointer out or put it away",
+	"/fc pages on | off - whether the page can be turned (off: the bar stays on the page of /fc page)",
+	"/fc pager on | off - show or hide the page selector under the LT + RT set",
+	"/fc mouse - bring the controller's mouse pointer out or put it away (on | off: mouse mode itself; off makes its button an action slot)",
 	"/fc click left | right <BUTTON> - the button that clicks while the mouse pointer is out (game = leave it to the game)",
 	"/fc pointer <50-300> - how fast the stick moves the mouse pointer, in percent",
 	"/fc status - what FreeControl sees, for bug reports",
@@ -897,8 +978,14 @@ SlashCmdList.FREECONTROL = function(message)
 		if not InCombatLockdown() then
 			ns.Print(("Changes with your stance or form: %s."):format(Layout.DescribeStance()))
 		end
+	elseif command == "pages" and ns.IsOneOf(first, "on", "off") then
+		Set("pages", first == "on")
+	elseif command == "pager" and ns.IsOneOf(first, "on", "off") then
+		Set("showPager", first == "on")
+	elseif command == "mouse" and ns.IsOneOf(first, "on", "off") then
+		ns.SetMouseMode(first == "on")
 	elseif command == "mouse" then
-		ns.Mouse:Toggle(false)
+		ns.Mouse:Toggle()
 	elseif command == "pointer" and tonumber(first) then
 		Set("cursorSpeed", math.max(0.5, math.min(3, tonumber(first) / 100)))
 	elseif command == "click" and ns.IsOneOf(first, "left", "right") and second and second ~= "" then

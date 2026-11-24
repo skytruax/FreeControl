@@ -1616,24 +1616,34 @@ test("status warns when the mouse button is also a click button", function()
 	truthy(Problem("Y is both the mouse button and a click button"), "warned")
 end)
 
-test("the settings page explains mouse mode and names the button that brings the pointer out", function()
-	Load()
-	local panel = ns.Options.panel
-	Open(panel)
-	local function PageSays(pattern)
-		for _, text in ipairs(panel.__texts) do
-			if (text:GetText() or ""):find(pattern) then return true end
-		end
-		return false
+-- True when one of the texts on a settings page matches.
+local function PageSays(panel, pattern)
+	for _, text in ipairs(panel.__texts) do
+		if (text:GetText() or ""):find(pattern) then return true end
 	end
-	truthy(PageSays("^Mouse mode$"), "a heading")
-	truthy(PageSays("^Left click$") and PageSays("^Right click$") and PageSays("^Pointer speed$"), "the two click buttons and the pointer speed")
-	truthy(PageSays("Y brings the mouse pointer out and puts it away%. FreeControl binds it; there is nothing to set up%. While it is out, the right stick moves it and these two buttons click"), "the explanation")
-	truthy(PageSays("^Stance sets$"), "and the stance choice is on the page under its new name")
+	return false
+end
+
+test("mouse mode has a page of its own that explains it and names the button that brings the pointer out", function()
+	Load()
+	eq(M.subcategories[1].GetID(), "Mouse mode", "a page under FreeControl")
+	local main = ns.Options.panel
+	Open(main)
+	truthy(PageSays(main, "^Mouse mode$"), "the main page has its heading and its switch")
+	truthy(PageSays(main, "^Stance sets$"), "and the stance choice under its name")
+	local toMouse
+	for _, frame in ipairs(M.all) do
+		if frame:GetText() == "Clicks and speed..." then toMouse = frame end
+	end
+	toMouse:GetScript("OnClick")(toMouse)
+	eq(M.opened[#M.opened], "Mouse mode", "and a button that leads to the page")
+	local panel = ns.Options.mousePanel
+	Open(panel)
+	truthy(PageSays(panel, "^Left click$") and PageSays(panel, "^Right click$") and PageSays(panel, "^Pointer speed$"), "the two click buttons and the pointer speed")
+	truthy(PageSays(panel, "Y brings the mouse pointer out and puts it away; jumping puts it away too%. FreeControl binds it: there is nothing to set up%. While the pointer is out, the right stick moves it and the two buttons below click"), "the explanation")
 	ns.db.roles[6] = "pass"
 	ns.RequestRefresh()
-	truthy(PageSays("No button brings the mouse pointer out%. Give one \"Mouse pointer on / off\" in the list on the right"), "and it says so when no button does")
-	eq(PageSays("Key Bindings"), false, "without sending anyone to the Key Bindings screen")
+	truthy(PageSays(panel, "No button brings the mouse pointer out%. Click a no%-trigger button on the bar and choose \"Mouse pointer on / off\", or give a bumper or a paddle that job under Other buttons"), "and it says so when no button does")
 end)
 
 test("tooltips name the button and what it does", function()
@@ -1717,7 +1727,7 @@ test("status reports the stance slots and agrees with the client", function()
 	truthy(Printed("Stance 3: its controller slots start at 281 %(the game says 281%)"), "the controller's stance slots")
 	truthy(Printed("Stance 3: its regular action bar slots start at 97 %(the game says 97%)"), "and the regular bar's")
 	eq(Printed("these differ"), false, "no mismatch")
-	truthy(Printed("Page 1 of 3%. Class: ROGUE%. Changes with your stance or form %(setting: rt%): RT set, on page 1"), "names what changes, and where")
+	truthy(Printed("Page 1 of 3 %(pages: on, page selector: shown%)%. Class: ROGUE%. Changes with your stance or form %(setting: rt%): RT set, on page 1"), "names what changes, and where")
 end)
 
 test("status says which form the character is in, and flags a bar the secure code did not follow", function()
@@ -2650,7 +2660,7 @@ end)
 
 test("a face button made a slot borrows from another page on every page, and no page shows a slot twice", function()
 	Load({ roles = { "action", "action", "action", "action", "action", "cmd:FREECONTROL_TOGGLECURSOR", "action", "cmd:JUMP" }, mouseStep = 2 })
-	local borrowed = { "261 - 263 -", "261 - 263 -", "233 - 235 -" }
+	local borrowed = { "261 - 263 -", "205 - 207 -", "233 - 235 -" } -- from the page before: 3, 1, 2
 	for page = 1, 3 do
 		eq(Slots(0), PAGE[page][0]:sub(1, 15) .. " " .. borrowed[page], "page " .. page .. ": the D-pad is the page's own, the face slots are borrowed")
 		local seen = {}
@@ -3188,8 +3198,8 @@ end
 test("the Other buttons page lists the controller's ordinary buttons with what each one does", function()
 	M.userBindings = { PADRSHOULDER = "TARGETNEARESTENEMY", PADFORWARD = "TOGGLEGAMEMENU", PADBACK = "SOMETHINGELSE" }
 	Load()
-	eq(M.subcategories[1].GetID(), "Other buttons", "a page of its own under FreeControl")
-	eq(M.subcategories[1].parent, M.category, "in the game's list of addon settings")
+	eq(M.subcategories[2].GetID(), "Other buttons", "a page of its own under FreeControl")
+	eq(M.subcategories[2].parent, M.category, "in the game's list of addon settings")
 	local rows, order = ButtonRows()
 	eq(table.concat(order, ", "), "LB, RB, Left stick click, Right stick click, Back, Start, Paddle 1, Paddle 2, Paddle 3, Paddle 4, ", "ten buttons by the names printed on them, and the row for any other")
 	eq(rows.RB:GetText(), "Target nearest enemy", "a button with a job shows it")
@@ -4210,4 +4220,427 @@ test("where the Gamepad options put the stance bar on page 2, it is page 2's but
 	eq(ns.Buttons:GetSlot(2, 1), 193, "page 1 does not change with the form at all")
 	M.MouseClick(M.frames.FreeControlPageNext)
 	eq(Slots(2), "221 266 267 268 269 270 271 272", "page 2 does, and keeps its stance button")
+end)
+
+---------------------------------------------------------------------------
+-- Pages and the page selector as settings
+---------------------------------------------------------------------------
+-- The tick box on a settings page with this label.
+local function TickBox(panel, label)
+	for _, frame in ipairs(M.all) do
+		if frame:GetParent() == panel and frame.Text and frame.Text:GetText() == label then return frame end
+	end
+	error("no tick box called " .. label, 2)
+end
+
+local function Tick(box, on)
+	box:SetChecked(on)
+	box:GetScript("OnClick")(box)
+end
+
+test("with pages switched off the bar stays on the page picked in the settings, and nothing turns it", function()
+	M.userBindings = { PADRSHOULDER = "CLICK FreeControlPageNext:LeftButton", PADLSHOULDER = "CLICK FreeControlPagePrev:LeftButton" }
+	Load({ pages = false, page = 2 })
+	eq(ns.Layout.GetPageCount(), 1, "nothing to turn through")
+	ShowsPage(2, "the page picked")
+	eq(ns.Bars.pager:IsShown(), false, "no selector")
+	eq(M.frames.FreeControlPageNext:IsShown(), false, "no arrow up")
+	eq(M.frames.FreeControlPagePrev:IsShown(), false, "no arrow down")
+	M.Tap("PADRSHOULDER")
+	ShowsPage(2, "a button bound to an arrow does nothing")
+	M.Tap("PADLSHOULDER")
+	ShowsPage(2, "either way")
+	eq(ns.db.page, 2, "and the page saved is untouched")
+	SlashCmdList.FREECONTROL("page 3")
+	ShowsPage(3, "the settings still pick the page")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Page 3 of 3 %(pages: off, page selector: shown%)"), "status says pages are off")
+	SlashCmdList.FREECONTROL("pages on")
+	truthy(ns.Bars.pager:IsVisible(), "switched on again, the selector is back")
+	M.Tap("PADRSHOULDER")
+	ShowsPage(1, "and the page turns")
+	SlashCmdList.FREECONTROL("pages off")
+	eq(ns.Bars.pager:IsShown(), false, "and off again from chat")
+end)
+
+test("with pages off, a stance changes the buttons of the page the bar is on, as it did before there were pages", function()
+	Load({ pages = false, page = 2 })
+	eq(ns.Layout.GetStancePage(), 2, "the only page the player has")
+	M.ShapeshiftTo("Stealth")
+	eq(Slots(2), "265 266 267 268 269 270 271 272", "the right set changes on it")
+	eq(Slots(1), PAGE[2][1], "the rest is page 2")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Changes with your stance or form %(setting: auto%): RT set$"), "and with one page there is no page to name")
+end)
+
+test("the page selector can be taken off the bar, and a bound button still turns the page", function()
+	M.userBindings = { PADRSHOULDER = "CLICK FreeControlPageNext:LeftButton" }
+	Load({ showPager = false })
+	eq(ns.Bars.pager:IsShown(), false, "no plate, no number")
+	local next = M.frames.FreeControlPageNext
+	truthy(next:IsShown(), "the arrows stay where a bound button finds them")
+	eq(next:GetAlpha(), 0, "but there is nothing of them to see")
+	eq(M.TakesMouse(next), false, "and nothing to click")
+	eq(M.TakesMouse(M.frames.FreeControlPagePrev), false, "either of them")
+	M.EnterCombat()
+	M.Tap("PADRSHOULDER")
+	ShowsPage(2, "the bound button turns the page, in a fight")
+	M.LeaveCombat()
+	SlashCmdList.FREECONTROL("pager on")
+	truthy(ns.Bars.pager:IsVisible(), "switched on: the plate is back")
+	eq(next:GetAlpha(), 1, "the arrows can be seen")
+	truthy(M.TakesMouse(next), "and clicked")
+	M.MouseClick(next)
+	ShowsPage(3, "which turns the page")
+	SlashCmdList.FREECONTROL("pager off")
+	eq(ns.Bars.pager:IsShown(), false, "and off again from chat")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("pages: on, page selector: hidden"), "status says so")
+end)
+
+test("the settings page has a tick box for pages and one for the page selector", function()
+	Load()
+	local panel = ns.Options.panel
+	Open(panel)
+	local pages, selector = TickBox(panel, "Pages"), TickBox(panel, "Page selector on the bar")
+	eq(pages:GetChecked(), true, "pages are on to begin with")
+	eq(selector:GetChecked(), true, "and so is the selector")
+	Tick(selector, false)
+	eq(ns.db.showPager, false, "unticked: saved")
+	eq(ns.Bars.pager:IsShown(), false, "and gone from the bar")
+	Tick(pages, false)
+	eq(ns.db.pages, false, "pages too")
+	eq(ns.Layout.GetPageCount(), 1, "one page")
+	Tick(pages, true)
+	Tick(selector, true)
+	truthy(ns.Bars.pager:IsVisible(), "both ticked again: as it was")
+	SlashCmdList.FREECONTROL("pages off")
+	eq(pages:GetChecked(), false, "and the boxes follow what is typed in chat")
+end)
+
+test("saved page and mouse settings that make no sense go back to their defaults", function()
+	Load({ pages = "yes", showPager = 0, mouseMode = "no", mouseIndex = 12 })
+	eq(ns.db.pages, true, "pages")
+	eq(ns.db.showPager, true, "the selector")
+	eq(ns.db.mouseMode, true, "mouse mode")
+	eq(ns.db.mouseIndex, 6, "and the button remembered for it")
+end)
+
+---------------------------------------------------------------------------
+-- Mouse mode as a setting
+---------------------------------------------------------------------------
+test("with mouse mode switched off its button is an ordinary slot, with an action of its own on each page", function()
+	M.lockActionBars = false
+	Load()
+	eq(Binding("PAD4"), "click:FreeControlMouse", "to begin with Y is the mouse button")
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(ns.db.mouseMode, false, "switched off")
+	eq(ns.db.roles[6], "action", "Y is an action slot")
+	eq(ns.db.mouseIndex, 6, "and it is remembered that Y was the mouse button")
+	eq(Binding("PAD4"), "click:FreeControlKey0_6", "bound as one")
+	eq(ns.Buttons.role[6]:IsShown(), false, "the mouse button's picture is off the bar")
+	local button = M.frames.FreeControlButton0_6
+	truthy(button:IsShown(), "and a slot is in its place")
+	local seen, slots = {}, {}
+	for page = 1, 3 do
+		local slot = ns.Buttons:GetSlot(0, 6)
+		eq(seen[slot], nil, "page " .. page .. " has a slot of its own for it")
+		seen[slot] = true
+		slots[page] = slot
+		M.SetCursor({ kind = "spell", spell = 1000 + page })
+		button:GetScript("OnReceiveDrag")(button)
+		eq(M.placed[#M.placed], slot, "page " .. page .. ": what is dropped on it goes there")
+		M.MouseClick(M.frames.FreeControlPageNext)
+	end
+	eq(table.concat(slots, " "), "262 206 234", "kept in the LT + RT slot of the same button on the page before")
+	for page = 1, 3 do
+		eq(button.fc.icon:GetTexture(), "spell " .. (1000 + page), "page " .. page .. " shows its own action")
+		M.used = {}
+		M.Tap("PAD4")
+		eq(Used(), tostring(slots[page]), "and Y casts it")
+		M.MouseClick(M.frames.FreeControlPageNext)
+	end
+	eq(M.PointerVisible(), false, "no pointer came out of any of that")
+end)
+
+test("switched on again, the button is the mouse button again and what was on it is kept", function()
+	Load()
+	SlashCmdList.FREECONTROL("mouse off")
+	M.actions[262] = { texture = "kept" }
+	SlashCmdList.FREECONTROL("mouse on")
+	eq(ns.db.mouseMode, true, "on")
+	eq(ns.db.roles[6], "cmd:FREECONTROL_TOGGLECURSOR", "Y is the mouse button")
+	eq(Binding("PAD4"), "click:FreeControlMouse", "bound as before")
+	truthy(ns.Buttons.role[6]:IsShown(), "with its picture on the bar")
+	M.Tap("PAD4")
+	eq(M.PointerVisible(), true, "and it brings the pointer out")
+	eq(M.actions[262].texture, "kept", "the action that was on the slot is still in it")
+end)
+
+test("the mouse button on another button is remembered there, and one given another job since is left alone", function()
+	local roles = { "action", "action", "action", "action", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TARGETNEARESTENEMY", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" }
+	Load({ mouseStep = 2, roles = roles })
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(ns.db.roles[5], "action", "X was the mouse button: it is the slot now")
+	eq(ns.db.mouseIndex, 5, "remembered")
+	eq(ns.db.roles[6], "cmd:TARGETNEARESTENEMY", "Y keeps its own job")
+	SlashCmdList.FREECONTROL("mouse on")
+	eq(ns.db.roles[5], "cmd:FREECONTROL_TOGGLECURSOR", "and X gets the job back")
+	SlashCmdList.FREECONTROL("mouse off")
+	ns.db.roles[5] = "cmd:JUMP" -- the player gives X another job while mouse mode is off
+	SlashCmdList.FREECONTROL("mouse on")
+	eq(ns.db.roles[5], "cmd:JUMP", "which is not taken away again")
+	eq(ns.Mouse:GetBarButtonName(), nil, "so no button is the mouse button")
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("No button brings the mouse pointer out"), "and status says how to give one the job")
+end)
+
+-- True when a menu has an entry with this text.
+local function Offers(menu, label)
+	for _, item in ipairs(menu.items) do
+		if item.text == label then return true end
+	end
+	return false
+end
+
+test("with mouse mode off nothing of FreeControl's brings the pointer out, and nothing offers to", function()
+	local menus = UseMenus()
+	M.userBindings = { PADPADDLE1 = "CLICK FreeControlMouse:LeftButton" } -- a paddle given the job earlier
+	Load()
+	SlashCmdList.FREECONTROL("mouse off")
+	M.Tap("PADPADDLE1")
+	eq(M.PointerVisible(), false, "the paddle does nothing")
+	eq(M.frames.FreeControlHeader:GetAttribute("fc-mouse"), nil, "and the click buttons are not rebound for a pointer that is not there")
+	eq(ns.Mouse:GetHistory().presses, 0, "it is not counted as a press of the mouse button")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("mouse")
+	eq(M.PointerVisible(), false, "/fc mouse does not bring it out either")
+	truthy(Printed("Mouse mode is switched off%. /fc mouse on switches it on again"), "and says why")
+	ns.Options:OpenRoleMenu(ns.Buttons.action[0][1], 1)
+	for _, item in ipairs(menus.last.items) do
+		truthy(item.text ~= "Mouse pointer on / off", "a button's menu does not offer the pointer")
+	end
+	local rows = ButtonRows()
+	rows.RB:GetScript("OnClick")(rows.RB)
+	for _, item in ipairs(menus.last.items) do
+		truthy(item.text ~= "Mouse pointer on / off", "nor does the Other buttons page")
+	end
+	eq(rows["Paddle 1"]:GetText(), "Mouse pointer on / off (mouse mode is off)", "the paddle's row says what it was given, and why it does nothing")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	eq(Printed("No button brings the mouse pointer out"), false, "status does not ask for a mouse button")
+	truthy(Printed("Mouse mode is switched off: no button of FreeControl's brings the pointer out"), "it says mouse mode is off")
+	local panel = ns.Options.mousePanel
+	Open(panel)
+	truthy(PageSays(panel, "^Mouse mode is switched off%. No button of FreeControl's brings the mouse pointer out, and the button that did is an ordinary action slot"), "and so does its page")
+	SlashCmdList.FREECONTROL("mouse on")
+	eq(rows["Paddle 1"]:GetText(), "Mouse pointer on / off", "switched on again, the paddle has its job back")
+	ns.Options:OpenRoleMenu(ns.Buttons.action[0][1], 1)
+	truthy(Offers(menus.last, "Mouse pointer on / off"), "and a button's menu offers the pointer again")
+end)
+
+test("with mouse mode off the click buttons are still looked after, for the pointer the game brings out itself", function()
+	Load()
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(M.cvars.GamePadCursorLeftClick, "PADLSTICK", "the left click is still the stick click, not the right trigger")
+	eq(M.cvars.GamePadCursorRightClick, "PADRSTICK", "and the right")
+	M.GameShowsPointer() -- a window needs a pointer
+	M.Advance(0.1)
+	eq(Binding("PADLSTICK"), "cmd:CAMERAORSELECTORMOVE", "the stick clicks click the world while it is out")
+	M.GameHidesPointer()
+	M.Advance(0.1)
+	eq(Binding("PADLSTICK"), nil, "and are handed back when it goes")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	eq(Printed("No button brings the mouse pointer out"), false, "and status does not ask for a mouse button nobody wants")
+end)
+
+test("mouse mode has a tick box on the main page and on its own, and they are one setting", function()
+	Load()
+	Open(ns.Options.panel)
+	Open(ns.Options.mousePanel)
+	local main, own = TickBox(ns.Options.panel, "Mouse mode"), TickBox(ns.Options.mousePanel, "Mouse mode")
+	eq(main:GetChecked(), true, "on to begin with")
+	Tick(own, false)
+	eq(ns.db.mouseMode, false, "unticked on its own page")
+	eq(ns.db.roles[6], "action", "the mouse button is a slot")
+	eq(main:GetChecked(), false, "and the box on the main page follows")
+	Tick(main, true)
+	eq(ns.db.roles[6], "cmd:FREECONTROL_TOGGLECURSOR", "ticked on the main page: the mouse button is back")
+	eq(own:GetChecked(), true, "and the other box follows")
+	main:GetScript("OnEnter")(main)
+	truthy(GameTooltip.lines[2]:find("Untick it and that button is an ordinary action slot instead: on each page it holds whatever you drop on it"), "the tip says what unticking does")
+end)
+
+test("every control on the Mouse mode page has a tooltip", function()
+	Load()
+	local panel = ns.Options.mousePanel
+	Open(panel)
+	local count = 0
+	for index, control in ipairs(Hoverable(panel)) do
+		GameTooltip.lines = {}
+		control:GetScript("OnEnter")(control)
+		eq(type(GameTooltip.lines[1]), "string", "control " .. index .. ": a title")
+		truthy(GameTooltip.lines[1] ~= "", "control " .. index .. ": a title that says something")
+		eq(type(GameTooltip.lines[2]), "string", "control " .. index .. ": an explanation")
+		count = count + 1
+	end
+	eq(count, 5, "the switch, the two clicks and the two ends of the speed")
+end)
+
+test("a setup saved with mouse mode off has no mouse button, is told nothing about one, and keeps what it had", function()
+	Load({ mouseMode = false })
+	eq(ns.db.roles[6], "action", "a new setup: Y is a slot from the start")
+	eq(Binding("PAD4"), "click:FreeControlKey0_6", "bound as one")
+	eq(Printed("mouse pointer"), false, "and the first login says nothing about a pointer")
+end)
+
+test("a setup from before 1.3 with mouse mode off is not given a mouse button", function()
+	local roles = { "action", "action", "action", "action", "cmd:INTERACTTARGET", "pass", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" }
+	Load({ mouseMode = false, introShown = true, roles = roles })
+	eq(ns.db.roles[6], "pass", "Y keeps what it had")
+	eq(Printed("New:"), false, "and nothing is announced")
+	eq(ns.db.mouseStep, 2, "the step is not left for a later login to take")
+end)
+
+test("a no-trigger face slot has an action of its own on each of the three pages", function()
+	Load({ roles = { "action", "action", "action", "action", "action", "action", "action", "action" }, mouseStep = 2 })
+	local seen = {}
+	for page = 1, 3 do
+		for index = 5, 8 do
+			local slot = ns.Buttons:GetSlot(0, index)
+			eq(seen[slot], nil, ("page %d, face button %d: a slot no other page uses for a face button"):format(page, index))
+			seen[slot] = true
+		end
+		M.MouseClick(M.frames.FreeControlPageNext)
+	end
+end)
+
+test("the Mouse mode page follows what is typed in chat while it is the only page open", function()
+	Load()
+	local panel = ns.Options.mousePanel
+	Open(panel)
+	local box = TickBox(panel, "Mouse mode")
+	eq(box:GetChecked(), true, "on to begin with")
+	truthy(PageSays(panel, "^Y brings the mouse pointer out and puts it away; jumping puts it away too%. FreeControl binds it"), "and the page names the button")
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(box:GetChecked(), false, "the box follows")
+	truthy(PageSays(panel, "^Mouse mode is switched off"), "and so do the words")
+	SlashCmdList.FREECONTROL("mouse on")
+	eq(box:GetChecked(), true, "both ways")
+	truthy(PageSays(panel, "^Y brings the mouse pointer out"), "words and all")
+end)
+
+test("on a client without a stick pointer the Mouse mode page and a button given the job say so", function()
+	M.userBindings = { PADPADDLE1 = "CLICK FreeControlMouse:LeftButton" }
+	SetGamePadCursorControl = nil
+	Load()
+	local panel = ns.Options.mousePanel
+	Open(panel)
+	truthy(PageSays(panel, "^This client has no controller mouse pointer, so there is no mouse mode here%.$"), "the page")
+	local rows = ButtonRows()
+	eq(rows["Paddle 1"]:GetText(), "Mouse pointer on / off (this client has no pointer)", "and the paddle's row")
+	M.Tap("PADPADDLE1")
+	eq(#M.pointerCalls, 0, "which asks the game for nothing")
+end)
+
+test("mouse mode switched off in a fight goes on working until the fight ends", function()
+	Load()
+	M.EnterCombat()
+	M.printed = {}
+	SlashCmdList.FREECONTROL("mouse off")
+	truthy(Printed("In combat; the change is applied when the fight ends"), "said")
+	eq(Binding("PAD4"), "click:FreeControlMouse", "Y is still bound as the mouse button: nothing can be rebound in a fight")
+	M.Tap("PAD4")
+	M.Advance(0.02)
+	eq(M.PointerVisible(), true, "and both halves of a press of it still act: the pointer comes out")
+	eq(Binding("PADLSTICK"), "cmd:CAMERAORSELECTORMOVE", "with the click buttons bound for it")
+	eq(ns.Mouse:GetHistory().presses, 1, "counted as a press")
+	M.Tap("PAD4")
+	M.Advance(0.02)
+	eq(M.PointerVisible(), false, "a second press puts it away")
+	eq(Binding("PADLSTICK"), nil, "and hands the click buttons back")
+	M.LeaveCombat()
+	eq(Binding("PAD4"), "click:FreeControlKey0_6", "when the fight ends Y is a slot")
+	M.Tap("PAD4")
+	M.Advance(0.02)
+	eq(M.PointerVisible(), false, "and brings no pointer out")
+end)
+
+test("mouse mode switched on in a fight starts when the fight ends", function()
+	M.userBindings = { PADPADDLE1 = "CLICK FreeControlMouse:LeftButton" }
+	Load({ mouseMode = false })
+	M.EnterCombat()
+	SlashCmdList.FREECONTROL("mouse on")
+	M.Tap("PADPADDLE1")
+	M.Advance(0.02)
+	eq(M.PointerVisible(), false, "a button bound to it does nothing yet")
+	eq(ns.Mouse:GetHistory().presses, 0, "neither half of the press acted")
+	eq(Binding("PADLSTICK"), nil, "so the click buttons were not rebound for a pointer that did not come")
+	eq(Binding("PAD4"), "click:FreeControlKey0_6", "and Y is still a slot")
+	M.LeaveCombat()
+	eq(Binding("PAD4"), "click:FreeControlMouse", "when the fight ends Y is the mouse button")
+	M.Tap("PADPADDLE1")
+	M.Advance(0.02)
+	eq(M.PointerVisible(), true, "and the paddle brings the pointer out")
+end)
+
+test("a button the player bound to the mouse button goes by the mouse mode setting while FreeControl itself is switched off", function()
+	M.userBindings = { PADPADDLE1 = "CLICK FreeControlMouse:LeftButton" }
+	Load()
+	SlashCmdList.FREECONTROL("off")
+	M.Tap("PADPADDLE1")
+	eq(M.PointerVisible(), true, "FreeControl off, mouse mode on: the binding is the player's own, and still works")
+	M.Tap("PADPADDLE1")
+	eq(M.PointerVisible(), false, "both ways")
+	SlashCmdList.FREECONTROL("mouse off")
+	M.Tap("PADPADDLE1")
+	eq(M.PointerVisible(), false, "mouse mode off: it does nothing")
+	SlashCmdList.FREECONTROL("mouse on")
+	M.Tap("PADPADDLE1")
+	eq(M.PointerVisible(), true, "and on again it works again")
+end)
+
+test("with mouse mode off, the first pointer the game brings out is explained without a mouse button", function()
+	Load({ mouseMode = false })
+	M.GameShowsPointer() -- a window needs a pointer
+	M.Advance(0.02)
+	truthy(Printed("Mouse pointer out%. The right stick moves it; Left stick click is the left click and Right stick click is the right click%. Jumping puts it away%.$"), "the clicks, and the way to put it away")
+	eq(Printed("again to put it away"), false, "no button is named for that: there is none")
+	eq(ns.db.mouseHintShown, true, "said once, like the other wording")
+end)
+
+test("news of the mouse button is not told while mouse mode is switched off", function()
+	Load(OldSetup({ enabled = false })) -- given the button at a login with FreeControl switched off, so not told yet
+	eq(ns.db.mouseNews, "pass", "the news is waiting")
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(ns.db.roles[6], "action", "Y is a slot")
+	ns.db.enabled = true
+	M.printed = {}
+	M.Fire("ADDON_LOADED", "FreeControl")
+	M.Fire("PLAYER_LOGIN")
+	eq(Printed("New:"), false, "and the next login does not call it the mouse button")
+end)
+
+test("with the regular action bars as the slots, the page settings say they change nothing and the mouse mode tip leaves the pages out", function()
+	Load({ slotSource = "bars" })
+	local panel = ns.Options.panel
+	Open(panel)
+	local function Tip(control)
+		GameTooltip.lines = {}
+		control:GetScript("OnEnter")(control)
+		return GameTooltip.lines[2]
+	end
+	local nothing = "With the regular action bars as the slots there is one page, so this changes nothing%.$"
+	truthy(Tip(TickBox(panel, "Pages")):find(nothing), "the Pages box says so")
+	truthy(Tip(TickBox(panel, "Page selector on the bar")):find(nothing), "and the selector's")
+	local mouse = Tip(TickBox(panel, "Mouse mode"))
+	truthy(mouse:find("Untick it and that button is an ordinary action slot instead: it holds whatever you drop on it%.$"), "the mouse button there is a plain slot")
+	eq(mouse:find("LT %+ RT"), nil, "that borrows from nowhere")
+	SlashCmdList.FREECONTROL("slots gamepad")
+	eq(Tip(TickBox(panel, "Pages")):find("changes nothing"), nil, "on the controller's slots the page settings say no such thing")
+	truthy(Tip(TickBox(panel, "Mouse mode")):find("It keeps that in the LT %+ RT slot of the same button on the page before"), "and the mouse mode tip says where the slot keeps its action")
+	SlashCmdList.FREECONTROL("slots bars")
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(ns.Buttons:GetSlot(0, 6), 42, "the slot itself is the sixth of the Bottom Left bar's own")
 end)

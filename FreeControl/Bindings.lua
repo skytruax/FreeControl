@@ -96,11 +96,16 @@ local TRIGGER_ONCLICK = [=[
 -- Restricted snippet, self = the mouse button. Like a trigger it is clicked on press and again on
 -- release; only the press counts. It flips mouse mode on the header, which rebinds the click
 -- buttons. Bringing the pointer out is ordinary code and follows in the button's PostClick.
+-- With mouse mode switched off in the settings (fc-mouse-on, see TellMouseMode) a button still
+-- bound to it does nothing.
 local MOUSE_ONCLICK = [=[
 	if not down then
 		return
 	end
 	local header = self:GetFrameRef("fc-header")
+	if not header:GetAttribute("fc-mouse-on") then
+		return
+	end
 	if header:GetAttribute("fc-mouse") then
 		header:SetAttribute("fc-mouse", nil)
 	else
@@ -160,17 +165,18 @@ local ASSIGN = [=[
 
 -- Restricted snippet, self = one of the two page buttons. Like the triggers it is clicked on
 -- press and again on release, by the mouse or by a key bound to it; only the press counts.
--- Past the last page comes the first again, as in the Gamepad UI; with one page that leaves
--- the page where it is.
+-- Past the last page comes the first again, as in the Gamepad UI. With nothing to turn (the
+-- regular action bars are the slots, or the player switched pages off) the page stays as it is,
+-- which need not be the first.
 local PAGE_ONCLICK = [=[
 	if not down then
 		return
 	end
 	local header = self:GetFrameRef("fc-header")
-	if not header:GetAttribute("fc-enabled") then
+	local pages = header:GetAttribute("fc-pages") or 1
+	if pages < 2 or not header:GetAttribute("fc-enabled") then
 		return
 	end
-	local pages = header:GetAttribute("fc-pages") or 1
 	local page = (header:GetAttribute("fc-page") or 1) + self:GetAttribute("fc-step")
 	if page > pages then
 		page = 1
@@ -262,6 +268,17 @@ function Bindings:Create()
 	self.mouse = mouse
 end
 
+-- Whether a press of the mouse button counts: mouse mode is in use. Both halves of a press go by
+-- this one answer, the secure snippet above and Mouse:OnButtonPressed, so they cannot disagree
+-- while a change of the setting waits for a fight to end. Out of combat.
+local function TellMouseMode(header)
+	header:SetAttribute("fc-mouse-on", ns.Mouse:IsEnabled() or nil)
+end
+
+function Bindings:IsMouseButtonOn()
+	return self.header:GetAttribute("fc-mouse-on") ~= nil
+end
+
 -- Out of combat. Hands the header the current settings and binds everything.
 function Bindings:Apply()
 	local db = ns.db
@@ -278,6 +295,7 @@ function Bindings:Apply()
 				local roleKind, command = Layout.ParseRole(db.roles[index])
 				if Layout.IsCursorRole(db.roles[index]) then
 					-- Not a game command. Without a pointer in this client the button is left alone.
+					-- (With mouse mode switched off no button has this role: ns.SetMouseMode.)
 					if ns.Mouse:IsAvailable() then
 						kind, target = "click", self.mouse:GetName()
 					end
@@ -301,6 +319,7 @@ function Bindings:Apply()
 		header:SetAttribute("fc-clickslot-" .. side, isSlotKey or nil)
 	end
 	header:SetAttribute("fc-mouse", ns.Mouse:IsOut() and 1 or nil)
+	TellMouseMode(header)
 
 	header:SetAttribute("fc-scale-active", db.activeScale)
 	header:SetAttribute("fc-alpha-inactive", db.inactiveAlpha)
@@ -314,9 +333,11 @@ function Bindings:Apply()
 	header:Execute([[ self:RunAttribute("fc-apply") ]])
 end
 
--- Out of combat. Gives every key back to the player's own bindings.
+-- Out of combat. Gives every key back to the player's own bindings. A button the player bound
+-- to the mouse button themselves is one of those, and still goes by the mouse mode setting.
 function Bindings:Clear()
 	local header = self.header
+	TellMouseMode(header)
 	header:SetAttribute("fc-enabled", nil)
 	header:SetAttribute("fc-l", nil)
 	header:SetAttribute("fc-r", nil)
@@ -363,7 +384,7 @@ function Bindings:FindProblems()
 				Layout.GetButtonName(0, index))
 		end
 	end
-	if ns.Mouse:IsAvailable() and not ns.Mouse:GetBarButtonName() and not GetBindingKey(Bindings.MOUSE_COMMAND) then
+	if ns.Mouse:IsEnabled() and not ns.Mouse:GetBarButtonName() and not GetBindingKey(Bindings.MOUSE_COMMAND) then
 		problems[#problems + 1] = "No button brings the mouse pointer out. Click a no-trigger button on the bar and choose \"Mouse pointer on / off\", or give another button that job under Other buttons in the settings."
 	end
 	-- With this on, the game pins the pointer to the middle of the screen instead of letting the

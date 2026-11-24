@@ -60,8 +60,17 @@ local history = {
 local request        -- the request the game has not answered yet: { time =, tries = }
 local refusalSaid = false
 
+-- This client has a stick pointer. FreeControl then looks after its two click buttons whoever
+-- brings the pointer out, the game included: out of the box the left click is the right trigger.
 function Mouse:IsAvailable()
 	return SetGamePadCursorControl ~= nil and IsGamePadCursorControlEnabled ~= nil
+end
+
+-- Mouse mode is in use: there is a pointer, and the player has not switched the mode off. Off,
+-- no button of FreeControl's brings the pointer out or puts it away, and the mouse button on the
+-- bar is an ordinary action slot (ns.SetMouseMode in Core.lua).
+function Mouse:IsEnabled()
+	return self:IsAvailable() and ns.db.mouseMode
 end
 
 function Mouse:IsOut()
@@ -126,15 +135,24 @@ function Mouse:GetBarButtonName()
 	return nil
 end
 
--- Brings the pointer out. Returns false when this client has none.
+-- Asks the game for the pointer, and notes it down for the watcher to follow up.
+local function Request()
+	history.asked = history.asked + 1
+	request = { time = GetTime(), tries = 1 }
+	AskForPointer()
+end
+
+-- Brings the pointer out. Returns false when this client has none, or mouse mode is switched off.
 function Mouse:BringOut()
 	if not self:IsAvailable() then
 		ns.Print("This client has no controller mouse pointer.")
 		return false
 	end
-	history.asked = history.asked + 1
-	request = { time = GetTime(), tries = 1 }
-	AskForPointer()
+	if not self:IsEnabled() then
+		ns.Print("Mouse mode is switched off. /fc mouse on switches it on again.")
+		return false
+	end
+	Request()
 	return true
 end
 
@@ -153,17 +171,31 @@ function Mouse:PutAway(toCamera)
 	return true
 end
 
-function Mouse:Toggle(fromController)
+-- For /fc mouse. Whoever types that may have a real mouse in hand, so the stick is not handed
+-- back to the camera when the pointer is put away.
+function Mouse:Toggle()
 	if self:IsOut() then
-		return self:PutAway(fromController)
+		return self:PutAway(false)
 	end
 	return self:BringOut()
 end
 
--- The mouse button on the bar was pressed (Bindings.lua).
+-- The mouse button was pressed: the one on the bar, or a button the player bound to it. This
+-- is the second half of the press. The first, secure half (Bindings.lua) has just rebound the
+-- click buttons, or left them alone because mouse mode is switched off, going by what the header
+-- was last told. This half goes by the same answer and not by the setting itself: a setting
+-- changed in a fight is applied when the fight ends, and until then the two halves must agree.
+-- With mouse mode off a button still bound to it does nothing, and says nothing either.
 function Mouse:OnButtonPressed()
+	if not ns.Bindings:IsMouseButtonOn() then
+		return
+	end
 	history.presses = history.presses + 1
-	self:Toggle(true)
+	if self:IsOut() then
+		self:PutAway(true)
+	else
+		Request()
+	end
 end
 
 -- Keeps the world-click bindings in step with the pointer. Bindings can only be changed from here
@@ -188,8 +220,12 @@ local function OnCursorChanged(out)
 	SyncBindings()
 	if out and not ns.db.mouseHintShown then
 		ns.db.mouseHintShown = true
-		ns.Print(("Mouse pointer out. The right stick moves it; %s. Press %s again to put it away; jumping puts it away too."):format(
-			Mouse:DescribeClicks(), Mouse:GetBarButtonName() or "the mouse button"))
+		-- With mouse mode off it was the game that brought it out, and no button puts it away.
+		local away = "Jumping puts it away."
+		if Mouse:IsEnabled() then
+			away = ("Press %s again to put it away; jumping puts it away too."):format(Mouse:GetBarButtonName() or "the mouse button")
+		end
+		ns.Print(("Mouse pointer out. The right stick moves it; %s. %s"):format(Mouse:DescribeClicks(), away))
 	end
 end
 
@@ -261,6 +297,9 @@ function Mouse:Describe()
 	if not self:IsAvailable() then
 		lines[1] = "This client has no controller mouse pointer."
 		return lines
+	end
+	if not self:IsEnabled() then
+		lines[#lines + 1] = "Mouse mode is switched off: no button of FreeControl's brings the pointer out. The two click buttons are still looked after, for when the game brings it out itself."
 	end
 	lines[#lines + 1] = ("The game says: stick steers the pointer: %s. Controller steers the camera: %s. Using the controller: %s. Using the mouse: %s."):format(
 		YesNo(self:IsOut()), YesNo(Ask(IsGamePadFreelookEnabled)), YesNo(Ask(IsUsingGamepad)), YesNo(Ask(IsUsingMouse)))

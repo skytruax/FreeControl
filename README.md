@@ -128,6 +128,9 @@ because Blizzard's bar would be bound to the same buttons.
   page, in a fight too. To turn it from the controller, give two buttons the job: on the *Other
   buttons* page of the settings, or in **Options > Key Bindings** under FreeControl. The bumpers
   are the obvious pair. The middle of the bar is left empty for whatever you keep there.
+  Both parts are optional. Untick *Page selector on the bar* on the settings page and the plate
+  is gone while your buttons still turn the page; untick *Pages* and the bar stays on one page,
+  the one picked under *Page*.
 - **Same slots as the Gamepad UI:** the slots are the ones Blizzard's controller bars use, which
   are separate from your normal action bars. Anything you already set up in Gamepad UI mode is
   there when you log in, and your regular bars are left alone (the one exception is under
@@ -141,9 +144,13 @@ because Blizzard's bar would be bound to the same buttons.
   one. Press Y again and the pointer goes away; the game also puts it away when you jump. The Y
   button on the bar is lit while it is out. FreeControl binds Y itself, the way it binds
   Interact: there is nothing to set up in the Key Bindings screen. Both click buttons and the
-  pointer's speed can be changed on the settings page. To have Y do something else, click it on
-  the bar; any other no-trigger button can be the mouse button instead (choose *Mouse pointer
-  on / off*).
+  pointer's speed can be changed on the *Mouse mode* page of the settings. To have Y do something
+  else, click it on the bar; any other no-trigger button can be the mouse button instead (choose
+  *Mouse pointer on / off*).
+- **No mouse mode:** untick *Mouse mode* on the settings page (`/fc mouse off`) and the mouse
+  button is an ordinary action slot instead: drop a spell, an item or a macro on it, a different
+  one on each page if you like. No button of FreeControl's brings the pointer out then. The game
+  still brings its own out when a window needs one, and your two click buttons still click.
 - **Procs:** a button glows gold while its spell has procced. FreeControl follows the game's own
   proc signal, the one the regular action bars use. Overpower, Victory Rush, Riposte,
   Counterattack and Mongoose Bite also glow for the moment they can be used, and Ambush when it
@@ -208,6 +215,8 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc scale 1.2` | Size of the bar (0.5 to 2). |
 | `/fc reset` | Put the bar back where it started. |
 | `/fc page 2` | Show another of the three pages. The arrows under the LT + RT set do the same. |
+| `/fc pages off` | Keep the bar on one page, the one `/fc page` picks; nothing turns it (`on` to bring the pages back). |
+| `/fc pager off` | Take the page selector off the bar. A button you gave a page arrow still turns the page (`on` to show it again). |
 | `/fc buttons` | Open the Other buttons page: jobs for the bumpers, stick clicks, Start, Back and paddles. |
 | `/fc slots bars` | Use the regular Left / Bottom Left / Bottom Right / Right action bar slots instead (`gamepad` to go back). |
 | `/fc numbers off` | Hide the countdown numbers on slots that are on cooldown (`on` to show them again). |
@@ -215,6 +224,7 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc ranks` | Move every spell on the bar up to its newest rank now. `/fc ranks off` stops FreeControl doing it by itself when you learn one (`on` to bring it back). |
 | `/fc stance all` | What changes with your stance or form: `auto`, `none`, `lt`, `rt`, `both`, `ltrt` (both trigger sets) or `all` (both and the D-pad). |
 | `/fc mouse` | Bring the mouse pointer out or put it away, like the Y button. |
+| `/fc mouse off` | Switch mouse mode off: its button becomes an action slot (`on` to switch it back on). |
 | `/fc click left PADLSHOULDER` | Use another button as the left (`left`) or right (`right`) mouse click while the pointer is out. `game` leaves that click to the game's own setting. |
 | `/fc pointer 150` | How fast the stick moves the mouse pointer, in percent (50 to 300). |
 | `/fc key lt PADLSHOULDER` | Use another button as a trigger (`lt`, `rt`) or for a slot (`1`-`8`). Keyboard keys work too, for Steam Input layouts that send keys. |
@@ -222,10 +232,11 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc trace` | Records what the game reports about the next abilities you use, for twenty seconds. Type it again to see the result in a box you can copy from. For reports about cooldowns. |
 
 Other settings on the page: how much the held set grows, how far the others fade, button labels
-(Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, what changes
-with your stance or form (*Stance sets*: automatic unless you choose otherwise, and its tooltip
-says what that comes to on your character), and a **Mouse mode** section with the two click
-buttons and the pointer speed. **Other buttons** is a page of its own under FreeControl.
+(Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, whether the bar
+has pages and shows its page selector, what changes with your stance or form (*Stance sets*:
+automatic unless you choose otherwise, and its tooltip says what that comes to on your
+character), and the switch for mouse mode. Two more pages sit under FreeControl: **Mouse mode**,
+with the two click buttons and the pointer speed, and **Other buttons**.
 
 ## What it changes, and puts back
 
@@ -236,7 +247,7 @@ when you switch it off:
 | --- | --- |
 | `GamePadEnable = 1` | Lets the game read the controller. This is controller *input*, not Gamepad UI mode. Forever ships with it on, so this usually changes nothing. |
 | `GamePadEmulateShift` / `Ctrl` / `Alt = none` | Only where one of them names a button FreeControl uses (by default: LT as Shift), a button you gave a job on the Other buttons page, or one you bound to a page arrow (by default LB is Ctrl). |
-| `GamePadCursorLeftClick`, `GamePadCursorRightClick` | The two buttons that click while the mouse pointer is out: the stick clicks unless you choose others. |
+| `GamePadCursorLeftClick`, `GamePadCursorRightClick` | The two buttons that click while the mouse pointer is out: the stick clicks unless you choose others. Set with mouse mode switched off as well, for the pointer the game brings out by itself. |
 | `GamePadCursorCentering = 0` | With it on, the game pins the mouse pointer to the middle of the screen. It is off unless something turned it on. |
 | `GamePadCursorSpeedStart`, `...Accel`, `...Max` | Only when you change the pointer speed: all three are scaled together from your own values. |
 | `SoftTargetInteract = 3` | The Interact command picks nearby things by itself (Options > Controls > Enable Interact Key). |
@@ -266,6 +277,11 @@ when FreeControl is switched off.
   pointer to pick from. Put the individual spells on the bar instead.
 - Mouse mode clicks windows through the game's own controller mouse, which needs a plain button:
   a trigger combination cannot be a click button.
+- The game's controller slots have no place for the four face buttons with no trigger held. A
+  face button you make an action slot (which is what the mouse button becomes with mouse mode
+  off) borrows the LT + RT slot of the same button on the page before: Y on page 1 and LT + RT +
+  Y on page 3 are one slot, and so on round. It has its own action on each page, but that action
+  also shows on the other button.
 - A second changing set and the D-pad keep their stance actions in the slots of the game's own
   action bar for that stance, so what you drop on them in a form also shows on that bar. The
   rest of your regular action bars is never touched.
@@ -313,6 +329,13 @@ key bindings to the commands the real mouse buttons run. FreeControl sets the fi
 the pointer is out, binds the same buttons to the second, from the secure header so that it works
 in a fight. That two-part behaviour is how ConsolePort describes the client to its users. None of
 mouse mode can be tried without the game, so treat it as the least proven part of the addon.
+
+A press of the mouse button has two halves for the same reason: a restricted snippet that rebinds
+the click buttons, and ordinary code after it that asks the game for the pointer. With mouse mode
+switched off neither acts, and both go by one attribute on the header (`fc-mouse-on`) rather than
+by the setting, so they cannot disagree while a setting changed in a fight waits for it to end.
+The mouse button's role is taken off the bar at the same time (`ns.SetMouseMode`), which is what
+makes it a slot.
 
 Spell ranks ([Ranks.lua](FreeControl/Ranks.lua)): the game keeps two sets of action bars, one for
 mouse and keyboard and one for the controller, and going by what players see it moves a spell up
@@ -372,7 +395,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 234 scenarios, runs on every push):
+**Mock client** (fast, 257 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -391,7 +414,7 @@ the classic rules, and one scenario walks every class through every stance setti
 in and out of combat, checking that each button shows and casts the slot the rules give it. It is
 a model, so a pass shows the addon is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 45 tests, about fifteen seconds):
+**Simulator** (Blizzard's real interface code, 48 tests, about fifteen seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh
@@ -420,7 +443,8 @@ secure code, so Blizzard's state driver and the header's snippets do run for a s
 in a fight; which bar each form of each class brings up is the game's data, and is in neither
 suite.
 `tools/sim/lab/run-sim.sh --help` lists its options; `tools/sim/tests/` holds the tests and the
-screenshot scenario.
+screenshot scenario. On a machine that is busy with something else, `SIM_CPUS=13-16 tools/sim/run.sh`
+keeps the simulator to the CPUs named.
 
 [UIForever](https://uiforever.com/) is a hosted alternative: a browser simulator for Forever that
 you drop an AddOns folder into. Its site says the files stay in the browser; it was not tried here.

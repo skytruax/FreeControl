@@ -296,12 +296,18 @@ function Bars:Apply()
 	self:UpdateLabels()
 	self:OnSetChanged(activeSet)
 	self:UpdateMover()
-	-- Nothing to turn with the regular action bars as the slots: they have one page.
-	local paged = Layout.GetPageCount() > 1
+	-- With nothing to turn (the regular action bars are the slots, or pages are switched off)
+	-- there is no pager. With the page selector switched off there is nothing to see or click,
+	-- but the arrows stay where a button bound to one finds them: only what can be seen of them
+	-- and their answering the mouse is taken away.
+	local paging = Layout.GetPageCount() > 1
+	local shown = paging and ns.db.showPager
 	PlacePager(self)
-	self.pager:SetShown(paged)
+	self.pager:SetShown(shown)
 	for _, button in pairs(self.pageButtons) do
-		button:SetShown(paged)
+		button:SetShown(paging)
+		button:SetAlpha(shown and 1 or 0)
+		button:EnableMouse(shown)
 	end
 end
 

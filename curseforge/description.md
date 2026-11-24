@@ -34,6 +34,8 @@ Interact loots the corpse next to you, talks to the NPC in front of you, opens t
 
 The bar has the Gamepad UI's three pages, each with its own 28 slots. A small plate under the bottom set shows the page and turns it, in a fight too, and any button you like can do it for you: the bumpers are made for it. The middle of the bar stays empty, for whatever you keep there.
 
+Both are optional. The settings can take the plate off the bar and leave the turning to your buttons, or keep the bar on one page altogether.
+
 ### Your game stays in normal mode
 
 The bumpers, stick clicks, Start, Back and paddles are ordinary buttons, and they are yours. The *Other buttons* page of the settings lists them with what each one does and gives them jobs from a menu: turn the page, target, open the map. The normal Key Bindings screen does the rest. The menus are the ones you know, and nothing in your layout is moved or replaced.
@@ -89,9 +91,11 @@ Some things still want a mouse: a vendor, a quest window, your bags, dragging a 
 4. Click the **right stick** to right-click: use, sell, loot, talk.
 5. Press Y again and the pointer is gone. Jumping puts it away too.
 
-The triggers keep choosing your sets the whole time. The two click buttons and the pointer's speed are yours to change under *Mouse mode* on the settings page (`/fc`).
+The triggers keep choosing your sets the whole time. The two click buttons and the pointer's speed are yours to change on the *Mouse mode* page of the settings (`/fc`).
 
 There is nothing to set up: FreeControl binds Y itself, the same way it binds Interact. To have Y do something else, click it on the bar; any other no-trigger button can be the mouse button instead (choose *Mouse pointer on / off*), and so can a bumper or a paddle, from the *Other buttons* page.
+
+Rather have one more spell? Untick *Mouse mode* in the settings and Y is an ordinary action slot instead, with an action of its own on each page. The game still brings out its own pointer when a window needs one, and your two click buttons still click.
 
 ## FreeControl, Gamepad UI mode or ConsolePort?
 
@@ -116,6 +120,7 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 - Spell flyouts (one slot holding a group of spells) open below the button and need the mouse pointer to choose from. Put the individual spells on the bar instead.
 - A Druid's left set and D-pad keep their form actions in the slots of the game's own action bar for that form, so what you drop on them in a form shows on that bar as well.
 - Stances and forms change the buttons on one page: page 1, unless the Gamepad options put the stance bar on another.
+- The game's controller slots have no place for the face buttons with no trigger held. One you turn into an action slot (which is what Y becomes with mouse mode off) shares its action with LT + RT + the same button on the page before.
 - There is no vehicle or possess bar yet. Use the game's own bar for those.
 - Triggers are hold-to-select. There is no tap-to-toggle yet.
 

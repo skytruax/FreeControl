@@ -443,7 +443,106 @@ test("the pager is a plate under the both-triggers set, with an arrow at each en
 	Clean()
 end)
 
-test("every control on both settings pages shows a tooltip when the mouse is over it", function()
+test("the page selector can be hidden while a bound button still turns the page, and pages can be switched off", function()
+	Reset()
+	UseControllerSlots("none")
+	ns.db.showPager = false
+	assertTrue(ns.RequestRefresh())
+	assertFalse(ns.Bars.pager:IsShown())
+	for _, arrow in ipairs({ FreeControlPageNext, FreeControlPagePrev }) do
+		assertTrue(arrow:IsShown())          -- still there for a bound button
+		assertEquals(0, arrow:GetAlpha())    -- with nothing to see
+		assertFalse(arrow:IsMouseEnabled())  -- and nothing to click
+	end
+	SetBinding("PADRSHOULDER", ns.Bindings.PAGE_COMMANDS.next)
+	A_Admin.SetInCombat(true)
+	SimInput.PressKey("PADRSHOULDER")
+	A_Admin.SetInCombat(false)
+	assertEquals(PAGE[2][1], Slots(1))
+	assertEquals(2, ns.db.page)
+
+	ns.db.pages = false
+	assertTrue(ns.RequestRefresh())
+	assertEquals(1, ns.Layout.GetPageCount())
+	assertFalse(FreeControlPageNext:IsShown())
+	assertEquals(PAGE[2][1], Slots(1))   -- the bar stays on the page it was on
+	SimInput.PressKey("PADRSHOULDER")
+	assertEquals(PAGE[2][1], Slots(1))   -- and the bound button turns nothing
+	assertEquals(2, ns.db.page)
+
+	SetBinding("PADRSHOULDER", nil)
+	ns.db.pages, ns.db.showPager, ns.db.page = true, true, 1
+	assertTrue(ns.RequestRefresh())
+	assertTrue(ns.Bars.pager:IsVisible())
+	assertEquals(1, FreeControlPageNext:GetAlpha())
+	assertTrue(FreeControlPageNext:IsMouseEnabled())
+	UseRegularBars()
+	Clean()
+end)
+
+test("with mouse mode switched off its button is a slot with its own action on each page, and on again it is the mouse button", function()
+	Reset()
+	UseControllerSlots("none")
+	assertEquals("CLICK FreeControlMouse:LeftButton", GetBindingAction("PAD4", true))
+	ns.SetMouseMode(false)
+	assertEquals("action", ns.db.roles[6])
+	assertEquals("CLICK FreeControlKey0_6:LeftButton", GetBindingAction("PAD4", true))
+	assertTrue(FreeControlButton0_6:IsShown())
+	assertFalse(ns.Buttons.role[6]:IsShown())
+	assertNil(FreeControlHeader:GetAttribute("fc-mouse-on"))
+	local seen = {}
+	for page = 1, 3 do
+		local slot = ns.Buttons:GetSlot(0, 6)
+		assertNil(seen[slot])
+		seen[slot] = page
+		wipe(used)
+		SimInput.PressKey("PAD4")
+		assertTableEquals({ slot }, used)
+		Turn(FreeControlPageNext)
+	end
+	assertEquals(1, seen[first + 56 + 25]) -- page 1 keeps it in page 3's LT + RT slot of that button
+	assertEquals(2, seen[first + 25])      -- page 2 in page 1's
+	assertEquals(3, seen[first + 28 + 25]) -- page 3 in page 2's
+
+	ns.SetMouseMode(true)
+	assertEquals("cmd:FREECONTROL_TOGGLECURSOR", ns.db.roles[6])
+	assertEquals("CLICK FreeControlMouse:LeftButton", GetBindingAction("PAD4", true))
+	assertTrue(ns.Buttons.role[6]:IsShown())
+	assertTrue(FreeControlHeader:GetAttribute("fc-mouse-on"))
+	UseRegularBars()
+	Clean()
+end)
+
+test("mouse mode switched off in a fight: both halves of its button go on working until the fight ends", function()
+	Reset()
+	UseControllerSlots("none")
+	local leftBefore = GetBindingAction("PADLSTICK", true)
+	A_Admin.SetInCombat(true)
+	assertFalse(ns.SetMouseMode(false)) -- waits for the fight to end
+	assertEquals("CLICK FreeControlMouse:LeftButton", GetBindingAction("PAD4", true)) -- nothing is rebound in a fight
+	-- The secure half of the press (Blizzard's restricted code) still binds the click buttons,
+	-- so the ordinary half has to bring the pointer out with it: one without the other would
+	-- leave the stick clicks clicking at a pointer that is not there.
+	SimInput.PressKey("PAD4")
+	assertEquals("CAMERAORSELECTORMOVE", GetBindingAction("PADLSTICK", true))
+	assertTrue(IsGamePadCursorControlEnabled())
+	SimInput.PressKey("PAD4")
+	assertEquals(leftBefore, GetBindingAction("PADLSTICK", true))
+	assertFalse(IsGamePadCursorControlEnabled())
+	A_Admin.SetInCombat(false)
+	assertEquals("CLICK FreeControlKey0_6:LeftButton", GetBindingAction("PAD4", true))
+	assertNil(FreeControlHeader:GetAttribute("fc-mouse-on"))
+	wipe(used)
+	SimInput.PressKey("PAD4")
+	assertFalse(IsGamePadCursorControlEnabled())
+	assertEquals(leftBefore, GetBindingAction("PADLSTICK", true))
+	assertTableEquals({ ns.Buttons:GetSlot(0, 6) }, used)
+	assertTrue(ns.SetMouseMode(true))
+	UseRegularBars()
+	Clean()
+end)
+
+test("every control on the three settings pages shows a tooltip when the mouse is over it", function()
 	Reset()
 	-- With Blizzard's own tooltip code. The error version 1.5.0 raised here (a tooltip handed a
 	-- function for its title, because the game has no text to give back for an empty label) does
@@ -453,9 +552,9 @@ test("every control on both settings pages shows a tooltip when the mouse is ove
 	empty:SetText("")
 	local emptyText = empty:GetText()
 	local hovered = 0
-	for _, open in ipairs({ "Open", "OpenButtons" }) do
+	for open, panel in pairs({ Open = ns.Options.panel, OpenMouse = ns.Options.mousePanel, OpenButtons = ns.Options.buttonsPanel }) do
 		ns.Options[open](ns.Options)
-		local panel = open == "Open" and ns.Options.panel or ns.Options.buttonsPanel
+		assertTrue(panel.built)
 		assertTrue(panel:IsVisible())
 		for _, control in ipairs({ panel:GetChildren() }) do
 			local onEnter = control:IsShown() and control:GetScript("OnEnter")

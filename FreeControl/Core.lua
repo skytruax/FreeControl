@@ -28,6 +28,8 @@ local DEFAULTS = {
 	labelStyle = "auto",   -- auto | xbox | playstation | nintendo
 	slotSource = "gamepad", -- gamepad (Blizzard's controller-bar slots) | bars (regular action bar slots)
 	page = 1,              -- which of Blizzard's three controller-bar pages to show (gamepad source only)
+	pages = true,          -- the page can be turned; off, the bar stays on the one above
+	showPager = true,      -- the page selector under the bottom set (pages can be turned without it, by a bound button)
 	stanceSet = "auto",    -- what changes with your stance or form: one of Layout.STANCE_CHOICES
 	manageGamepad = true,  -- turn controller input (GamePadEnable) on while FreeControl is active
 	softInteract = true,   -- make the Interact command pick nearby loot, NPCs and objects by itself
@@ -42,6 +44,8 @@ local DEFAULTS = {
 	roles = { "action", "action", "action", "action", "cmd:INTERACTTARGET", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" },
 	-- The two buttons that are the mouse buttons while the controller's mouse cursor is out: a
 	-- button name, or "game" to leave that one to the game's own setting.
+	mouseMode = true,      -- a button on the bar brings the mouse pointer out; off, that button is an action slot
+	mouseIndex = 6,        -- the no-trigger button that was the mouse button when mouse mode was switched off
 	clickLeft = "PADLSTICK",
 	clickRight = "PADRSTICK",
 	cursorSpeed = 1,       -- how fast the stick moves the mouse cursor, as a multiple of the player's own setting
@@ -144,6 +148,18 @@ local function Sanitize(db)
 	end
 	if type(db.mouseStep) ~= "number" then Reset("mouseStep") end
 	if db.mouseNews ~= nil and not IsRole(db.mouseNews) then db.mouseNews = nil end
+	for _, key in ipairs({ "pages", "showPager", "mouseMode" }) do
+		if type(db[key]) ~= "boolean" then Reset(key) end
+	end
+	if not IsOneOf(db.mouseIndex, 1, 2, 3, 4, 5, 6, 7, 8) then Reset("mouseIndex") end
+	-- With mouse mode off no button is the mouse button: one that still says so is an action slot.
+	if not db.mouseMode then
+		for index = 8, 1, -1 do
+			if ns.Layout.IsCursorRole(db.roles[index]) then
+				db.roles[index], db.mouseIndex = "action", index
+			end
+		end
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -362,6 +378,32 @@ end
 -- The top face button: Y, Triangle, or X on a Nintendo pad.
 local MOUSE_INDEX = 6
 
+-- Switches mouse mode on or off. Off, the button that was the mouse button becomes an ordinary
+-- action slot: on each page it holds whatever the player drops on it. Which button that was is
+-- remembered, and it is the mouse button again when the mode is switched back on, unless the
+-- player has given it another job in between, or another button has the job by then.
+function ns.SetMouseMode(on)
+	local db = ns.db
+	local Layout = ns.Layout
+	db.mouseMode = on
+	if on then
+		local has = false
+		for index = 1, 8 do
+			has = has or Layout.IsCursorRole(db.roles[index])
+		end
+		if not has and db.roles[db.mouseIndex] == "action" then
+			db.roles[db.mouseIndex] = Layout.CURSOR_ROLE
+		end
+	else
+		for index = 8, 1, -1 do
+			if Layout.IsCursorRole(db.roles[index]) then
+				db.roles[index], db.mouseIndex = "action", index
+			end
+		end
+	end
+	return ns.RequestRefresh()
+end
+
 -- The top face button is the mouse button for every setup, and FreeControl binds it, the way it
 -- binds Interact. A new setup starts that way. One from an earlier version that has the mouse
 -- button on no button at all is given it there, once, whatever the button was doing: up to 1.2
@@ -376,6 +418,9 @@ local function GiveMouseButton(db)
 		return
 	end
 	db.mouseStep = MOUSE_STEP
+	if not db.mouseMode then
+		return -- the player wants no mouse button
+	end
 	for index = 1, 8 do
 		if ns.Layout.IsCursorRole(db.roles[index]) then
 			return
@@ -398,7 +443,7 @@ end)
 -- Said at the first login at which FreeControl is in use, which need not be the one that made the change.
 local function SayMouseNews()
 	local was = ns.db.mouseNews
-	if not was or not ns.Mouse:IsAvailable() then
+	if not was or not ns.Mouse:IsEnabled() then
 		return
 	end
 	ns.db.mouseNews = nil

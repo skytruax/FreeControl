@@ -401,9 +401,12 @@ local function GamepadSlot(first, page, set, index)
 	local unit = set * 8 + index
 	if unit >= 5 and unit <= 8 then
 		-- Blizzard gives the top face buttons no storage, so when the player turns one into an
-		-- action slot it borrows the bottom-bar face slots of another page: page 3's on pages 1
-		-- and 2, page 2's on page 3. A page therefore never shows one slot on two buttons.
-		local donor = page == NUM_PAGES and NUM_PAGES - 1 or NUM_PAGES
+		-- action slot (or switches mouse mode off, which makes the mouse button one) it borrows
+		-- the bottom-bar face slot of the page before: page 3's on page 1, page 1's on page 2,
+		-- page 2's on page 3. So such a button has an action of its own on each page, and a page
+		-- never shows one slot on two buttons. Up to 1.6.0 page 2 borrowed page 3's as page 1
+		-- does, and the two pages showed the same action there.
+		local donor = (page + NUM_PAGES - 2) % NUM_PAGES + 1
 		return first + PAGE_SLOTS * (donor - 1) + 24 + (unit - 5)
 	end
 	local offset = unit - 1
@@ -418,14 +421,22 @@ end
 ---------------------------------------------------------------------------
 -- The controller's slots come in three pages, as in the Gamepad UI. The regular action bars
 -- have nothing of the kind: with them as the slots there is one page.
-function Layout.GetPageCount()
+--
+-- Turning the page is a setting. With it off the bar stays on the page picked in the settings,
+-- as it did up to version 1.4: the slots still come in three pages, but nothing turns them.
+function Layout.GetStoredPages()
 	return Layout.GetSlotSource() == "gamepad" and NUM_PAGES or 1
+end
+
+-- How many pages there are to turn through: three, or one when there is nothing to turn.
+function Layout.GetPageCount()
+	return ns.db.pages and Layout.GetStoredPages() or 1
 end
 
 -- The page being shown: the saved one, or the first when the slots in use have no such page.
 function Layout.GetPage()
 	local page = ns.db.page
-	return page <= Layout.GetPageCount() and page or 1
+	return page <= Layout.GetStoredPages() and page or 1
 end
 
 -- Action slot a button shows on a page (the one being shown, if none is given), outside any stance.
@@ -490,10 +501,11 @@ local function GetGamepadOption()
 end
 
 -- The one page whose buttons change with the stance: the page the Gamepad options put the stance
--- bar on, which is the first unless the player moved it.
+-- bar on, which is the first unless the player moved it. With nothing to turn, it is the page
+-- the bar is on: there is no other for the player to go to.
 function Layout.GetStancePage()
 	if Layout.GetPageCount() == 1 then
-		return 1
+		return Layout.GetPage()
 	end
 	return (GetGamepadOption())
 end

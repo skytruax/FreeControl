@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.7.0
+
+- New: pages can be switched off. Untick "Pages" on the settings page, or type `/fc pages off`, and the bar stays on one page: the one picked under Page. The page selector goes, and a button you gave a page arrow does nothing. A stance or form then changes the buttons of that page, whichever it is.
+- New: the page selector can be taken off the bar while the pages stay. Untick "Page selector on the bar", or type `/fc pager off`. A button you gave "next page" or "previous page" still turns the page, in a fight too.
+- New: mouse mode can be switched off. Untick "Mouse mode" on the settings page, or type `/fc mouse off`, and the mouse button (Y unless you moved it) is an ordinary action slot: drop a spell, an item or a macro on it. It has an action of its own on each page. Tick it again and the button is the mouse button again, unless you gave it another job in between; what you had put on the slot is still there for next time.
+- Where that slot keeps its action: the game's controller slots have no place for the four face buttons with no trigger held, so such a slot borrows the LT + RT slot of the same button on the page before. Y on page 1 is the same slot as LT + RT + Y on page 3, Y on page 2 the same as LT + RT + Y on page 1, and Y on page 3 the same as LT + RT + Y on page 2. What you put on one shows on the other.
+- With mouse mode off, no button of FreeControl's brings the mouse pointer out: a bumper or paddle you gave that job does nothing, and its row on the Other buttons page says why. The game still brings out its own pointer when a window needs one, and the two click buttons you chose still click then, so RT does not turn into the left mouse button.
+- Changed: a face button you turned into an action slot (X, Y, B or A with no trigger held) now has an action of its own on each of the three pages. Up to 1.6.0 pages 1 and 2 showed the same one. Only page 2 is different from before: there the button now shows what LT + RT + that button holds on page 1. What it showed on page 2 before has not gone anywhere: it is still on the same button on page 1.
+- Mouse mode has a settings page of its own, under FreeControl: its switch, the two click buttons and the pointer speed. The main page keeps the switch and a button that opens the new page, which made room for the two new page settings.
+- `/fc status` says whether pages are on, whether the page selector is shown, and when mouse mode is off. `/fc pages on | off`, `/fc pager on | off` and `/fc mouse on | off` do from chat what the three new tick boxes do.
+- The `/fc` help still said the page arrows were in the middle of the bar, where they have not been since 1.6.0.
+
 ## v1.6.0
 
 - Fixed: on the settings page, pointing at one of the eight "With no trigger held" buttons raised an error instead of showing its tooltip (new in 1.5.0; thanks to ichene for the report). Those tooltips are now headed by the button's name.

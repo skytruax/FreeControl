@@ -928,7 +928,7 @@ function Buttons:Assign()
 	Layout.Prepare()
 	local header = ns.Bindings.header
 	local groups = Layout.GetStanceGroups()
-	local pages = Layout.GetPageCount()
+	local stored = Layout.GetStoredPages()
 	for _, set in ipairs(Layout.SETS) do
 		for index = 1, 8 do
 			local button, proxy = self.action[set][index], self.proxy[set][index]
@@ -936,7 +936,7 @@ function Buttons:Assign()
 			local isSlot = self:IsActionSlot(set, index)
 			local group = isSlot and Layout.FindStanceGroup(groups, set, index) or nil
 			for page = 1, Layout.NUM_PAGES do
-				header:SetAttribute(("fc-slot-%d-%s"):format(page, id), isSlot and page <= pages and Layout.GetSlot(set, index, page) or nil)
+				header:SetAttribute(("fc-slot-%d-%s"):format(page, id), isSlot and page <= stored and Layout.GetSlot(set, index, page) or nil)
 			end
 			header:SetAttribute("fc-store-" .. id, group and group.store or nil)
 			header:SetAttribute("fc-offset-" .. id, group and group.offset + index - 1 or nil)
@@ -954,7 +954,7 @@ function Buttons:Assign()
 		header:SetAttribute("fc-pad-" .. stance, Layout.GetStanceFirst("pad", stance))
 		header:SetAttribute("fc-bar-" .. stance, Layout.GetStanceFirst("bar", stance))
 	end
-	header:SetAttribute("fc-pages", pages)
+	header:SetAttribute("fc-pages", Layout.GetPageCount())
 	header:SetAttribute("fc-page", Layout.GetPage())
 	header:SetAttribute("fc-stance-page", Layout.GetStancePage())
 	UpdateKept()

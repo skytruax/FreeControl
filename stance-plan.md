@@ -53,6 +53,10 @@ regular action bar turns to a stance's slots on its first page only, and the Gam
 bar sits on one bar of one page. The other pages are the same in every stance, which gives a
 Druid two pages that no form touches.
 
+Since 1.7.0 pages can be switched off, which keeps the bar on one page of the player's choosing.
+The stance page is then that page, whichever it is: there is no other for the player to go to,
+and a bar that never changed with the stance would be the worse surprise.
+
 With "Regular action bars" as the slots there is one page and Automatic changes nothing (those
 bars have never followed the stance, and a Warrior would lose a set for good). A set picked by
 hand does change there, with the D-pad if asked for.
@@ -200,3 +204,7 @@ Version 1.6.0:
 
 - The kept-stance rule works from any stance, which is what a Warrior needs.
 - A stance can have a button of its own.
+
+Version 1.7.0:
+
+- With pages switched off, the stance page is the page the bar is on.

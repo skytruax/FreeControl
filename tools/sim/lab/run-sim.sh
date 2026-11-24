@@ -57,6 +57,8 @@
 #
 # Environment
 #   SIM_IMAGE              image to use (default simlab/wow-ui-sim-forever:0.1.41, see build-image.sh)
+#   SIM_CPUS               host CPUs the simulator may use, as a list such as 13-16 (default: all of
+#                          them). For a machine that is busy with something else.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -212,6 +214,7 @@ sim() {
     --user "$(id -u):$(id -g)"
     -e WOW_SIM_LUA_ERRORS_BY_ADDON=1 -e MESA_SHADER_CACHE_DISABLE=true
     -e "WOW_SIM_MAX_CORES=$ncpu"
+    "${cpuset[@]}"
     -v "$addon_dir:/addons/$addon_name:ro")
   args+=("${with_mounts[@]}")
   [[ "$mount_out" == "out" ]] && args+=(-v "$out_dir:/out")
@@ -228,6 +231,11 @@ common=(--addons-path /addons --no-saved-vars)
 # wow-sim pins itself to host CPUs 0..N-1 (default N=2). Three parallel phases would then share
 # two cores, so let it use every core the host has.
 ncpu="$(nproc 2>/dev/null || echo 2)"
+cpuset=()
+if [[ -n "${SIM_CPUS:-}" ]]; then
+  [[ "$SIM_CPUS" =~ ^[0-9]+([,-][0-9]+)*$ ]] || die "SIM_CPUS must be a list of CPUs such as 13-16 or 12,14"
+  cpuset=(--cpuset-cpus "$SIM_CPUS")
+fi
 
 now() { date +%s.%N; }
 elapsed() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1fs", b - a }'; }

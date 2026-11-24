@@ -635,9 +635,16 @@ function M.Click(frame, button, down)
 	return true
 end
 
+-- True unless the frame was told not to answer the mouse (EnableMouse(false)).
+function M.TakesMouse(frame)
+	local call = frame.__calls.EnableMouse
+	return not (call and call[1] == false)
+end
+
 -- A full mouse click on a visible, mouse-enabled button.
 function M.MouseClick(frame, button)
 	assert(frame:IsVisible(), "cannot click a hidden frame")
+	assert(M.TakesMouse(frame), "cannot click a frame that does not take the mouse")
 	M.Click(frame, button or "LeftButton", true)
 	M.Click(frame, button or "LeftButton", false)
 end
