@@ -182,6 +182,13 @@ Layout.OTHER_KEYS = {
 -- are the ones the Key Bindings screen uses (Blizzard_FrameXML/Bindings_Camelot.xml).
 Layout.MORE_JOBS = {
 	{ "ASSISTTARGET", "Target your target's target" },
+	{ "TARGETPARTYMEMBER1", "Target party member 1" },
+	{ "TARGETPARTYMEMBER2", "Target party member 2" },
+	{ "TARGETPARTYMEMBER3", "Target party member 3" },
+	{ "TARGETPARTYMEMBER4", "Target party member 4" },
+	-- The game's own Ping key (Blizzard_PingUI/Bindings.xml): a press pings what is under the
+	-- pointer or in the middle of the screen, and holding it brings up the wheel of pings.
+	{ "TOGGLEPINGLISTENER", "Ping (hold for the wheel)" },
 	{ "TOGGLECHARACTER0", "Character" },
 	{ "TOGGLESPELLBOOK", "Spellbook" },
 	{ "TOGGLETALENTS", "Talents" },
@@ -190,6 +197,53 @@ Layout.MORE_JOBS = {
 	{ "DISMOUNT", "Dismount" },
 	{ "SITORSTAND", "Sit or stand" },
 }
+
+---------------------------------------------------------------------------
+-- Combinations
+---------------------------------------------------------------------------
+-- A combination is a button pressed while one or more modifiers are held, and the game names it
+-- in a key binding as it names any key with modifiers: ALT-, CTRL- and SHIFT-, in that order,
+-- and then the button. "ALT-CTRL-PADDRIGHT" is D-pad Right with Alt and Ctrl held. On a
+-- controller the modifiers are buttons that stand in for those keys (CVars.lua).
+local MODIFIER_ORDER = { "ALT", "CTRL", "SHIFT" }
+local IS_MODIFIER = { ALT = true, CTRL = true, SHIFT = true }
+
+-- The modifiers in a key's name, as a list, and the button they are held with.
+function Layout.SplitChord(key)
+	local modifiers = {}
+	local button = key
+	while true do
+		local modifier, rest = button:match("^(%u+)%-(.+)$")
+		if not modifier or not IS_MODIFIER[modifier] then
+			break
+		end
+		modifiers[#modifiers + 1] = modifier
+		button = rest
+	end
+	return modifiers, button
+end
+
+function Layout.IsChord(key)
+	return #(Layout.SplitChord(key)) > 0
+end
+
+-- A combination that ends in a controller button.
+function Layout.IsPadChord(key)
+	local modifiers, button = Layout.SplitChord(key)
+	return #modifiers > 0 and button:find("^PAD") ~= nil
+end
+
+-- The name of `button` pressed with modifiers held; held.ALT, held.CTRL and held.SHIFT say which.
+function Layout.JoinChord(held, button)
+	local parts = {}
+	for _, modifier in ipairs(MODIFIER_ORDER) do
+		if held[modifier] then
+			parts[#parts + 1] = modifier
+		end
+	end
+	parts[#parts + 1] = button
+	return table.concat(parts, "-")
+end
 
 function Layout.GetSetName(set)
 	local style = STYLES[Layout.GetStyleKey()]

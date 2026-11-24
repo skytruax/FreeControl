@@ -1586,7 +1586,7 @@ test("status and the mouse button's tooltip say which buttons click", function()
 	truthy(Printed("Left click: PADLSTICK %(setting: PADLSTICK%), bound right now to: nothing"), "left click while away")
 	truthy(Printed("The game says: stick steers the pointer: no%. Controller steers the camera: no%. Using the controller: no%. Using the mouse: no"), "what the game itself reports")
 	truthy(Printed("Since login: mouse button pressed 0 times, pointer asked for 0 times, came out 0, needed a second request 0, never came 0%. Last: nothing yet"), "and what has happened so far")
-	truthy(Printed("The game's own pointer settings: GamePadCursorAutoEnable = 1, GamePadCursorAutoDisableSticks = 2, GamePadCursorAutoDisableJump = 1, GamePadCursorCentering = 0, GamePadCursorCenteredEmulation = 1"), "with the settings that decide when the game hides it")
+	truthy(Printed("The game's own pointer settings: GamePadCursorAutoEnable = 1, GamePadCursorForTargeting = 1, GamePadCursorAutoDisableSticks = 2, GamePadCursorAutoDisableJump = 1, GamePadCursorCentering = 0, GamePadCursorCenteredEmulation = 1"), "with the settings that decide when the game brings it out and hides it")
 	M.printed = {}
 	M.Tap("PAD4")
 	M.Advance(0.02)
@@ -1629,7 +1629,7 @@ test("mouse mode has a page of its own that explains it and names the button tha
 	eq(M.subcategories[1].GetID(), "Mouse mode", "a page under FreeControl")
 	local main = ns.Options.panel
 	Open(main)
-	truthy(PageSays(main, "^Mouse mode$"), "the main page has its heading and its switch")
+	truthy(PageSays(main, "^Mouse mode and other buttons$"), "the main page has its heading and its switch")
 	truthy(PageSays(main, "^Stance sets$"), "and the stance choice under its name")
 	local toMouse
 	for _, frame in ipairs(M.all) do
@@ -3243,7 +3243,7 @@ test("the list of jobs: the pages, the mouse pointer, the game's common commands
 	rows["Paddle 2"]:GetScript("OnClick")(rows["Paddle 2"])
 	local labels = {}
 	for index, item in ipairs(menus.last.items) do labels[index] = item.text end
-	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Something else...", "in this order, with the character's own stances among them")
+	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Target party member 1 | Target party member 2 | Target party member 3 | Target party member 4 | Ping (hold for the wheel) | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Something else...", "in this order, with the character's own stances among them")
 	eq(menus.last.items[#menus.last.items].plain, true, "the last is something to do, not a job to have")
 	Pick(menus.last, "Mouse pointer on / off")
 	eq(M.userBindings.PADPADDLE2, "CLICK FreeControlMouse:LeftButton", "the mouse button can go on any button")
@@ -3298,7 +3298,7 @@ test("the left bumper stops being the Ctrl key when it is given a job, and is Ct
 	M.printed = {}
 	Pick(menus.last, "Nothing")
 	eq(M.cvars.GamePadEmulateCtrl, "PADLSHOULDER", "without a job it stands in for Ctrl again")
-	truthy(Printed("LB has no job of its own now, and stands in for the Ctrl key again"), "which chat says")
+	truthy(Printed("LB has no job of its own now, and stands in for the Ctrl key again, as the game has it set%.$"), "which chat says, and whose doing it is")
 	eq(row:GetText(), "Stand in for the Ctrl key", "and the row")
 	eq(next(ns.db.plainKeys), nil, "nothing is left over")
 end)
@@ -3785,10 +3785,10 @@ test("every row of the Other buttons page has a tooltip, before and after a butt
 		end
 		return seen
 	end
-	eq(HoverAll("at first"), 12, "ten buttons, the one that listens and the one that opens Key Bindings")
+	eq(HoverAll("at first"), 13, "ten buttons, the one that listens, the way to combinations and the one that opens Key Bindings")
 	ns.Options.caughtKey = "PADSOCIAL"
 	ns.Options:Sync()
-	eq(HoverAll("with a button found"), 13, "and the found button's own row")
+	eq(HoverAll("with a button found"), 14, "and the found button's own row")
 	eq(#M.luaErrors, 0, "hovering raises nothing")
 end)
 
@@ -4485,7 +4485,7 @@ test("every control on the Mouse mode page has a tooltip", function()
 		eq(type(GameTooltip.lines[2]), "string", "control " .. index .. ": an explanation")
 		count = count + 1
 	end
-	eq(count, 5, "the switch, the two clicks and the two ends of the speed")
+	eq(count, 6, "the switch, the game's own pointer, the two clicks and the two ends of the speed")
 end)
 
 test("a setup saved with mouse mode off has no mouse button, is told nothing about one, and keeps what it had", function()
@@ -4643,4 +4643,619 @@ test("with the regular action bars as the slots, the page settings say they chan
 	SlashCmdList.FREECONTROL("slots bars")
 	SlashCmdList.FREECONTROL("mouse off")
 	eq(ns.Buttons:GetSlot(0, 6), 42, "the slot itself is the sixth of the Bottom Left bar's own")
+end)
+
+---------------------------------------------------------------------------
+-- The game's own pointer, and the enemy it picks
+---------------------------------------------------------------------------
+test("the game can be told not to bring its pointer out by itself, and its own settings come back afterwards", function()
+	Load()
+	eq(M.cvars.GamePadCursorAutoEnable, "1", "to begin with the game's settings are left alone")
+	eq(M.cvars.GamePadCursorForTargeting, "1", "both of them")
+	eq(ns.db.cvarBackup.GamePadCursorAutoEnable, nil, "untouched: nothing to put back")
+	SlashCmdList.FREECONTROL("gamepointer off")
+	eq(ns.db.gamePointer, false, "saved")
+	eq(M.cvars.GamePadCursorAutoEnable, "0", "the pointer no longer comes out when a window opens")
+	eq(M.cvars.GamePadCursorForTargeting, "0", "nor to aim a spell at the ground")
+	eq(ns.db.cvarBackup.GamePadCursorAutoEnable, "1", "the player's own value is kept")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("The game is told not to bring the pointer out by itself %(GamePadCursorAutoEnable and GamePadCursorForTargeting are set to 0%)"), "status says so")
+	truthy(Printed("GamePadCursorAutoEnable = 0, GamePadCursorForTargeting = 0"), "and shows both as they are now")
+	SlashCmdList.FREECONTROL("off")
+	eq(M.cvars.GamePadCursorAutoEnable, "1", "FreeControl switched off: the game has its own value back")
+	eq(M.cvars.GamePadCursorForTargeting, "1", "both")
+	SlashCmdList.FREECONTROL("on")
+	eq(M.cvars.GamePadCursorAutoEnable, "0", "and on again it is as the player set it here")
+	SlashCmdList.FREECONTROL("gamepointer on")
+	eq(M.cvars.GamePadCursorAutoEnable, "1", "switched back: the game brings its pointer out again")
+	eq(M.cvars.GamePadCursorForTargeting, "1", "for spells too")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	eq(Printed("The game is told not to bring the pointer out"), false, "and status no longer says otherwise")
+end)
+
+test("a player who switched the game's pointer off themselves keeps it off", function()
+	M.cvars.GamePadCursorAutoEnable = "0"
+	Load()
+	eq(M.cvars.GamePadCursorAutoEnable, "0", "FreeControl does not switch it on")
+	eq(ns.db.cvarBackup.GamePadCursorAutoEnable, nil, "and has nothing to put back")
+	SlashCmdList.FREECONTROL("gamepointer off")
+	SlashCmdList.FREECONTROL("gamepointer on")
+	eq(M.cvars.GamePadCursorAutoEnable, "0", "off and on again here, it is still as they had it")
+end)
+
+test("the Mouse mode page has a tick box for the game's own pointer, and says what is left of the pointer", function()
+	Load()
+	local panel = ns.Options.mousePanel
+	Open(panel)
+	local box = TickBox(panel, "The game may bring the pointer out")
+	eq(box:GetChecked(), true, "ticked to begin with")
+	box:GetScript("OnEnter")(box)
+	truthy(GameTooltip.lines[2]:find("console variables GamePadCursorAutoEnable and GamePadCursorForTargeting are set to 0"), "the tip names what it changes")
+	Tick(box, false)
+	eq(ns.db.gamePointer, false, "unticked: saved")
+	eq(M.cvars.GamePadCursorAutoEnable, "0", "and applied")
+	truthy(PageSays(panel, "^Y brings the mouse pointer out and puts it away.*The game is told not to bring the pointer out by itself%. While the pointer is out"), "with mouse mode on the page says the button is the one way left")
+	Tick(TickBox(panel, "Mouse mode"), false)
+	truthy(PageSays(panel, "^Mouse mode is switched off%..*The game is told not to bring its own pointer out either, so the controller leaves the mouse pointer to your mouse%.$"), "with both off, nothing on the controller takes the pointer")
+	Tick(box, true)
+	truthy(PageSays(panel, "The game still brings its own pointer out when a window needs one, and the two buttons below are what click then%.$"), "ticked again, the game's own pointer is back")
+	SlashCmdList.FREECONTROL("gamepointer off")
+	eq(box:GetChecked(), false, "and the box follows what is typed in chat")
+end)
+
+test("the game picks only enemies in front of you when asked to, as Gamepad UI mode has it", function()
+	Load()
+	eq(M.cvars.SoftTargetEnemyArc, "2", "to begin with the game's own setting stands: anywhere around you")
+	local panel = ns.Options.panel
+	Open(panel)
+	local box = TickBox(panel, "Gamepad UI enemy targeting")
+	eq(box:GetChecked(), false, "not ticked unless asked for")
+	box:GetScript("OnEnter")(box)
+	truthy(GameTooltip.lines[2]:find("console variable SoftTargetEnemyArc 1"), "the tip names what it changes")
+	truthy(GameTooltip.lines[2]:find("an addon is not allowed to"), "and what it cannot do")
+	Tick(box, true)
+	eq(ns.db.frontTargeting, true, "ticked: saved")
+	eq(M.cvars.SoftTargetEnemyArc, "1", "in front of you")
+	eq(ns.db.cvarBackup.SoftTargetEnemyArc, "2", "with the player's own value kept")
+	eq(M.cvars.SoftTargetEnemy, "1", "whether the game picks enemies at all is left as it was")
+	eq(M.cvars.SoftTargetForce, "1", "and so is whether it makes them your target")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("SoftTargetEnemyArc = 1 %(yours: 2%)"), "status shows both values")
+	SlashCmdList.FREECONTROL("front off")
+	eq(M.cvars.SoftTargetEnemyArc, "2", "switched off from chat: back to the player's own")
+	eq(box:GetChecked(), false, "and the box follows")
+	SlashCmdList.FREECONTROL("front on")
+	eq(M.cvars.SoftTargetEnemyArc, "1", "and on from chat")
+end)
+
+test("saved settings for the game's pointer, the targeting and the buttons to hold that make no sense are dropped", function()
+	Load({ gamePointer = "no", frontTargeting = 1, standIns = { Ctrl = "PADRSHOULDER", Alt = "padpaddle1", Shift = 5, Meta = "PADPADDLE2", Bogus = "none" } })
+	eq(ns.db.gamePointer, true, "the game's pointer")
+	eq(ns.db.frontTargeting, false, "the targeting")
+	eq(ns.db.standIns.Ctrl, "PADRSHOULDER", "a button name is kept")
+	eq(ns.db.standIns.Alt, nil, "one that is not in capitals is not a button name")
+	eq(ns.db.standIns.Shift, nil, "nor is a number")
+	eq(ns.db.standIns.Meta, nil, "and only Ctrl, Alt and Shift have a button")
+	eq(ns.db.standIns.Bogus, nil, "whatever it says")
+end)
+
+---------------------------------------------------------------------------
+-- Combinations: buttons that are held, and buttons pressed together
+---------------------------------------------------------------------------
+-- The rows of the Combinations page that are shown: [name printed on the row] = the button
+-- showing its value, and the names in order.
+local function ComboRows()
+	local panel = ns.Options.combosPanel
+	Open(panel)
+	local buttons = {}
+	for _, frame in ipairs(M.all) do
+		if frame:GetParent() == panel and frame.Sync then buttons[#buttons + 1] = frame end
+	end
+	local rows, order = {}, {}
+	local index = 0
+	for _, label in ipairs(panel.__texts) do
+		local point = label.calls.SetPoint
+		local button = buttons[index + 1]
+		if point and point[1] == "TOPLEFT" and point[2] == 20 and label ~= panel.__texts[1] and button and button.__calls.SetPoint[3] == point[3] + 4 then
+			index = index + 1
+			if button:IsShown() then
+				rows[label:GetText()] = button
+				order[#order + 1] = label:GetText()
+			end
+		end
+	end
+	return rows, order
+end
+
+-- Presses the button on a settings page that starts listening, then a combination: the buttons
+-- in `held` are held down while `key` is tapped.
+local function PressTogether(panel, held, key)
+	local start
+	for _, frame in ipairs(M.all) do
+		if frame:GetParent() == panel and (frame:GetText() == "Press one..." or frame:GetText() == "Press it...") then start = frame end
+	end
+	start:GetScript("OnClick")(start)
+	for _, button in ipairs(held) do M.KeyDown(button) end
+	local result = M.Tap(key)
+	for _, button in ipairs(held) do M.KeyUp(button) end
+	return result
+end
+
+test("there is a Combinations page, and three ways to it", function()
+	Load()
+	eq(M.subcategories[3].GetID(), "Combinations", "a third page under FreeControl")
+	eq(M.subcategories[3].parent, M.category, "in the game's list of addon settings")
+	SlashCmdList.FREECONTROL("combos")
+	eq(M.opened[#M.opened], "Combinations", "/fc combos opens it")
+	M.opened = {}
+	local buttons = ns.Options.buttonsPanel
+	Open(buttons)
+	local way
+	for _, frame in ipairs(M.all) do
+		if frame:GetParent() == buttons and frame:GetText() == "Combinations..." then way = frame end
+	end
+	way:GetScript("OnClick")(way)
+	eq(M.opened[#M.opened], "Combinations", "and so does a button on the Other buttons page")
+	local main = ns.Options.panel
+	Open(main)
+	local other
+	for _, frame in ipairs(M.all) do
+		if frame:GetParent() == main and frame:GetText() == "Other buttons..." then other = frame end
+	end
+	other:GetScript("OnEnter")(other)
+	truthy(GameTooltip.lines[2]:find("Buttons pressed together can have a job as well: that is the Combinations page"), "which the main page points to")
+	local _, order = ComboRows()
+	eq(table.concat(order, ", "), "Hold as Ctrl, Hold as Alt, Hold as Shift", "the page starts with the three buttons to hold, and no combinations")
+	truthy(PageSays(ns.Options.combosPanel, "^No combination has a job yet%.$"), "which it says")
+end)
+
+test("out of the box the left bumper is the button to hold, and the left trigger is not", function()
+	Load()
+	eq(ns.CVars:GetCombinationButton("Ctrl"), "PADLSHOULDER", "the game makes LB its Ctrl key, and FreeControl leaves that alone")
+	eq(ns.CVars:GetCombinationButton("Alt"), nil, "the game has no button for Alt")
+	eq(ns.CVars:GetCombinationButton("Shift"), nil, "and its Shift is the left trigger, which FreeControl needs as a trigger")
+	eq(M.cvars.GamePadEmulateShift, "none", "so that one is switched off while FreeControl is active")
+	local rows = ComboRows()
+	eq(rows["Hold as Ctrl"]:GetText(), "LB", "the page shows the bumper")
+	eq(rows["Hold as Alt"]:GetText(), "No button", "and no button for Alt")
+	eq(rows["Hold as Shift"]:GetText(), "No button", "or Shift")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Held for combinations: Ctrl PADLSHOULDER, Alt none, Shift none%. Combinations with a job: none"), "status says the same")
+end)
+
+test("the menu of buttons to hold leaves out the buttons FreeControl uses itself", function()
+	local menus = UseMenus()
+	Load()
+	local rows = ComboRows()
+	rows["Hold as Alt"]:GetScript("OnClick")(rows["Hold as Alt"])
+	local labels = {}
+	for index, item in ipairs(menus.last.items) do labels[index] = item.text end
+	eq(table.concat(labels, " | "), "No button | LB | RB | Back | Start | Paddle 1 | Paddle 2 | Paddle 3 | Paddle 4", "the stick clicks are the two mouse clicks, so they are not offered")
+	eq(Selected(menus.last), "No button", "and what is in force is marked")
+	SlashCmdList.FREECONTROL("click left padpaddle1")
+	SlashCmdList.FREECONTROL("click right padpaddle2")
+	rows["Hold as Alt"]:GetScript("OnClick")(rows["Hold as Alt"])
+	labels = {}
+	for index, item in ipairs(menus.last.items) do labels[index] = item.text end
+	eq(table.concat(labels, " | "), "No button | LB | RB | Left stick click | Right stick click | Back | Start | Paddle 3 | Paddle 4", "with the clicks moved to two paddles it is those that are left out")
+end)
+
+test("a second button to hold is picked on the page, and the game's own setting comes back when FreeControl is switched off", function()
+	local menus = UseMenus()
+	Load()
+	local rows = ComboRows()
+	M.printed = {}
+	rows["Hold as Alt"]:GetScript("OnClick")(rows["Hold as Alt"])
+	Pick(menus.last, "RB")
+	eq(ns.db.standIns.Alt, "PADRSHOULDER", "saved")
+	eq(M.cvars.GamePadEmulateAlt, "PADRSHOULDER", "and the game is told")
+	eq(ns.db.cvarBackup.GamePadEmulateAlt, "none", "with the game's own setting kept for later")
+	truthy(Printed("RB is the button to hold as Alt now: hold it and press another button, and the two together are a combination%."), "chat says what it is for")
+	eq(rows["Hold as Alt"]:GetText(), "RB", "the page shows it")
+	eq(M.KeyDown("PADRSHOULDER"), "modifier", "held, RB is no button press of its own")
+	eq(IsAltKeyDown(), true, "it is the Alt key")
+	M.KeyUp("PADRSHOULDER")
+	eq(IsAltKeyDown(), false, "until it is let go")
+	SlashCmdList.FREECONTROL("off")
+	eq(M.cvars.GamePadEmulateAlt, "none", "FreeControl switched off: the game has no Alt button, as before")
+	SlashCmdList.FREECONTROL("on")
+	eq(M.cvars.GamePadEmulateAlt, "PADRSHOULDER", "and on again RB is held as Alt again")
+	rows["Hold as Alt"]:GetScript("OnClick")(rows["Hold as Alt"])
+	M.printed = {}
+	Pick(menus.last, "No button")
+	eq(ns.db.standIns.Alt, "none", "No button is a choice as well")
+	eq(M.cvars.GamePadEmulateAlt, "none", "and RB is a plain button again")
+	truthy(Printed("No button is held as Alt now%."), "said")
+end)
+
+test("a button is held as one thing at a time", function()
+	Load()
+	SlashCmdList.FREECONTROL("hold alt padlshoulder")
+	eq(M.cvars.GamePadEmulateAlt, "PADLSHOULDER", "LB chosen as Alt is Alt")
+	eq(M.cvars.GamePadEmulateCtrl, "none", "and no longer the game's Ctrl with it")
+	eq(ns.CVars:GetCombinationButton("Ctrl"), nil, "no button is held as Ctrl")
+	SlashCmdList.FREECONTROL("hold alt none")
+	eq(M.cvars.GamePadEmulateCtrl, "PADLSHOULDER", "let go of as Alt, it is the game's Ctrl again")
+	eq(M.cvars.GamePadEmulateAlt, "none", "and nothing is Alt")
+	SlashCmdList.FREECONTROL("hold ctrl padrshoulder")
+	SlashCmdList.FREECONTROL("hold shift padrshoulder")
+	eq(ns.db.standIns.Ctrl, nil, "a button chosen for a second key gives up the first")
+	eq(M.cvars.GamePadEmulateShift, "PADRSHOULDER", "RB is Shift")
+	eq(M.cvars.GamePadEmulateCtrl, "PADLSHOULDER", "and Ctrl is back with the game's own button")
+end)
+
+test("no button at all can be held as Ctrl, and the bumper is then a plain button", function()
+	Load()
+	eq(M.KeyDown("PADLSHOULDER"), "modifier", "out of the box the bumper is held, not pressed")
+	M.KeyUp("PADLSHOULDER")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("hold ctrl none")
+	eq(ns.db.standIns.Ctrl, "none", "saved as no button")
+	truthy(Printed("No button is held as Ctrl now%."), "and said")
+	eq(Problem("was chosen to be held"), false, "which status does not take for a button that went missing")
+	eq(M.cvars.GamePadEmulateCtrl, "none", "the game's own setting is switched off")
+	eq(ns.db.cvarBackup.GamePadEmulateCtrl, "PADLSHOULDER", "and kept for later")
+	eq(M.KeyDown("PADLSHOULDER"), "unbound", "a press of the bumper is a press now")
+	M.KeyUp("PADLSHOULDER")
+end)
+
+test("a button that is held has no job of its own: choosing one takes its job away, and says so", function()
+	local menus = UseMenus()
+	Load()
+	local jobs = ButtonRows()
+	jobs.RB:GetScript("OnClick")(jobs.RB)
+	Pick(menus.last, "Jump")
+	eq(M.userBindings.PADRSHOULDER, "JUMP", "RB jumps")
+	eq(ns.db.plainKeys.PADRSHOULDER, true, "and is a plain button")
+	local saved = #M.savedBindings
+	M.printed = {}
+	SlashCmdList.FREECONTROL("hold alt padrshoulder")
+	eq(M.userBindings.PADRSHOULDER, nil, "chosen to be held, its job is gone")
+	eq(#M.savedBindings, saved + 1, "which the game is told to keep")
+	eq(ns.db.plainKeys.PADRSHOULDER, nil, "and it is no plain button")
+	truthy(Printed("RB no longer does this: Jump%. A button that is held for combinations has no job of its own%."), "chat says what was taken away")
+	eq(M.cvars.GamePadEmulateAlt, "PADRSHOULDER", "and RB is held as Alt")
+	eq(jobs.RB:GetText(), "Stand in for the Alt key", "its row on the Other buttons page says what it is now")
+end)
+
+test("a button to hold that is given a job sleeps as one until the job is taken away again", function()
+	local menus = UseMenus()
+	Load()
+	SlashCmdList.FREECONTROL("hold alt padrshoulder")
+	local jobs = ButtonRows()
+	jobs.RB:GetScript("OnClick")(jobs.RB)
+	M.printed = {}
+	Pick(menus.last, "Bags")
+	eq(M.cvars.GamePadEmulateAlt, "none", "with a job RB is a plain button")
+	truthy(Printed("RB now does this: Bags%. It no longer stands in for the Alt key while FreeControl is active%."), "chat says both")
+	eq(ns.CVars:GetCombinationButton("Alt"), nil, "and the Combinations page has no button for Alt")
+	eq(ns.db.standIns.Alt, "PADRSHOULDER", "the choice is kept, though")
+	jobs.RB:GetScript("OnClick")(jobs.RB)
+	M.printed = {}
+	Pick(menus.last, "Nothing")
+	eq(M.cvars.GamePadEmulateAlt, "PADRSHOULDER", "without the job it is held as Alt again")
+	truthy(Printed("RB has no job of its own now, and stands in for the Alt key again, as you chose on the Combinations page%."), "and chat says whose choice that was")
+end)
+
+test("a button FreeControl uses itself cannot be held, in a fight nothing changes, and status says when a chosen button is taken", function()
+	Load()
+	M.printed = {}
+	SlashCmdList.FREECONTROL("hold ctrl padrtrigger")
+	truthy(Printed("RT is one of the buttons FreeControl uses itself, so it cannot be held for combinations%."), "a trigger is refused")
+	SlashCmdList.FREECONTROL("hold ctrl padlstick")
+	truthy(Printed("Left stick click is one of the buttons FreeControl uses itself"), "and so is a click button")
+	SlashCmdList.FREECONTROL("hold ctrl f")
+	truthy(Printed("F is not a button of the controller%. They go by the game's names for them, such as PADRSHOULDER or PADPADDLE1; none is for no button%."), "and a key of the keyboard is no button to hold")
+	eq(ns.db.standIns.Ctrl, nil, "nothing was saved")
+	eq(M.cvars.GamePadEmulateCtrl, "PADLSHOULDER", "and nothing changed")
+	M.EnterCombat()
+	M.printed = {}
+	SlashCmdList.FREECONTROL("hold alt padrshoulder")
+	truthy(Printed("Combination buttons cannot be changed in combat%."), "refused in a fight")
+	eq(ns.db.standIns.Alt, nil, "with nothing saved")
+	M.LeaveCombat()
+	SlashCmdList.FREECONTROL("hold alt padrshoulder")
+	eq(Problem("was chosen to be held"), false, "a button that is held is no problem")
+	SlashCmdList.FREECONTROL("key rt padrshoulder")
+	eq(M.cvars.GamePadEmulateAlt, "none", "made a trigger afterwards, RB is not held")
+	truthy(Problem("RB was chosen to be held as Alt, but FreeControl uses that button itself or it has a job of its own, so it is not held for combinations%."), "and status says why")
+end)
+
+test("a button the player made a stand-in by hand is shown, and can be changed", function()
+	local menus = UseMenus()
+	M.cvars.GamePadEmulateAlt = "PADSOCIAL"
+	Load()
+	eq(ns.CVars:GetCombinationButton("Alt"), "PADSOCIAL", "it is the button held as Alt")
+	local rows = ComboRows()
+	eq(rows["Hold as Alt"]:GetText(), "PADSOCIAL", "and the page shows it, by the only name there is for it")
+	rows["Hold as Alt"]:GetScript("OnClick")(rows["Hold as Alt"])
+	eq(Selected(menus.last), "PADSOCIAL", "it is in the menu, marked")
+	Pick(menus.last, "Paddle 4")
+	eq(M.cvars.GamePadEmulateAlt, "PADPADDLE4", "another can be picked")
+	eq(ns.db.cvarBackup.GamePadEmulateAlt, "PADSOCIAL", "and the player's own is kept for when FreeControl is off")
+end)
+
+test("two buttons pressed together are given a job, and in play the combination wins over the button alone", function()
+	local menus = UseMenus()
+	M.lockActionBars = false
+	Load()
+	local panel = ns.Options.combosPanel
+	Open(panel)
+	eq(PressTogether(panel, { "PADLSHOULDER" }, "PADDRIGHT"), "caught", "the page hears the two together")
+	eq(ns.Options.caughtCombo, "CTRL-PADDRIGHT", "by the name the game gives them")
+	eq(ns.Options.comboCatcher:IsShown(), false, "one combination ends the listening")
+	local rows, order = ComboRows()
+	eq(order[4], "LB + D-pad Right", "it has a row, named by the buttons")
+	local row = rows["LB + D-pad Right"]
+	eq(row:GetText(), "Nothing", "with no job yet")
+	eq(PageSays(panel, "^No combination has a job yet%.$"), false, "the page no longer says there is none")
+	row:GetScript("OnEnter")(row)
+	eq(GameTooltip.lines[1], "LB + D-pad Right", "the tooltip is headed by the same name")
+	truthy(GameTooltip.lines[2]:find("What these buttons do when they are pressed together%..*where the combination is spelled CTRL%-PADDRIGHT%."), "and says how the game spells it")
+	row:GetScript("OnClick")(row)
+	eq(menus.last.items[1].text, "Nothing", "the menu is the one every button has")
+	M.printed = {}
+	Pick(menus.last, "FreeControl: next page")
+	eq(M.userBindings["CTRL-PADDRIGHT"], "CLICK FreeControlPageNext:LeftButton", "a key binding of the player's own")
+	eq(M.savedBindings[#M.savedBindings], 1, "saved")
+	truthy(Printed("LB %+ D%-pad Right now does this: FreeControl: next page%.$"), "chat says so")
+	eq(ns.db.plainKeys["CTRL-PADDRIGHT"], nil, "a combination is not a button to keep plain")
+	eq(M.cvars.GamePadEmulateCtrl, "PADLSHOULDER", "and the bumper stays a button to hold")
+	eq(row:GetText(), "FreeControl: next page", "the row shows the job")
+	rows, order = ComboRows()
+	eq(table.concat(order, ", ", 4), "LB + D-pad Right", "and with a job it is still listed once")
+
+	M.used = {}
+	M.KeyDown("PADLSHOULDER")
+	M.Tap("PADDRIGHT")
+	M.KeyUp("PADLSHOULDER")
+	ShowsPage(2, "LB + D-pad Right turns the page")
+	eq(Used(), "", "and does not cast what is on D-pad Right")
+	M.Tap("PADDRIGHT")
+	eq(Used(), "211", "D-pad Right alone casts its slot, on the page now showing")
+	ShowsPage(2, "and turns nothing")
+	M.EnterCombat()
+	M.KeyDown("PADLSHOULDER")
+	M.Tap("PADDRIGHT")
+	M.KeyUp("PADLSHOULDER")
+	ShowsPage(3, "in a fight the combination works as well")
+	M.used = {}
+	M.KeyDown("PADLSHOULDER")
+	M.Tap("PADDUP")
+	M.KeyUp("PADLSHOULDER")
+	eq(Used(), "238", "a combination that has no job of its own is the button alone")
+	M.LeaveCombat()
+end)
+
+test("three buttons together: two are held, and each combination is its own", function()
+	local menus = UseMenus()
+	Load()
+	SlashCmdList.FREECONTROL("hold alt padrshoulder")
+	local panel = ns.Options.combosPanel
+	Open(panel)
+	PressTogether(panel, { "PADLSHOULDER", "PADRSHOULDER" }, "PADDLEFT")
+	eq(ns.Options.caughtCombo, "ALT-CTRL-PADDLEFT", "the game spells Alt before Ctrl")
+	local rows, order = ComboRows()
+	eq(order[4], "LB + RB + D-pad Left", "the row names the buttons in the order they sit on the controller")
+	rows[order[4]]:GetScript("OnClick")(rows[order[4]])
+	Pick(menus.last, "FreeControl: previous page")
+	PressTogether(panel, { "PADLSHOULDER" }, "PADDUP")
+	rows, order = ComboRows()
+	eq(order[4], "LB + D-pad Up", "the one just pressed comes first")
+	eq(order[5], "LB + RB + D-pad Left", "and the one with a job stays listed")
+	rows["LB + D-pad Up"]:GetScript("OnClick")(rows["LB + D-pad Up"])
+	Pick(menus.last, "Target party member 1")
+	eq(M.userBindings["CTRL-PADDUP"], "TARGETPARTYMEMBER1", "a party member is a job like any other")
+
+	M.KeyDown("PADLSHOULDER")
+	M.KeyDown("PADRSHOULDER")
+	M.Tap("PADDLEFT")
+	M.KeyUp("PADRSHOULDER")
+	M.KeyUp("PADLSHOULDER")
+	ShowsPage(3, "LB + RB + D-pad Left turns the page back, from 1 round to 3")
+	M.used, M.commands = {}, {}
+	M.KeyDown("PADLSHOULDER")
+	M.Tap("PADDLEFT")
+	eq(Used(), "237", "LB + D-pad Left is another combination, with no job: the D-pad casts")
+	M.Tap("PADDUP")
+	M.KeyUp("PADLSHOULDER")
+	eq(M.commands[1][1] .. " " .. M.commands[1][2], "TARGETPARTYMEMBER1 down", "LB + D-pad Up targets the first of the party")
+	ShowsPage(3, "and neither turned a page")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("status")
+	truthy(Printed("Held for combinations: Ctrl PADLSHOULDER, Alt PADRSHOULDER, Shift none%. Combinations with a job: ALT%-CTRL%-PADDLEFT = CLICK FreeControlPagePrev:LeftButton, CTRL%-PADDUP = TARGETPARTYMEMBER1"), "status lists them as the game spells them")
+end)
+
+test("the list shows every combination of controller buttons that has a job, wherever it was given", function()
+	local menus = UseMenus()
+	M.userBindings = {
+		["CTRL-PADDDOWN"] = "TOGGLEWORLDMAP",                     -- made in the game's Key Bindings screen
+		["CTRL-PAD1"] = "CLICK FreeControlMouse:LeftButton",       -- FreeControl's own, which that screen does not list
+		["CTRL-F"] = "OPENALLBAGS",                                -- of the keyboard: not this page's business
+		["SHIFT-PADPADDLE1"] = "CLICK SomeAddonButton:LeftButton", -- another addon's, which nothing here can find
+		PADPADDLE2 = "JUMP",                                       -- one button, not a combination
+	}
+	Load()
+	local rows, order = ComboRows()
+	eq(table.concat(order, ", ", 4), "LB + A, LB + D-pad Down", "the two that can be found, in the game's order")
+	eq(rows["LB + A"]:GetText(), "Mouse pointer on / off", "with their jobs")
+	eq(rows["LB + D-pad Down"]:GetText(), "World map", "both")
+	rows["LB + D-pad Down"]:GetScript("OnClick")(rows["LB + D-pad Down"])
+	Pick(menus.last, "Nothing")
+	eq(M.userBindings["CTRL-PADDDOWN"], nil, "a job is taken away like any other")
+	rows, order = ComboRows()
+	eq(table.concat(order, ", ", 4), "LB + A", "and the combination leaves the list")
+	M.userBindings["CTRL-PADDLEFT"] = "JUMP" -- the player binds one in the game's own screen while this page is open
+	M.Fire("UPDATE_BINDINGS")
+	rows, order = ComboRows()
+	eq(table.concat(order, ", ", 4), "LB + A, LB + D-pad Left", "which the list picks up")
+	SlashCmdList.FREECONTROL("hold ctrl padpaddle3")
+	rows, order = ComboRows()
+	eq(table.concat(order, ", ", 4), "Paddle 3 + A, Paddle 3 + D-pad Left", "and the names follow the button that is held")
+	SlashCmdList.FREECONTROL("hold ctrl none")
+	rows, order = ComboRows()
+	eq(table.concat(order, ", ", 4), "Ctrl + A, Ctrl + D-pad Left", "with no button to hold they are named for the key")
+end)
+
+test("more combinations than the page has rows for are counted, not dropped without a word", function()
+	M.userBindings = {}
+	for index, key in ipairs({ "PADDUP", "PADDDOWN", "PADDLEFT", "PADDRIGHT", "PAD1", "PAD2", "PAD3", "PAD4", "PADPADDLE1", "PADPADDLE2", "PADPADDLE3", "PADPADDLE4" }) do
+		M.userBindings["CTRL-" .. key] = "ACTIONBUTTON" .. index
+	end
+	Load()
+	local _, order = ComboRows()
+	eq(#order, 13, "the three buttons to hold and ten combinations")
+	truthy(PageSays(ns.Options.combosPanel, "^2 more are not shown here%. The game's Key Bindings screen has them all%.$"), "and a line for the rest")
+	M.userBindings["CTRL-PADPADDLE4"] = nil
+	M.userBindings["CTRL-PADPADDLE3"] = nil
+	M.Fire("UPDATE_BINDINGS")
+	eq(PageSays(ns.Options.combosPanel, "more are not shown"), false, "which goes when they all fit")
+end)
+
+test("the Combinations page says so when what was pressed is no combination of controller buttons", function()
+	Load()
+	local panel = ns.Options.combosPanel
+	Open(panel)
+	M.printed = {}
+	PressTogether(panel, {}, "PADDRIGHT")
+	truthy(Printed("That was D%-pad Right on its own%. Hold LB and press another button with it%."), "one button: it names the button to hold")
+	eq(ns.Options.caughtCombo, nil, "and takes nothing")
+	SlashCmdList.FREECONTROL("hold ctrl none")
+	M.printed = {}
+	PressTogether(panel, {}, "PADDRIGHT")
+	truthy(Printed("That was D%-pad Right on its own%. No button is set to be held yet: pick one above%."), "with no button to hold, it says to pick one")
+	M.printed = {}
+	PressTogether(panel, { "LCTRL" }, "F")
+	truthy(Printed("That one ends in a key of the keyboard%. This page is for the controller's buttons"), "the keyboard's combinations belong to the game's own screen")
+	eq(ns.Options.caughtCombo, nil, "nothing taken")
+	local start
+	for _, frame in ipairs(M.all) do
+		if frame:GetParent() == panel and frame:GetText() == "Press one..." then start = frame end
+	end
+	M.EnterCombat()
+	M.printed = {}
+	start:GetScript("OnClick")(start)
+	eq(ns.Options.comboCatcher:IsShown(), false, "no listening in a fight")
+	truthy(Printed("Key bindings cannot be changed in combat"), "with the reason")
+	M.LeaveCombat()
+end)
+
+test("the Other buttons page hears a combination too, and does not take it for one of FreeControl's buttons", function()
+	local menus = UseMenus()
+	Load()
+	local rows = ButtonRows()
+	PressTogether(ns.Options.buttonsPanel, { "PADLSHOULDER" }, "PAD1")
+	eq(ns.Options.caughtKey, "CTRL-PAD1", "LB + A is heard as one")
+	local row = rows[""]
+	eq(row:GetText(), "Nothing", "it has no job, and is not FreeControl's A")
+	row:GetScript("OnClick")(row)
+	Pick(menus.last, "Ping (hold for the wheel)")
+	eq(M.userBindings["CTRL-PAD1"], "TOGGLEPINGLISTENER", "and takes one: the game's own Ping key")
+	M.commands = {}
+	M.KeyDown("PADLSHOULDER")
+	M.Tap("PAD1")
+	M.KeyUp("PADLSHOULDER")
+	eq(M.commands[1][1] .. " " .. M.commands[1][2], "TOGGLEPINGLISTENER down", "the game is given the press")
+	eq(M.commands[2][1] .. " " .. M.commands[2][2], "TOGGLEPINGLISTENER up", "and the release, which is what sends a ping")
+	M.printed = {}
+	rows.LB:GetScript("OnClick")(rows.LB)
+	PressTogether(ns.Options.buttonsPanel, {}, "PAD1")
+	row:GetScript("OnClick")(row)
+	truthy(Printed("A is FreeControl's A, so a key binding on it would never be reached%..*held together with another button it can have a job, on the Combinations page%."), "A alone is still FreeControl's, and the page says where a combination goes")
+end)
+
+test("the right stick click can be given the Ping key", function()
+	local menus = UseMenus()
+	Load()
+	local rows = ButtonRows()
+	rows["Right stick click"]:GetScript("OnClick")(rows["Right stick click"])
+	Pick(menus.last, "Ping (hold for the wheel)")
+	eq(M.userBindings.PADRSTICK, "TOGGLEPINGLISTENER", "bound to the game's own command")
+	M.commands = {}
+	M.Tap("PADRSTICK")
+	eq(#M.commands, 2, "a press and a release go to the game")
+	M.Tap("PAD4") -- the pointer comes out: the stick click is the right mouse button for as long
+	M.Advance(0.02)
+	eq(Binding("PADRSTICK"), "cmd:TURNORACTION", "while the pointer is out it clicks instead")
+	M.Tap("PAD4")
+	M.Advance(0.02)
+	M.commands = {}
+	M.Tap("PADRSTICK")
+	eq(M.commands[1][1], "TOGGLEPINGLISTENER", "and pings again when the pointer is away")
+end)
+
+test("every control on the Combinations page has a tooltip, with and without combinations", function()
+	M.userBindings = { ["CTRL-PADDDOWN"] = "TOGGLEWORLDMAP" }
+	Load()
+	local panel = ns.Options.combosPanel
+	Open(panel)
+	local function HoverAll(what)
+		local seen = 0
+		for index, control in ipairs(Hoverable(panel)) do
+			if control:IsShown() then
+				GameTooltip.lines = {}
+				control:GetScript("OnEnter")(control)
+				eq(type(GameTooltip.lines[1]), "string", what .. ", control " .. index .. ": a title")
+				truthy(GameTooltip.lines[1] ~= "", what .. ", control " .. index .. ": a title that says something")
+				eq(type(GameTooltip.lines[2]), "string", what .. ", control " .. index .. ": an explanation")
+				control:GetScript("OnLeave")(control)
+				seen = seen + 1
+			end
+		end
+		return seen
+	end
+	eq(HoverAll("with one"), 5, "three buttons to hold, the one that listens, and the combination")
+	M.userBindings["CTRL-PADDDOWN"] = nil
+	M.Fire("UPDATE_BINDINGS")
+	eq(HoverAll("with none"), 4, "and without the combination")
+	eq(#M.luaErrors, 0, "hovering raises nothing")
+end)
+
+test("a button held as Shift makes combinations as well", function()
+	local menus = UseMenus()
+	Load()
+	SlashCmdList.FREECONTROL("hold shift padpaddle1")
+	eq(M.cvars.GamePadEmulateShift, "PADPADDLE1", "the paddle is the Shift key while it is held, not the left trigger")
+	local panel = ns.Options.combosPanel
+	Open(panel)
+	PressTogether(panel, { "PADPADDLE1" }, "PADDUP")
+	eq(ns.Options.caughtCombo, "SHIFT-PADDUP", "heard as the game spells it")
+	local rows, order = ComboRows()
+	eq(order[4], "Paddle 1 + D-pad Up", "and named by its buttons")
+	rows[order[4]]:GetScript("OnClick")(rows[order[4]])
+	Pick(menus.last, "Target party member 2")
+	PressTogether(panel, { "PADLSHOULDER", "PADPADDLE1" }, "PADDUP")
+	eq(ns.Options.caughtCombo, "CTRL-SHIFT-PADDUP", "with the bumper too: Ctrl is spelled before Shift")
+	rows, order = ComboRows()
+	eq(table.concat(order, ", ", 4), "LB + Paddle 1 + D-pad Up, Paddle 1 + D-pad Up", "three buttons together are another combination")
+	M.commands = {}
+	M.KeyDown("PADPADDLE1")
+	M.Tap("PADDUP")
+	M.KeyUp("PADPADDLE1")
+	eq(M.commands[1][1], "TARGETPARTYMEMBER2", "Paddle 1 + D-pad Up does its job in play")
+end)
+
+test("switching mouse mode off says where the game's own pointer is switched off, unless it is off or there is none", function()
+	Load()
+	M.printed = {}
+	SlashCmdList.FREECONTROL("mouse off")
+	truthy(Printed("Mouse mode is off%. The game still brings its own pointer out when a window opens: to stop that too, untick \"The game may bring the pointer out\" on the Mouse mode page, or type /fc gamepointer off%.$"), "told about the second switch")
+	SlashCmdList.FREECONTROL("mouse on")
+	SlashCmdList.FREECONTROL("gamepointer off")
+	M.printed = {}
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(Printed("The game still brings its own pointer out"), false, "not told when the game's pointer is switched off already")
+end)
+
+test("a client without a stick pointer is told nothing about the game's pointer when mouse mode is switched off", function()
+	SetGamePadCursorControl = nil
+	Load()
+	M.printed = {}
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(Printed("The game still brings its own pointer out"), false, "there is no pointer to speak of")
+	eq(ns.db.roles[6], "action", "and Y is a slot all the same")
 end)

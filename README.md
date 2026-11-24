@@ -151,6 +151,11 @@ because Blizzard's bar would be bound to the same buttons.
   button is an ordinary action slot instead: drop a spell, an item or a macro on it, a different
   one on each page if you like. No button of FreeControl's brings the pointer out then. The game
   still brings its own out when a window needs one, and your two click buttons still click.
+- **Playing with a real mouse as well:** the game brings its stick pointer out by itself, when a
+  window opens and to aim a spell at the ground, which gets in the way of a mouse in your other
+  hand. Untick *The game may bring the pointer out* on the *Mouse mode* page
+  (`/fc gamepointer off`), and *Mouse mode* with it, and nothing on the controller takes the
+  pointer.
 - **Procs:** a button glows gold while its spell has procced. FreeControl follows the game's own
   proc signal, the one the regular action bars use. Overpower, Victory Rush, Riposte,
   Counterattack and Mongoose Bite also glow for the moment they can be used, and Ambush when it
@@ -181,8 +186,15 @@ because Blizzard's bar would be bound to the same buttons.
 - **Your other buttons:** the bumpers, stick clicks, Start, Back and paddles are ordinary buttons.
   FreeControl does not use them, and each does whatever it is bound to, like a key on the
   keyboard. The *Other buttons* page of the settings (`/fc buttons`) lists them with what each
-  one does and offers the common jobs in a menu; **Options > Key Bindings** does the rest. The
+  one does and offers the common jobs in a menu: turning the page, targeting (a party member,
+  the nearest enemy), Ping, the map and more. **Options > Key Bindings** does the rest. The
   stick clicks keep their jobs except while the mouse pointer is out.
+- **Buttons together:** two or three buttons pressed together can have a job of their own, such
+  as LB + D-pad Up for a party member or LB + RB + D-pad Right for the next page. On the
+  *Combinations* page (`/fc combos`) click *Press one...*, hold the first button, press the
+  second, and pick the job. Out of the box the button to hold is LB; the page lets you choose
+  it, and add a second and a third. A combination can end in any button, FreeControl's D-pad
+  and face buttons included, and the button on its own goes on doing what it did.
 - **Changing the no-trigger buttons:** click one on the bar, or use the settings page. Each can be
   an action slot, a command (Jump, Interact, Cancel, Target nearest enemy or friend, Auto-run,
   World map, Bags, one of your stances or forms, ...) or left to your own key binding.
@@ -194,11 +206,12 @@ because Blizzard's bar would be bound to the same buttons.
   `GamePadCursorRightClick`). RT is a hotbar trigger, so while it is active FreeControl points
   those two settings at the stick clicks instead, and puts yours back when you log out. To keep
   the game's own choice for one of them, pick *Leave to the game* on the settings page.
-- **LB stands in for Ctrl out of the box** (`GamePadEmulateCtrl`). That lets you bind Ctrl
-  combinations such as LB + D-pad in Key Bindings, but a button used that way only fires its own
-  binding on a quick tap, which is why LB can seem to do nothing. Give LB a job on the *Other
-  buttons* page, or bind it to one of FreeControl's page arrows, and FreeControl makes it an
-  ordinary button while it is active.
+- **LB stands in for Ctrl out of the box** (`GamePadEmulateCtrl`). That is what makes LB +
+  D-pad a combination with a job of its own (the *Combinations* page), but a button used that
+  way only fires its own binding on a quick tap, which is why LB can seem to do nothing. Give
+  LB a job on the *Other buttons* page, or bind it to one of FreeControl's page arrows, and
+  FreeControl makes it an ordinary button while it is active. The game has no button for Alt,
+  and no screen for choosing any of the three: the *Combinations* page does that.
 - **LT stands in for Shift out of the box.** FreeControl switches that off for the buttons it
   uses while it is active, because a trigger used that way would not register as held.
 
@@ -218,6 +231,8 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc pages off` | Keep the bar on one page, the one `/fc page` picks; nothing turns it (`on` to bring the pages back). |
 | `/fc pager off` | Take the page selector off the bar. A button you gave a page arrow still turns the page (`on` to show it again). |
 | `/fc buttons` | Open the Other buttons page: jobs for the bumpers, stick clicks, Start, Back and paddles. |
+| `/fc combos` | Open the Combinations page: jobs for buttons pressed together. |
+| `/fc hold alt PADRSHOULDER` | The button to hold as Ctrl (`ctrl`), Alt (`alt`) or Shift (`shift`) for combinations. `none` for no button. |
 | `/fc slots bars` | Use the regular Left / Bottom Left / Bottom Right / Right action bar slots instead (`gamepad` to go back). |
 | `/fc numbers off` | Hide the countdown numbers on slots that are on cooldown (`on` to show them again). |
 | `/fc glow off` | Stop buttons glowing when a spell procs (`on` to bring it back). |
@@ -225,6 +240,8 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc stance all` | What changes with your stance or form: `auto`, `none`, `lt`, `rt`, `both`, `ltrt` (both trigger sets) or `all` (both and the D-pad). |
 | `/fc mouse` | Bring the mouse pointer out or put it away, like the Y button. |
 | `/fc mouse off` | Switch mouse mode off: its button becomes an action slot (`on` to switch it back on). |
+| `/fc gamepointer off` | Stop the game bringing its mouse pointer out by itself, for playing with a real mouse (`on` to allow it again). |
+| `/fc front on` | Have the game pick only enemies in front of you, as Gamepad UI mode does (`off` for the game's own setting). |
 | `/fc click left PADLSHOULDER` | Use another button as the left (`left`) or right (`right`) mouse click while the pointer is out. `game` leaves that click to the game's own setting. |
 | `/fc pointer 150` | How fast the stick moves the mouse pointer, in percent (50 to 300). |
 | `/fc key lt PADLSHOULDER` | Use another button as a trigger (`lt`, `rt`) or for a slot (`1`-`8`). Keyboard keys work too, for Steam Input layouts that send keys. |
@@ -235,8 +252,9 @@ Other settings on the page: how much the held set grows, how far the others fade
 (Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, whether the bar
 has pages and shows its page selector, what changes with your stance or form (*Stance sets*:
 automatic unless you choose otherwise, and its tooltip says what that comes to on your
-character), and the switch for mouse mode. Two more pages sit under FreeControl: **Mouse mode**,
-with the two click buttons and the pointer speed, and **Other buttons**.
+character), *Gamepad UI enemy targeting*, and the switch for mouse mode. Three more pages sit
+under FreeControl: **Mouse mode**, with the two click buttons, the pointer speed and whether the
+game may bring the pointer out by itself; **Other buttons**; and **Combinations**.
 
 ## What it changes, and puts back
 
@@ -246,12 +264,14 @@ when you switch it off:
 | Variable | Why |
 | --- | --- |
 | `GamePadEnable = 1` | Lets the game read the controller. This is controller *input*, not Gamepad UI mode. Forever ships with it on, so this usually changes nothing. |
-| `GamePadEmulateShift` / `Ctrl` / `Alt = none` | Only where one of them names a button FreeControl uses (by default: LT as Shift), a button you gave a job on the Other buttons page, or one you bound to a page arrow (by default LB is Ctrl). |
+| `GamePadEmulateShift` / `Ctrl` / `Alt` | Set to `none` where one of them names a button FreeControl uses (by default: LT as Shift), a button you gave a job on the Other buttons page, or one you bound to a page arrow (by default LB is Ctrl). Set to the button you chose, for those you chose on the Combinations page. |
 | `GamePadCursorLeftClick`, `GamePadCursorRightClick` | The two buttons that click while the mouse pointer is out: the stick clicks unless you choose others. Set with mouse mode switched off as well, for the pointer the game brings out by itself. |
 | `GamePadCursorCentering = 0` | With it on, the game pins the mouse pointer to the middle of the screen. It is off unless something turned it on. |
+| `GamePadCursorAutoEnable = 0`, `GamePadCursorForTargeting = 0` | Only when you untick *The game may bring the pointer out*: the game then leaves its stick pointer away when a window opens and when a spell is aimed at the ground. |
 | `GamePadCursorSpeedStart`, `...Accel`, `...Max` | Only when you change the pointer speed: all three are scaled together from your own values. |
 | `SoftTargetInteract = 3` | The Interact command picks nearby things by itself (Options > Controls > Enable Interact Key). |
 | `SoftTargetInteractArc = 1`, `SoftTargetInteractRange = 20`, `SoftTargetIconGameObject = 1` | The reach Gamepad UI mode uses for Interact. |
+| `SoftTargetEnemyArc = 1` | Only when you tick *Gamepad UI enemy targeting*: the enemy the game picks for you has to be in front of you. |
 
 The first and the Interact ones have checkboxes on the settings page. FreeControl binds the D-pad,
 face buttons and triggers with *override* bindings, which sit on top of your saved key bindings
@@ -277,6 +297,16 @@ when FreeControl is switched off.
   pointer to pick from. Put the individual spells on the bar instead.
 - Mouse mode clicks windows through the game's own controller mouse, which needs a plain button:
   a trigger combination cannot be a click button.
+- A combination is found by the game before the button it ends in, which is how the game is
+  known to treat Shift + a key on the keyboard. With a controller's held buttons that is
+  unproven here: if a combination does nothing, `/fc status` lists what is held and what is
+  bound.
+- A button held as Alt is also the game's self-cast key while you cast, unless you changed that
+  under **Options > Combat**.
+- Gamepad UI mode's own way of picking party members (hold a bumper and steer) and its habit of
+  making the enemy you face your target when you attack belong to that mode. FreeControl offers
+  party members as jobs for buttons and combinations, and the same narrowing of the game's pick
+  to the enemies in front of you.
 - The game's controller slots have no place for the four face buttons with no trigger held. A
   face button you make an action slot (which is what the mouse button becomes with mouse mode
   off) borrows the LT + RT slot of the same button on the page before: Y on page 1 and LT + RT +
@@ -374,6 +404,24 @@ with `SetBinding` and `SaveBindings`, as the Key Bindings screen does. A button 
 stand-in for Shift, Ctrl or Alt (LB is Ctrl out of the box) is made a plain button by
 [CVars.lua](FreeControl/CVars.lua) once it has a job, and only then.
 
+Combinations rest on the same stand-ins. A button pressed while one is held is a key with a
+modifier to the game, and has a binding of its own, `CTRL-PADDRIGHT`. FreeControl binds its
+D-pad and face buttons with override bindings on the plain key only, and the game looks for a
+binding on the combination first (it is why Shift + 2 turns the action bar page under bar addons
+that override 2), so a combination can end in one of FreeControl's own buttons. The page that
+listens for one builds the name from `IsAltKeyDown`, `IsControlKeyDown` and `IsShiftKeyDown`,
+as the game's Key Bindings screen does. Which buttons are held is the three `GamePadEmulate`
+console variables; the game has no screen for them, so the Combinations page sets them, through
+the same keep-and-put-back as every other variable here.
+
+Targeting: Gamepad UI mode sets some twenty console variables for it
+(`Blizzard_Gamepad/Core.lua`). Against a fresh client's values they change little for enemies:
+the pick has to be in front of the player (`SoftTargetEnemyArc` 1 instead of 2) and is no longer
+made the target by the game itself (`SoftTargetForce` 0), because that mode's own code targets it
+on a harmful cast with `TargetUnit`, which is protected. FreeControl offers the first as a
+setting and leaves the second alone, since without the protected half it would only take
+something away.
+
 An error while drawing the bar is never silent: it goes to the game's error handler as usual, the
 first one is also said in chat, and `/fc status` lists them. The game hides addon errors by
 default, which is how the bar went on passing sealed numbers to its sweeps up to version 1.1.1.
@@ -395,7 +443,7 @@ of the game's interface art into a git-ignored folder the first time they are ne
 There are two test suites, and neither needs the game. The addon has also been played in the
 Forever 1.60.1 client.
 
-**Mock client** (fast, 257 scenarios, runs on every push):
+**Mock client** (fast, 283 scenarios, runs on every push):
 
     pip install lupa
     python3 tools/tests/run.py       # add --globals to list every client API the addon touches
@@ -407,14 +455,16 @@ report being held, key presses travel through override bindings (and, where ther
 player's own bindings) to button clicks, in combat cooldown numbers come back sealed and are
 refused by cooldown frames, using the controller puts the client in camera mode where the pointer
 stays hidden until that is ended, while the stick pointer is out its two click buttons become
-mouse clicks, and a font string that was given no text answers nil when asked for it (version
-1.5.0 took that answer for a tooltip's title, which the game refuses, as the model's tooltip now
-does). State drivers are a port of Blizzard's own. Each class has its stances or forms by
+mouse clicks, a button that stands in for Ctrl, Alt or Shift is that key while it is held (so a
+button pressed with it is looked up as a combination first, and as itself only when the
+combination has no binding), and a font string that was given no text answers nil when asked for
+it (version 1.5.0 took that answer for a tooltip's title, which the game refuses, as the model's
+tooltip now does). State drivers are a port of Blizzard's own. Each class has its stances or forms by
 the classic rules, and one scenario walks every class through every stance setting, page and form,
 in and out of combat, checking that each button shows and casts the slot the rules give it. It is
 a model, so a pass shows the addon is consistent with that model, not that the game agrees.
 
-**Simulator** (Blizzard's real interface code, 48 tests, about fifteen seconds):
+**Simulator** (Blizzard's real interface code, 50 tests, about fifteen seconds):
 
     tools/sim/lab/build-image.sh     # once: fetches the simulator (about 180 MB) and builds its image
     tools/sim/run.sh
@@ -436,7 +486,9 @@ filled slots are blank there.
 
 What it cannot show: it implements about half of the client's API, does not seal anything in
 combat, has no stick pointer of its own (the tests stand in for it), has no real key or controller
-input (the tests click the bound button from a secure call stack instead), has no controller-slot
+input (the tests click the bound button from a secure call stack instead, so that two buttons
+held together reach the combination's binding and not the button's is not something it shows),
+has no controller-slot
 validity check (so FreeControl falls back to the regular bar slots there unless a test stands in
 for it), and has no stances or forms. For those the test helper answers `[bonusbar:N]` from
 secure code, so Blizzard's state driver and the header's snippets do run for a stance coming up

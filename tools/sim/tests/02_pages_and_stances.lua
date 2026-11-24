@@ -542,7 +542,74 @@ test("mouse mode switched off in a fight: both halves of its button go on workin
 	Clean()
 end)
 
-test("every control on the three settings pages shows a tooltip when the mouse is over it", function()
+test("a button chosen to be held is the game's own setting while FreeControl is active, and a combination's job is a real key binding", function()
+	Reset()
+	UseControllerSlots("none")
+	local own = GetCVar("GamePadEmulateAlt")
+	assertNotNil(own) -- the simulator has the setting
+	ns.Options:OpenCombos()
+	assertTrue(ns.Options.combosPanel.built)
+	assertTrue(ns.Options.combosPanel:IsVisible())
+	assertTrue(ns.Options.SetHold("Alt", "PADRSHOULDER"))
+	assertEquals("PADRSHOULDER", GetCVar("GamePadEmulateAlt"))
+	assertEquals("PADRSHOULDER", ns.CVars:GetCombinationButton("Alt"))
+	SlashCmdList.FREECONTROL("off")
+	assertEquals(own, GetCVar("GamePadEmulateAlt")) -- the game's own value is back
+	SlashCmdList.FREECONTROL("on")
+	assertEquals("PADRSHOULDER", GetCVar("GamePadEmulateAlt"))
+
+	-- Blizzard's SetBinding takes the combination by the name the game spells it with, and the
+	-- binding clicks the secure page arrow in a fight. That the client looks for this binding
+	-- before the D-pad's own when the two buttons are held is the client's doing, and cannot be
+	-- seen here: the simulator has no keys to hold.
+	local chord = "ALT-CTRL-PADDRIGHT"
+	assertTrue(ns.Options.Bind(chord, ns.Bindings.PAGE_COMMANDS.next))
+	assertEquals(ns.Bindings.PAGE_COMMANDS.next, GetBindingAction(chord))
+	assertEquals(chord, (GetBindingKey(ns.Bindings.PAGE_COMMANDS.next)))
+	local listed = false
+	for _, region in ipairs({ ns.Options.combosPanel:GetRegions() }) do
+		listed = listed or (region.GetText and region:GetText() == "LB + RB + D-pad Right")
+	end
+	assertTrue(listed) -- the page lists it, named by its buttons
+	A_Admin.SetInCombat(true)
+	SimInput.PressKey(chord)
+	ShowsPage(2)
+	wipe(used)
+	SimInput.PressKey("PADDRIGHT")
+	assertTableEquals({ first + 30 }, used) -- the D-pad alone still casts its slot, on the page now showing
+	A_Admin.SetInCombat(false)
+
+	assertTrue(ns.Options.Bind(chord, ""))
+	assertEquals("", GetBindingAction(chord))
+	assertTrue(ns.Options.SetHold("Alt", "none"))
+	ns.db.standIns.Alt = nil
+	assertTrue(ns.RequestRefresh())
+	assertEquals(own, GetCVar("GamePadEmulateAlt"))
+	SlashCmdList.FREECONTROL("page 1")
+	UseRegularBars()
+	Clean()
+end)
+
+test("the game's own pointer and its pick of enemies are console variables set while FreeControl is active, and put back", function()
+	Reset()
+	local auto, aim, arc = GetCVar("GamePadCursorAutoEnable"), GetCVar("GamePadCursorForTargeting"), GetCVar("SoftTargetEnemyArc")
+	assertNotNil(auto)
+	assertNotNil(aim)
+	assertNotNil(arc)
+	SlashCmdList.FREECONTROL("gamepointer off")
+	assertEquals("0", GetCVar("GamePadCursorAutoEnable"))
+	assertEquals("0", GetCVar("GamePadCursorForTargeting"))
+	SlashCmdList.FREECONTROL("front on")
+	assertEquals("1", GetCVar("SoftTargetEnemyArc"))
+	SlashCmdList.FREECONTROL("gamepointer on")
+	SlashCmdList.FREECONTROL("front off")
+	assertEquals(auto, GetCVar("GamePadCursorAutoEnable"))
+	assertEquals(aim, GetCVar("GamePadCursorForTargeting"))
+	assertEquals(arc, GetCVar("SoftTargetEnemyArc"))
+	Clean()
+end)
+
+test("every control on the four settings pages shows a tooltip when the mouse is over it", function()
 	Reset()
 	-- With Blizzard's own tooltip code. The error version 1.5.0 raised here (a tooltip handed a
 	-- function for its title, because the game has no text to give back for an empty label) does
@@ -552,7 +619,7 @@ test("every control on the three settings pages shows a tooltip when the mouse i
 	empty:SetText("")
 	local emptyText = empty:GetText()
 	local hovered = 0
-	for open, panel in pairs({ Open = ns.Options.panel, OpenMouse = ns.Options.mousePanel, OpenButtons = ns.Options.buttonsPanel }) do
+	for open, panel in pairs({ Open = ns.Options.panel, OpenMouse = ns.Options.mousePanel, OpenButtons = ns.Options.buttonsPanel, OpenCombos = ns.Options.combosPanel }) do
 		ns.Options[open](ns.Options)
 		assertTrue(panel.built)
 		assertTrue(panel:IsVisible())

@@ -38,7 +38,9 @@ Both are optional. The settings can take the plate off the bar and leave the tur
 
 ### Your game stays in normal mode
 
-The bumpers, stick clicks, Start, Back and paddles are ordinary buttons, and they are yours. The *Other buttons* page of the settings lists them with what each one does and gives them jobs from a menu: turn the page, target, open the map. The normal Key Bindings screen does the rest. The menus are the ones you know, and nothing in your layout is moved or replaced.
+The bumpers, stick clicks, Start, Back and paddles are ordinary buttons, and they are yours. The *Other buttons* page of the settings lists them with what each one does and gives them jobs from a menu: turn the page, target a party member, ping, open the map. The normal Key Bindings screen does the rest. The menus are the ones you know, and nothing in your layout is moved or replaced.
+
+Buttons pressed together count too. On the *Combinations* page, hold LB and press another button, and the pair has a job of its own: LB + D-pad Up for a party member, or LB + RB + D-pad Right for the next page. You choose which buttons are the ones to hold.
 
 ![A sketch of the normal interface with the FreeControl bar as the one thing added](https://raw.githubusercontent.com/skytruax/FreeControl/main/curseforge/web/05-normal-mode.jpg?v=1.6.0)
 
@@ -73,7 +75,7 @@ And two more things:
 2. Log in with your controller connected. The bar appears above your action bars.
 3. Drag your spells onto the slots. Hold LT, RT or both to reach the other sets.
 4. With no trigger held, the D-pad is four more action slots, X is Interact, Y brings out the mouse pointer, B is Cancel / game menu, and A is Jump. Click any of them on the bar to change what it does.
-5. Give your bumpers and paddles their jobs under *Other buttons* in the settings (`/fc buttons`). Next page and previous page are at the top of the list.
+5. Give your bumpers and paddles their jobs under *Other buttons* in the settings (`/fc buttons`). Next page and previous page are at the top of the list. Buttons pressed together get theirs under *Combinations* (`/fc combos`).
 
 Type `/fc` for the settings, `/fc unlock` to drag the bar where you want it, and `/fc status` to see what the addon sees, which helps in a bug report.
 
@@ -97,6 +99,8 @@ There is nothing to set up: FreeControl binds Y itself, the same way it binds In
 
 Rather have one more spell? Untick *Mouse mode* in the settings and Y is an ordinary action slot instead, with an action of its own on each page. The game still brings out its own pointer when a window needs one, and your two click buttons still click.
 
+Playing with a real mouse in your other hand? The game brings its stick pointer out by itself whenever a window opens, which gets in the mouse's way. Untick *The game may bring the pointer out* on the *Mouse mode* page as well, and nothing on the controller takes the pointer.
+
 ## FreeControl, Gamepad UI mode or ConsolePort?
 
 - **Gamepad UI mode**, built into Forever, is the game's whole controller interface: hotbar, menus, targeting and layout together. FreeControl is only the hotbar. It shows the same action slots and stands down whenever that mode is on, so you can go back and forth without setting anything up twice.
@@ -108,9 +112,10 @@ While it is active, FreeControl sets a few console variables, and puts your own 
 
 - controller input is turned on, if it was off (this is not Gamepad UI mode);
 - the Interact key behaviour is turned on, with the reach Gamepad UI mode uses;
-- the left trigger stops standing in for Shift, which is the game's default and would keep it from registering as held; the left bumper stops standing in for Ctrl once you give it a job;
+- the left trigger stops standing in for Shift, which is the game's default and would keep it from registering as held; the left bumper stops standing in for Ctrl once you give it a job; and a button you chose to hold for combinations stands in for the key you chose;
 - the game's two mouse-click buttons for its stick pointer are set to the stick clicks (the game starts with RT and RB, and RT is a hotbar trigger);
-- the game's option that pins that pointer to the middle of the screen is switched off, if something had switched it on.
+- the game's option that pins that pointer to the middle of the screen is switched off, if something had switched it on;
+- only if you ask for it: the game stops bringing its pointer out by itself, and picks only enemies in front of you, as Gamepad UI mode does.
 
 It binds the D-pad, the face buttons and the triggers with override bindings. Those sit on top of your saved key bindings without changing them. A job you pick on the *Other buttons* page is a key binding of your own, like one made in the Key Bindings screen.
 
@@ -121,6 +126,8 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 - A Druid's left set and D-pad keep their form actions in the slots of the game's own action bar for that form, so what you drop on them in a form shows on that bar as well.
 - Stances and forms change the buttons on one page: page 1, unless the Gamepad options put the stance bar on another.
 - The game's controller slots have no place for the face buttons with no trigger held. One you turn into an action slot (which is what Y becomes with mouse mode off) shares its action with LT + RT + the same button on the page before.
+- A button you hold for combinations has no job of its own, and the buttons FreeControl uses itself (D-pad, face buttons, triggers, the two click buttons) cannot be the ones held. They can be the button a combination ends in.
+- Targeting is the game's own. *Gamepad UI enemy targeting* in the settings narrows the enemy the game picks for you to those in front of you, as that mode does; making it your target when you attack is something the game keeps for its own interface.
 - There is no vehicle or possess bar yet. Use the game's own bar for those.
 - Triggers are hold-to-select. There is no tap-to-toggle yet.
 

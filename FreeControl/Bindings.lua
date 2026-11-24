@@ -387,6 +387,15 @@ function Bindings:FindProblems()
 	if ns.Mouse:IsEnabled() and not ns.Mouse:GetBarButtonName() and not GetBindingKey(Bindings.MOUSE_COMMAND) then
 		problems[#problems + 1] = "No button brings the mouse pointer out. Click a no-trigger button on the bar and choose \"Mouse pointer on / off\", or give another button that job under Other buttons in the settings."
 	end
+	-- A button chosen on the Combinations page that cannot be held after all: FreeControl uses it
+	-- now, or it has been given a job of its own somewhere else.
+	for _, modifier in ipairs({ "Ctrl", "Alt", "Shift" }) do
+		local chosen = db.standIns[modifier]
+		if chosen and chosen ~= "none" and ns.CVars:GetCombinationButton(modifier) ~= chosen then
+			problems[#problems + 1] = ("%s was chosen to be held as %s, but FreeControl uses that button itself or it has a job of its own, so it is not held for combinations."):format(
+				Layout.GetKeyName(chosen), modifier)
+		end
+	end
 	-- With this on, the game pins the pointer to the middle of the screen instead of letting the
 	-- stick move it. CVars.lua turns it off; this says so if something turned it back on.
 	if GetCVar("GamePadCursorCentering") == "1" then

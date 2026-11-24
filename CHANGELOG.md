@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.8.0
+
+- New: button combinations. Two or three buttons pressed together can have a job of their own: LB + D-pad Up to target a party member, or LB + RB + D-pad Right to turn the page. They are made on the new Combinations page (under FreeControl in the settings, or `/fc combos`): click "Press one...", hold the first button and press the second, and give the combination a job from the menu. A combination can end in any button, FreeControl's D-pad and face buttons included. The button on its own goes on doing what it did.
+- How that works: the game can treat a controller button as the Ctrl, Alt or Shift key while it is held, and out of the box the left bumper is its Ctrl. A combination is then an ordinary key binding of yours, which the game's Key Bindings screen spells CTRL-, ALT- or SHIFT- and the button, so anything that screen offers can go on one too. The game has no screen for choosing the buttons to hold, so the Combinations page has three choices for that (`/fc hold ctrl | alt | shift <BUTTON>` from chat). Pick RB as Alt, say, and LB + RB + another button is a combination of three.
+- Your choice of buttons to hold is in force while FreeControl is active, and the game's own setting is put back when you log out or switch it off. A button that is held has no job of its own, and the buttons FreeControl uses itself cannot be held.
+- New jobs in the menus: Target party member 1 to 4, and Ping. Ping is the game's own Ping key: a press pings, and holding it brings up the wheel.
+- New: the game can be told not to bring its mouse pointer out by itself. Whatever FreeControl's mouse mode is set to, the game brings its stick pointer out when a window opens, and to aim a spell that is cast on the ground. Untick "The game may bring the pointer out" on the Mouse mode page (`/fc gamepointer off`) and it stops doing that while FreeControl is active. With Mouse mode unticked as well, nothing on the controller takes the mouse pointer, which is the setup for playing with a real mouse beside the controller. Switching Mouse mode off now says in chat that this second switch exists.
+- New: "Gamepad UI enemy targeting" on the settings page (`/fc front on`). The game picks an enemy for you by where you face, and out of the box it can be one anywhere around you. Gamepad UI mode narrows that to the enemies in front of you, and with this ticked FreeControl does the same. It is off unless you tick it. What Gamepad UI mode also does, and an addon is not allowed to, is make that enemy your target the moment you attack.
+- On the settings page, "Other buttons..." has moved to the bottom of the left column to make room.
+- `/fc status` lists the buttons that are held for combinations and the combinations that have a job, and shows both of the game's pointer settings. If a combination does nothing for you, those are the lines to send.
+
 ## v1.7.0
 
 - New: pages can be switched off. Untick "Pages" on the settings page, or type `/fc pages off`, and the bar stays on one page: the one picked under Page. The page selector goes, and a button you gave a page arrow does nothing. A stance or form then changes the buttons of that page, whichever it is.

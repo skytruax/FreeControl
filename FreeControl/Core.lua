@@ -34,6 +34,7 @@ local DEFAULTS = {
 	manageGamepad = true,  -- turn controller input (GamePadEnable) on while FreeControl is active
 	softInteract = true,   -- make the Interact command pick nearby loot, NPCs and objects by itself
 	interactReach = true,  -- use the Gamepad UI's wider interact arc and range
+	frontTargeting = false, -- the enemy the game picks for you has to be in front of you, as in Gamepad UI mode
 	keys = { "PADDLEFT", "PADDUP", "PADDRIGHT", "PADDDOWN", "PAD3", "PAD4", "PAD2", "PAD1" },
 	modKeys = { "PADLTRIGGER", "PADRTRIGGER" },
 	-- What the eight buttons do while no trigger is held:
@@ -46,6 +47,7 @@ local DEFAULTS = {
 	-- button name, or "game" to leave that one to the game's own setting.
 	mouseMode = true,      -- a button on the bar brings the mouse pointer out; off, that button is an action slot
 	mouseIndex = 6,        -- the no-trigger button that was the mouse button when mouse mode was switched off
+	gamePointer = true,    -- the game may bring its own mouse pointer out (a window opens, a spell is aimed); off, it is told not to
 	clickLeft = "PADLSTICK",
 	clickRight = "PADRSTICK",
 	cursorSpeed = 1,       -- how fast the stick moves the mouse cursor, as a multiple of the player's own setting
@@ -54,6 +56,7 @@ local DEFAULTS = {
 	stanceNoteShown = false, -- the chat line telling a Druid which buttons change with the form
 	formNotes = {},        -- per character: has been told about a shapeshift on a button that changes with the form
 	plainKeys = {},        -- buttons given a job on the Other buttons page: they are no modifier stand-ins while we are active
+	standIns = {},         -- [Ctrl | Alt | Shift] = the button chosen to be held for combinations, or "none"; one not in here is as the game has it
 	cvarBackup = {},       -- the player's own value of every console variable we changed
 	cvarApplied = {},      -- the value we changed it to
 	introShown = false,
@@ -148,8 +151,12 @@ local function Sanitize(db)
 	end
 	if type(db.mouseStep) ~= "number" then Reset("mouseStep") end
 	if db.mouseNews ~= nil and not IsRole(db.mouseNews) then db.mouseNews = nil end
-	for _, key in ipairs({ "pages", "showPager", "mouseMode" }) do
+	for _, key in ipairs({ "pages", "showPager", "mouseMode", "gamePointer", "frontTargeting" }) do
 		if type(db[key]) ~= "boolean" then Reset(key) end
+	end
+	for modifier, button in pairs(db.standIns) do
+		local isName = type(button) == "string" and button ~= "" and (button == "none" or button == button:upper())
+		if not IsOneOf(modifier, "Ctrl", "Alt", "Shift") or not isName then db.standIns[modifier] = nil end
 	end
 	if not IsOneOf(db.mouseIndex, 1, 2, 3, 4, 5, 6, 7, 8) then Reset("mouseIndex") end
 	-- With mouse mode off no button is the mouse button: one that still says so is an action slot.
@@ -399,6 +406,11 @@ function ns.SetMouseMode(on)
 			if Layout.IsCursorRole(db.roles[index]) then
 				db.roles[index], db.mouseIndex = "action", index
 			end
+		end
+		-- This setting does not reach the pointer the game brings out by itself. A player who wants
+		-- no stick pointer at all is told where the switch for that one is.
+		if db.gamePointer and ns.Mouse:IsAvailable() then
+			ns.Print("Mouse mode is off. The game still brings its own pointer out when a window opens: to stop that too, untick \"The game may bring the pointer out\" on the Mouse mode page, or type /fc gamepointer off.")
 		end
 	end
 	return ns.RequestRefresh()

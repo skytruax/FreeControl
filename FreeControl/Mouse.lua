@@ -29,8 +29,11 @@ local Layout = ns.Layout
 --
 -- The pointer comes out when the player presses the mouse button on the bar (Y unless changed;
 -- FreeControl binds it, there is nothing to set up in the Key Bindings screen). The game also
--- brings it out and puts it away by itself (a window opens; the character jumps). It raises no
--- event for that, so its state is looked at once a frame and the rest follows.
+-- brings it out and puts it away by itself (a window opens, a spell is aimed at the ground; the
+-- character jumps). It raises no event for that, so its state is looked at once a frame and the
+-- rest follows. Both ways of bringing it out can be switched off: the first with the mouse mode
+-- setting, the second by telling the game not to (the gamePointer setting, CVars.lua), which
+-- together leave the pointer to a real mouse.
 local Mouse = {}
 ns.Mouse = Mouse
 
@@ -301,12 +304,15 @@ function Mouse:Describe()
 	if not self:IsEnabled() then
 		lines[#lines + 1] = "Mouse mode is switched off: no button of FreeControl's brings the pointer out. The two click buttons are still looked after, for when the game brings it out itself."
 	end
+	if not ns.db.gamePointer then
+		lines[#lines + 1] = "The game is told not to bring the pointer out by itself (GamePadCursorAutoEnable and GamePadCursorForTargeting are set to 0)."
+	end
 	lines[#lines + 1] = ("The game says: stick steers the pointer: %s. Controller steers the camera: %s. Using the controller: %s. Using the mouse: %s."):format(
 		YesNo(self:IsOut()), YesNo(Ask(IsGamePadFreelookEnabled)), YesNo(Ask(IsUsingGamepad)), YesNo(Ask(IsUsingMouse)))
 	lines[#lines + 1] = ("Since login: mouse button pressed %d times, pointer asked for %d times, came out %d, needed a second request %d, never came %d. Last: %s."):format(
 		history.presses, history.asked, history.came, history.retried, history.refused, history.last or "nothing yet")
 	local settings = {}
-	for _, name in ipairs({ "GamePadCursorAutoEnable", "GamePadCursorAutoDisableSticks", "GamePadCursorAutoDisableJump", "GamePadCursorCentering", "GamePadCursorCenteredEmulation" }) do
+	for _, name in ipairs({ "GamePadCursorAutoEnable", "GamePadCursorForTargeting", "GamePadCursorAutoDisableSticks", "GamePadCursorAutoDisableJump", "GamePadCursorCentering", "GamePadCursorCenteredEmulation" }) do
 		settings[#settings + 1] = ("%s = %s"):format(name, tostring(GetCVar(name)))
 	end
 	lines[#lines + 1] = "The game's own pointer settings: " .. table.concat(settings, ", ")

@@ -45,7 +45,8 @@ local M = {
 		GamePadCursorLeftClick = "PADRTRIGGER", GamePadCursorRightClick = "PADRSHOULDER",
 		GamePadCursorSpeedStart = "0.1", GamePadCursorSpeedAccel = "2", GamePadCursorSpeedMax = "1",
 		GamePadCursorCentering = "0", GamePadCursorCenteredEmulation = "1", GamePadCursorAutoEnable = "1",
-		GamePadCursorAutoDisableSticks = "2", GamePadCursorAutoDisableJump = "1",
+		GamePadCursorAutoDisableSticks = "2", GamePadCursorAutoDisableJump = "1", GamePadCursorForTargeting = "1",
+		SoftTargetEnemy = "1", SoftTargetEnemyArc = "2", SoftTargetForce = "1",
 		GamePadEmulateShift = "PADLTRIGGER", GamePadEmulateCtrl = "PADLSHOULDER", GamePadEmulateAlt = "none",
 	},
 	floatCVars = { SoftTargetInteractRange = true }, -- the client stores these as "20.000000"
@@ -57,6 +58,7 @@ local M = {
 	savedBindings = {},    -- SaveBindings calls: the binding set each one saved
 	refuseBinding = false, -- a client that will not make a binding
 	held = {},             -- [key] = the binding it was pressed with
+	mods = {},             -- [ALT | CTRL | SHIFT] = the key or controller button holding that modifier down
 	frames = {},           -- [name] = frame
 	printed = {},
 	errors = {},           -- UIErrorsFrame messages
@@ -649,12 +651,33 @@ function M.MouseClick(frame, button)
 	M.Click(frame, button or "LeftButton", false)
 end
 
--- A button standing in for Shift, Ctrl or Alt does not report a press while it is held.
+-- A button standing in for Shift, Ctrl or Alt does not report a press while it is held: it is
+-- that modifier instead, as the key on the keyboard would be. Returns the modifier, or nil.
+-- (The client does let a quick tap of such a button through as a press of its own, inside
+-- GamePadEmulateTapWindowMs. This model never does, which is the worse case for a button that
+-- was given a job: nothing here may rely on the tap.)
+local STAND_INS = { { "GamePadEmulateAlt", "ALT" }, { "GamePadEmulateCtrl", "CTRL" }, { "GamePadEmulateShift", "SHIFT" } }
+local KEYBOARD_MODIFIERS = { LALT = "ALT", RALT = "ALT", LCTRL = "CTRL", RCTRL = "CTRL", LSHIFT = "SHIFT", RSHIFT = "SHIFT" }
+
 local function isModifierStandIn(key)
-	for _, name in ipairs({ "GamePadEmulateShift", "GamePadEmulateCtrl", "GamePadEmulateAlt" }) do
-		if M.cvars[name] == key then return true end
+	for _, entry in ipairs(STAND_INS) do
+		if M.cvars[entry[1]] == key then return entry[2] end
 	end
-	return false
+	return nil
+end
+
+function IsAltKeyDown() return M.mods.ALT ~= nil end
+function IsControlKeyDown() return M.mods.CTRL ~= nil end
+function IsShiftKeyDown() return M.mods.SHIFT ~= nil end
+
+-- The name a key has in a binding with the modifiers held right now: "ALT-CTRL-PADDRIGHT".
+local function chordFor(key)
+	local parts = {}
+	for _, modifier in ipairs({ "ALT", "CTRL", "SHIFT" }) do
+		if M.mods[modifier] then parts[#parts + 1] = modifier end
+	end
+	parts[#parts + 1] = key
+	return table.concat(parts, "-")
 end
 
 -- The client's own mouse emulation, as ConsolePort describes it to its users (not confirmed in
@@ -676,8 +699,8 @@ function M.PointerVisible() return M.cursorControl and not M.freeLook end
 function M.GameShowsPointer() M.freeLook = false; M.cursorControl = true end
 function M.GameHidesPointer() M.cursorControl = false end
 
--- What a key does right now: an override binding if there is one, else the player's own.
-local function bindingFor(key)
+-- What a key by that exact name does: an override binding if there is one, else the player's own.
+local function exactBinding(key)
 	local binding = M.bindings[key]
 	if binding then return binding end
 	local command = M.userBindings and M.userBindings[key]
@@ -687,8 +710,38 @@ local function bindingFor(key)
 	return { kind = "cmd", target = command }
 end
 
+-- What a key does right now. With a modifier held the combination is looked for first, among
+-- the overrides and the player's own bindings alike, and only a combination that has no binding
+-- falls back to the key alone. That order is how the client is known to behave on a keyboard:
+-- Shift + 2 turns the action bar page (a binding of the player's on SHIFT-2) under addons that
+-- hold an override binding on 2. It has not been seen with a controller's stand-in buttons.
+local function bindingFor(key)
+	local chord = chordFor(key)
+	return (chord ~= key and exactBinding(chord)) or exactBinding(key)
+end
+
 function M.KeyDown(key)
 	M.down[key] = true
+	-- A controller button standing in for a modifier is that modifier while it is held, and no
+	-- press of its own as far as bindings go. Whether a frame that is listening for input is told
+	-- of it is not known (the game's Key Bindings screen takes LB + D-pad as one combination, which
+	-- suggests it is not). Here the frame is told, which is the harder case for a page that waits
+	-- for a combination: it has to know a held button when it sees one.
+	local standIn = isModifierStandIn(key)
+	if standIn then
+		if not M.cursorControl then M.freeLook = true end
+		M.mods[standIn] = key
+		M.held[key] = false
+		for _, frame in ipairs(M.all) do
+			local fn = frame.__gamepad and frame:IsVisible() and frame.__scripts.OnGamePadButtonDown
+			if fn then
+				fn(frame, key)
+				break
+			end
+		end
+		return "modifier"
+	end
+	if KEYBOARD_MODIFIERS[key] then M.mods[KEYBOARD_MODIFIERS[key]] = key end
 	-- A frame listening for input takes the press, and no binding runs.
 	for _, frame in ipairs(M.all) do
 		local pad = key:find("^PAD") ~= nil
@@ -703,10 +756,6 @@ function M.KeyDown(key)
 	end
 	-- Using the controller puts the client in camera mode, unless a stick is steering the pointer.
 	if key:find("^PAD") and not M.cursorControl then M.freeLook = true end
-	if isModifierStandIn(key) then
-		M.held[key] = false
-		return "modifier"
-	end
 	local mouseButton = clickButton(key)
 	if mouseButton then
 		M.held[key] = { kind = "mouse", target = mouseButton }
@@ -734,6 +783,9 @@ end
 -- The release goes to whatever the key was bound to when it was pressed.
 function M.KeyUp(key)
 	M.down[key] = nil
+	for modifier, holder in pairs(M.mods) do
+		if holder == key then M.mods[modifier] = nil end
+	end
 	local binding = M.held[key]
 	M.held[key] = nil
 	if not binding then return "unbound" end
@@ -841,6 +893,32 @@ function GetBindingKey(command)
 	end
 	table.sort(keys)
 	return unpack(keys)
+end
+
+-- The commands the Key Bindings screen lists, each with the keys bound to it: the game's own
+-- commands, and those an addon's Bindings.xml adds. A binding to anything else (a click on a
+-- frame the addon made, a spell, a macro) is as much the player's own, but is not in this list.
+local function listedCommands()
+	local seen, list = {}, {}
+	local function add(command)
+		if not seen[command] then
+			seen[command] = true
+			list[#list + 1] = command
+		end
+	end
+	for name in ReadFile("FreeControl/Bindings.xml"):gmatch('<Binding name="([^"]+)"') do add(name) end
+	for _, command in pairs(M.userBindings or {}) do
+		if not command:find(" ") then add(command) end
+	end
+	table.sort(list)
+	return list
+end
+
+function GetNumBindings() return #listedCommands() end
+function GetBinding(index)
+	local command = listedCommands()[index]
+	if not command then return nil end
+	return command, "category", GetBindingKey(command)
 end
 
 -- One of the player's own bindings is made or (with no command) taken away. Nothing is kept

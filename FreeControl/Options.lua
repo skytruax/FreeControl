@@ -1,8 +1,8 @@
 local _, ns = ...
 local Layout = ns.Layout
 
--- The settings pages (Options > AddOns > FreeControl, with Mouse mode and Other buttons under
--- it), the /fc command, and the menu for choosing what a no-trigger button does.
+-- The settings pages (Options > AddOns > FreeControl, with Mouse mode, Other buttons and
+-- Combinations under it), the /fc command, and the menu for choosing what a no-trigger button does.
 local Options = {}
 ns.Options = Options
 
@@ -368,24 +368,25 @@ local function Build(panel)
 	y = Choice(panel, left, y, "Stance sets", StanceTooltip, STANCE_SETS,
 		function() return ns.db.stanceSet end, function(value) Set("stanceSet", value) end)
 
-	y = Heading(panel, "Mouse mode", left, y - 8)
+	y = Heading(panel, "Mouse mode and other buttons", left, y - 8)
 	y = Check(panel, left, y, "Mouse mode", MouseModeTip, "mouseMode", ns.SetMouseMode)
-	y = Action(panel, left, y, "Clicks and speed...", "Opens the Mouse mode page: which two buttons click while the mouse pointer is out, and how fast the stick moves it.", function()
+	y = Action(panel, left, y, "Clicks and speed...", "Opens the Mouse mode page: which two buttons click while the mouse pointer is out, how fast the stick moves it, and whether the game may bring the pointer out by itself.", function()
 		Options:OpenMouse()
 	end, "Mouse pointer")
+	y = Action(panel, left, y, "Other buttons...", "The bumpers, stick clicks, Start, Back and paddles are ordinary buttons: FreeControl does not use them, and each does whatever you bind it to. This opens the page where you give them jobs, such as turning the bar's page. Buttons pressed together can have a job as well: that is the Combinations page.", function()
+		Options:OpenButtons()
+	end, "Bumpers, paddles")
 
 	y = -78
 	y = Heading(panel, "Controller", right, y)
 	y = Check(panel, right, y, "Turn on controller input", "Sets GamePadEnable while FreeControl is active so the game reads your controller. This is not Gamepad UI mode. Untick it if a tool such as Steam Input already turns your controller into key presses.", "manageGamepad")
 	y = Check(panel, right, y, "Interact finds things by itself", "The Interact command picks the nearest corpse to loot, person to talk to or object to use, as in Gamepad UI mode (Options > Controls > Enable Interact Key).", "softInteract")
 	y = Check(panel, right, y, "Gamepad UI interact reach", "Uses the wider arc and 20 yard range that Gamepad UI mode uses for Interact.", "interactReach")
+	y = Check(panel, right, y, "Gamepad UI enemy targeting", "The game picks an enemy for you by where you face, and out of the box it can be one anywhere around you. Gamepad UI mode narrows that to the enemies in front of you. Tick this to do the same (console variable SoftTargetEnemyArc 1; your own value is put back when FreeControl is switched off). What Gamepad UI mode also does and an addon is not allowed to: make that enemy your target the moment you attack.", "frontTargeting")
 	y = Choice(panel, right, y, "Left trigger", "The button that selects the left set.", TRIGGER_KEYS,
 		function() return ns.db.modKeys[1] end, function(value) SetIndexed("modKeys", 1, value) end)
 	y = Choice(panel, right, y, "Right trigger", "The button that selects the right set.", TRIGGER_KEYS,
 		function() return ns.db.modKeys[2] end, function(value) SetIndexed("modKeys", 2, value) end)
-	y = Action(panel, right, y, "Other buttons...", "The bumpers, stick clicks, Start, Back and paddles are ordinary buttons: FreeControl does not use them, and each does whatever you bind it to. This opens the page where you give them jobs, such as turning the bar's page.", function()
-		Options:OpenButtons()
-	end, "Bumpers, paddles")
 
 	y = Heading(panel, "With no trigger held", right, y - 8)
 	for index = 1, 8 do
@@ -408,8 +409,25 @@ end
 -- missing, so this page lists them with what each one does and offers the common jobs in a
 -- menu. Picking one sets a real key binding, the same one the Key Bindings screen would set.
 
+-- A button's name, or a combination's: "LB + RB + D-pad Right" for ALT-CTRL-PADDRIGHT, each
+-- modifier by the button that is held for it, or by its own name where no button is.
+local MODIFIER_NAMES = { ALT = "Alt", CTRL = "Ctrl", SHIFT = "Shift" }
+
+local function KeyName(key)
+	local modifiers, button = Layout.SplitChord(key)
+	local parts = {}
+	for index, modifier in ipairs(modifiers) do
+		local held = ns.CVars:GetCombinationButton(MODIFIER_NAMES[modifier])
+		parts[index] = held and Layout.GetKeyName(held) or MODIFIER_NAMES[modifier]
+	end
+	table.sort(parts) -- LB before RB, whichever of them is Ctrl
+	parts[#parts + 1] = Layout.GetKeyName(button)
+	return table.concat(parts, " + ")
+end
+
 -- What FreeControl itself uses a button for, in a few words, or nil for a button that is the
--- player's own.
+-- player's own. A combination is always the player's own, whatever button it ends in (the game
+-- looks for the combination's binding before the button's), and its name is never a button's.
 local function OwnUse(key)
 	local db = ns.db
 	if key == db.modKeys[1] then
@@ -492,8 +510,10 @@ local function Bind(key, command)
 		ns.Print("Key bindings cannot be changed in combat.")
 		return false
 	end
-	local name = Layout.GetKeyName(key)
-	local modifier = ns.CVars:GetStandIn(key)
+	local name = KeyName(key)
+	local isChord = Layout.IsChord(key)
+	local modifier = ns.CVars:GetStandIn(key) -- none for a combination
+	local chosen = modifier and ns.db.standIns[modifier] == key
 	if command == "" then
 		SetBinding(key, nil)
 	elseif not SetBinding(key, command) then
@@ -502,12 +522,15 @@ local function Bind(key, command)
 	end
 	SaveBindings(GetCurrentBindingSet())
 	-- A button with a job is a plain button; one without is whatever the game makes of it.
-	ns.db.plainKeys[key] = command ~= "" or nil
+	if not isChord then
+		ns.db.plainKeys[key] = command ~= "" or nil
+	end
 	if command ~= "" then
 		ns.Print(("%s now does this: %s.%s"):format(name, LabelFor(JobChoices(key), command),
 			modifier and (" It no longer stands in for the %s key while FreeControl is active."):format(modifier) or ""))
 	elseif modifier then
-		ns.Print(("%s has no job of its own now, and stands in for the %s key again, as the game has it set."):format(name, modifier))
+		ns.Print(("%s has no job of its own now, and stands in for the %s key again%s"):format(name, modifier,
+			chosen and ", as you chose on the Combinations page." or ", as the game has it set."))
 	else
 		ns.Print(("%s now does nothing."):format(name))
 	end
@@ -528,6 +551,9 @@ local function KeyRow(panel, x, y, getKey)
 	local function Tooltip()
 		local key = getKey()
 		local text = "What this button does. Pick a job from the list, or Something else to open the game's Key Bindings screen, where it can be given any command, spell or macro."
+		if Layout.IsChord(key) then
+			text = ("What these buttons do when they are pressed together. Pick a job from the list, or Something else to open the game's Key Bindings screen, where the combination is spelled %s."):format(key)
+		end
 		if key == ns.Mouse:GetManagedKey(1) or key == ns.Mouse:GetManagedKey(2) then
 			text = text .. (" While the mouse pointer is out it is the %s mouse button instead."):format(key == ns.Mouse:GetManagedKey(1) and "left" or "right")
 		end
@@ -539,7 +565,7 @@ local function KeyRow(panel, x, y, getKey)
 	end
 	local function Name()
 		local key = getKey()
-		return key and Layout.GetKeyName(key) or ""
+		return key and KeyName(key) or ""
 	end
 	local nextY, button, label = Choice(panel, x, y, Name, Tooltip, function() return JobChoices(getKey()) end, Job,
 		function(command) Bind(getKey(), command) end, 230)
@@ -547,7 +573,7 @@ local function KeyRow(panel, x, y, getKey)
 	button:SetScript("OnClick", function(self)
 		local own = OwnUse(getKey())
 		if own then
-			ns.Print(("%s is %s, so a key binding on it would never be reached. The main page and /fc key change which buttons FreeControl uses."):format(Layout.GetKeyName(getKey()), own))
+			ns.Print(("%s is %s, so a key binding on it would never be reached. The main page and /fc key change which buttons FreeControl uses; held together with another button it can have a job, on the Combinations page."):format(Layout.GetKeyName(getKey()), own))
 			return
 		end
 		Choose(self, JobChoices(getKey()), Job, function(command) Bind(getKey(), command) end)
@@ -588,15 +614,19 @@ local function CreateCatcher(panel, onKey)
 	shade:SetColorTexture(0, 0, 0, 0.85)
 	local text = catcher:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	text:SetPoint("CENTER")
-	text:SetText("Press the button or key you want to give a job.\n\nEscape or a click cancels.")
+	text:SetText("Press the button or key you want to give a job.\nFor a combination, hold the first button and press the second.\n\nEscape or a click cancels.")
 
+	-- A button pressed while Ctrl, Alt or Shift is held (or a controller button that stands in for
+	-- one of them) is a combination, named as the game names it: CTRL-PADDRIGHT. The key or button
+	-- that is held is waited through. Whether the game reports a held stand-in button here at all
+	-- is not known, so one that is reported is passed over like the Shift key itself.
 	local function Caught(self, key)
-		if IGNORED_KEYS[key] then
+		if IGNORED_KEYS[key] or ns.CVars:IsStandInNow(key) then
 			return
 		end
 		self:Hide()
 		if key ~= "ESCAPE" then
-			onKey(key)
+			onKey(Layout.JoinChord({ ALT = IsAltKeyDown(), CTRL = IsControlKeyDown(), SHIFT = IsShiftKeyDown() }, key))
 		end
 	end
 	catcher:SetScript("OnKeyDown", Caught)
@@ -639,9 +669,217 @@ local function BuildButtons(panel)
 	y = KeyRow(panel, left, y, function() return Options.caughtKey end)
 
 	y = Heading(panel, "Everything else", left, y - 8)
+	y = Action(panel, left, y, "Combinations...", "Two or three buttons pressed together can have a job of their own: LB + D-pad Up, or LB + RB + D-pad Right. This opens the page where you pick the buttons to hold and give combinations their jobs.", function()
+		Options:OpenCombos()
+	end, "Buttons together")
 	Action(panel, left, y, "Open Key Bindings", "The game's own Key Bindings screen. Anything can be bound there, to any button: FreeControl's two page buttons are listed under FreeControl.", function()
 		Options:OpenKeyBindings()
 	end, "Key Bindings")
+end
+
+---------------------------------------------------------------------------
+-- The Combinations page
+---------------------------------------------------------------------------
+-- Two or three buttons pressed together can be a button of their own. The game does it with the
+-- keyboard's modifier keys: a controller button can stand in for Ctrl, Alt or Shift (CVars.lua),
+-- and a button pressed while one is held is a combination with a key binding of its own,
+-- CTRL-PADDRIGHT for LB + D-pad Right. The game looks for the combination's binding before the
+-- button's own, so FreeControl's buttons can end a combination too: its D-pad and face buttons
+-- are only bound as themselves. This page picks the buttons to hold, hears a combination and
+-- gives it a job, and lists the combinations that have one. The game has no screen for the
+-- first part; the jobs are ordinary key bindings and show in its Key Bindings screen.
+local HOLD_MODIFIERS = { "Ctrl", "Alt", "Shift" }
+local COMBO_ROWS = 10
+
+-- The buttons that can be held: the other buttons, less any FreeControl uses itself.
+local function HoldChoices(modifier)
+	local choices = { { "none", "No button" } }
+	local current = ns.CVars:GetCombinationButton(modifier)
+	local listed = current == nil
+	for _, key in ipairs(Layout.OTHER_KEYS) do
+		if not OwnUse(key) and key ~= ns.Mouse:GetManagedKey(1) and key ~= ns.Mouse:GetManagedKey(2) then
+			choices[#choices + 1] = { key, Layout.GetKeyName(key) }
+			listed = listed or key == current
+		end
+	end
+	if not listed then
+		choices[#choices + 1] = { current, Layout.GetKeyName(current) } -- one set by hand, with /console
+	end
+	return choices
+end
+
+-- Makes a button the one that is held as Ctrl, Alt or Shift, or (with "none") leaves that
+-- modifier without a button. Returns true when it was done.
+local function SetHold(modifier, key)
+	if InCombatLockdown() then
+		ns.Print("Combination buttons cannot be changed in combat.")
+		Options:Sync()
+		return false
+	end
+	local db = ns.db
+	if key ~= "none" then
+		local name = Layout.GetKeyName(key)
+		if not key:find("^PAD") then
+			ns.Print(("%s is not a button of the controller. They go by the game's names for them, such as PADRSHOULDER or PADPADDLE1; none is for no button."):format(key))
+			Options:Sync()
+			return false
+		end
+		if OwnUse(key) or key == ns.Mouse:GetManagedKey(1) or key == ns.Mouse:GetManagedKey(2) then
+			ns.Print(("%s is one of the buttons FreeControl uses itself, so it cannot be held for combinations."):format(name))
+			Options:Sync()
+			return false
+		end
+		-- A button that is held has no job of its own: the game would only run it on a quick tap.
+		local job = GetBindingAction(key)
+		if job ~= "" then
+			local label = LabelFor(JobChoices(key), job)
+			SetBinding(key, nil)
+			SaveBindings(GetCurrentBindingSet())
+			ns.Print(("%s no longer does this: %s. A button that is held for combinations has no job of its own."):format(name, label))
+		end
+		db.plainKeys[key] = nil
+		for _, other in ipairs(HOLD_MODIFIERS) do
+			if other ~= modifier and db.standIns[other] == key then
+				db.standIns[other] = nil
+			end
+		end
+		ns.Print(("%s is the button to hold as %s now: hold it and press another button, and the two together are a combination."):format(name, modifier))
+	else
+		ns.Print(("No button is held as %s now."):format(modifier))
+	end
+	db.standIns[modifier] = key
+	if ns.IsActive() then
+		ns.CVars:Apply()
+	end
+	Options:Sync()
+	return true
+end
+Options.SetHold = SetHold
+
+-- Every combination that ends in a controller button and has a job, in the game's order.
+local function BoundCombos()
+	local seen, list = {}, {}
+	local function Add(...)
+		for index = 1, select("#", ...) do
+			local key = select(index, ...)
+			if key and not seen[key] and Layout.IsPadChord(key) then
+				seen[key] = true
+				list[#list + 1] = key
+			end
+		end
+	end
+	-- GetBinding gives a command, its category and then its keys. Everything after the command is
+	-- looked at, so that nothing hangs on where the keys begin: a category is no combination.
+	for index = 1, GetNumBindings() do
+		Add(select(2, GetBinding(index)))
+	end
+	Add(GetBindingKey(ns.Bindings.MOUSE_COMMAND)) -- FreeControl's own, and not in the game's list
+	table.sort(list)
+	return list
+end
+
+-- The combinations the page lists: those, and before them the one that was just pressed here,
+-- with or without a job yet. Worked out once for each time the page is brought up to date.
+local comboCache
+
+local function Combos()
+	if comboCache then
+		return comboCache
+	end
+	local list = BoundCombos()
+	local caught = Options.caughtCombo
+	if caught then
+		for index, key in ipairs(list) do
+			if key == caught then
+				table.remove(list, index)
+				break
+			end
+		end
+		table.insert(list, 1, caught)
+	end
+	comboCache = list
+	return list
+end
+
+-- The names of the buttons that are held for combinations right now: "LB or RB".
+local function HeldNames()
+	local names = {}
+	for _, modifier in ipairs(HOLD_MODIFIERS) do
+		local button = ns.CVars:GetCombinationButton(modifier)
+		if button then
+			names[#names + 1] = Layout.GetKeyName(button)
+		end
+	end
+	return #names > 0 and table.concat(names, " or ") or nil
+end
+
+local function BuildCombos(panel)
+	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalHuge")
+	title:SetPoint("TOPLEFT", 16, -14)
+	title:SetText("Combinations")
+
+	local note = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", 18, -40)
+	note:SetPoint("RIGHT", -20, 0)
+	note:SetJustifyH("LEFT")
+	note:SetText("Buttons pressed together can be a button of their own, with a job of its own: LB + D-pad Up, or LB + RB + D-pad Right. One button is held and the other pressed. The game does this by letting a button stand in for the Ctrl, Alt or Shift key of a keyboard, so a combination is an ordinary key binding and shows in the game's Key Bindings screen, spelled CTRL-, ALT- or SHIFT- and the button.")
+
+	local left = 16
+	local y = -90
+	y = Heading(panel, "Buttons to hold", left, y)
+	local tips = {
+		Ctrl = "The button that counts as the Ctrl key while it is held. The game sets the left bumper for this itself.",
+		Alt = "The button that counts as the Alt key while it is held. Held while you cast, Alt is also the game's self-cast key unless you changed that under Options > Combat.",
+		Shift = "The button that counts as the Shift key while it is held. The game sets the left trigger for this itself, which FreeControl undoes while it is active: a trigger has to stay a trigger.",
+	}
+	for _, modifier in ipairs(HOLD_MODIFIERS) do
+		y = Choice(panel, left, y, "Hold as " .. modifier, tips[modifier] .. " A button that is held this way has no job of its own, and the buttons FreeControl uses itself (D-pad, face buttons, triggers and the two click buttons) cannot be held. Your choice is in force while FreeControl is active, and the game's own setting is put back when it is not.",
+			function() return HoldChoices(modifier) end,
+			function() return ns.CVars:GetCombinationButton(modifier) or "none" end,
+			function(value) SetHold(modifier, value) end)
+	end
+
+	y = Heading(panel, "Combinations", left, y - 8)
+	local catcher = CreateCatcher(panel, function(key)
+		local held = HeldNames()
+		if not Layout.IsChord(key) then
+			ns.Print(("That was %s on its own. %s"):format(Layout.GetKeyName(key),
+				held and ("Hold %s and press another button with it."):format(held) or "No button is set to be held yet: pick one above."))
+			return
+		elseif not Layout.IsPadChord(key) then
+			ns.Print("That one ends in a key of the keyboard. This page is for the controller's buttons: the game's Key Bindings screen takes any combination of keys.")
+			return
+		end
+		Options.caughtCombo = key
+		Options:Sync()
+	end)
+	Options.comboCatcher = catcher
+	local press
+	y, press = Action(panel, left, y, "Press one...", "Click this, then hold the first button and press the second. The combination appears below with its job. A combination can end in any button, FreeControl's D-pad and face buttons included.", function()
+		if InCombatLockdown() then
+			ns.Print("Key bindings cannot be changed in combat.")
+			return
+		end
+		catcher:Show()
+	end, "Find a combination")
+
+	local empty = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	empty:SetPoint("LEFT", press, "RIGHT", 10, 0)
+	empty.Sync = function(self)
+		self:SetText(#Combos() == 0 and "No combination has a job yet." or "")
+	end
+	controls[#controls + 1] = empty
+	for index = 1, COMBO_ROWS do
+		y = KeyRow(panel, left, y, function() return Combos()[index] end)
+	end
+	local more = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	more:SetPoint("TOPLEFT", left + 4, y - 6)
+	more.Sync = function(self)
+		local hidden = #Combos() - COMBO_ROWS
+		self:SetText(hidden > 0 and ("%d more are not shown here. The game's Key Bindings screen has them all."):format(hidden) or "")
+	end
+	controls[#controls + 1] = more
+	Options.comboNotes = { empty = empty, more = more }
 end
 
 ---------------------------------------------------------------------------
@@ -652,11 +890,18 @@ local function MouseNote()
 	if not ns.Mouse:IsAvailable() then
 		return "This client has no controller mouse pointer, so there is no mouse mode here."
 	elseif not ns.Mouse:IsEnabled() then
-		return "Mouse mode is switched off. No button of FreeControl's brings the mouse pointer out, and the button that did is an ordinary action slot that holds whatever you drop on it. The game still brings its own pointer out when a window needs one, and the two buttons below are what click then."
+		local game = "The game still brings its own pointer out when a window needs one, and the two buttons below are what click then."
+		if not ns.db.gamePointer then
+			game = "The game is told not to bring its own pointer out either, so the controller leaves the mouse pointer to your mouse."
+		end
+		return "Mouse mode is switched off. No button of FreeControl's brings the mouse pointer out, and the button that did is an ordinary action slot that holds whatever you drop on it. " .. game
 	end
 	local button = ns.Mouse:GetBarButtonName()
 	local how = button and (button .. " brings the mouse pointer out and puts it away; jumping puts it away too. FreeControl binds it: there is nothing to set up.")
 		or "No button brings the mouse pointer out. Click a no-trigger button on the bar and choose \"Mouse pointer on / off\", or give a bumper or a paddle that job under Other buttons."
+	if not ns.db.gamePointer then
+		how = how .. " The game is told not to bring the pointer out by itself."
+	end
 	return how .. " While the pointer is out, the right stick moves it and the two buttons below click."
 end
 
@@ -679,6 +924,7 @@ local function BuildMouse(panel)
 	local y = -90
 	y = Heading(panel, "The pointer", left, y)
 	y = Check(panel, left, y, "Mouse mode", MouseModeTip, "mouseMode", ns.SetMouseMode)
+	y = Check(panel, left, y, "The game may bring the pointer out", "Whatever FreeControl does, the game brings its stick pointer out by itself: when a window opens, and to aim a spell that is cast on the ground. Untick this to stop that while FreeControl is active (console variables GamePadCursorAutoEnable and GamePadCursorForTargeting are set to 0, and your own values put back afterwards). With Mouse mode unticked as well, nothing on the controller takes the mouse pointer: for playing with a real mouse beside the controller.", "gamePointer")
 
 	y = Heading(panel, "While the pointer is out", left, y - 8)
 	y = Choice(panel, left, y, "Left click", "The left mouse button while the mouse pointer is out. Pick a button you can hold while your right thumb steers, such as a stick click or a bumper, so you can drag spells and items. The rest of the time the button does whatever you bound it to.", ClickChoices,
@@ -713,14 +959,17 @@ function Options:Create()
 	self.mouseCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.mousePanel, "Mouse mode")
 	self.buttonsPanel = CreatePanel(BuildButtons)
 	self.buttonsCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.buttonsPanel, "Other buttons")
+	self.combosPanel = CreatePanel(BuildCombos)
+	self.combosCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.combosPanel, "Combinations")
 end
 
 -- Brings the pages in line with the saved settings and the player's key bindings. A page that
 -- is not on screen is left for when it is opened: this is called on every setting change, and
 -- when the page is turned in a fight.
 function Options:Sync()
+	comboCache = nil -- bindings or the buttons that are held may have changed
 	local showing = false
-	for _, panel in ipairs({ self.panel, self.mousePanel, self.buttonsPanel }) do
+	for _, panel in ipairs({ self.panel, self.mousePanel, self.buttonsPanel, self.combosPanel }) do
 		showing = showing or panel:IsVisible()
 	end
 	if not showing then
@@ -741,6 +990,10 @@ end
 
 function Options:OpenMouse()
 	Settings.OpenToCategory(self.mouseCategory:GetID())
+end
+
+function Options:OpenCombos()
+	Settings.OpenToCategory(self.combosCategory:GetID())
 end
 
 -- Bindings changed somewhere else, in the Key Bindings screen for one: the rows follow.
@@ -796,6 +1049,15 @@ local function PrintStatus()
 		db.pages and "on" or "off", db.showPager and "shown" or "hidden", tostring(class), db.stanceSet, Layout.DescribeStance()))
 	ns.Print(("Page buttons: next page is on %s, previous page on %s."):format(
 		GetBindingKey(ns.Bindings.PAGE_COMMANDS.next) or "no button", GetBindingKey(ns.Bindings.PAGE_COMMANDS.prev) or "no button"))
+	local held = {}
+	for index, modifier in ipairs(HOLD_MODIFIERS) do
+		held[index] = ("%s %s"):format(modifier, ns.CVars:GetCombinationButton(modifier) or "none")
+	end
+	local combos = {}
+	for index, key in ipairs(BoundCombos()) do
+		combos[index] = ("%s = %s"):format(key, GetBindingAction(key))
+	end
+	ns.Print(("Held for combinations: %s. Combinations with a job: %s"):format(table.concat(held, ", "), #combos > 0 and table.concat(combos, ", ") or "none"))
 	local forms = DescribeForms()
 	if forms then
 		ns.Print(forms)
@@ -902,6 +1164,8 @@ local HELP = {
 	"/fc reset - put the bar back where it started",
 	"/fc page <1-3> - which controller-bar page to show (the page selector under the LT + RT set turns it too)",
 	"/fc buttons - give the bumpers, stick clicks, Start, Back and paddles their jobs",
+	"/fc combos - give buttons pressed together a job",
+	"/fc hold ctrl | alt | shift <BUTTON | none> - the button that is held for combinations, as that key",
 	"/fc slots gamepad | bars - where the slots are stored",
 	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
 	"/fc glow on | off - glow a button whose spell has procced or come free for a moment",
@@ -911,6 +1175,8 @@ local HELP = {
 	"/fc pages on | off - whether the page can be turned (off: the bar stays on the page of /fc page)",
 	"/fc pager on | off - show or hide the page selector under the LT + RT set",
 	"/fc mouse - bring the controller's mouse pointer out or put it away (on | off: mouse mode itself; off makes its button an action slot)",
+	"/fc gamepointer on | off - whether the game may bring the mouse pointer out by itself (off: for playing with a real mouse)",
+	"/fc front on | off - have the game pick only enemies in front of you, as Gamepad UI mode does",
 	"/fc click left | right <BUTTON> - the button that clicks while the mouse pointer is out (game = leave it to the game)",
 	"/fc pointer <50-300> - how fast the stick moves the mouse pointer, in percent",
 	"/fc status - what FreeControl sees, for bug reports",
@@ -936,6 +1202,8 @@ local function SetKey(which, key)
 	return true
 end
 
+local HOLD_NAMES = { ctrl = "Ctrl", alt = "Alt", shift = "Shift" }
+
 SLASH_FREECONTROL1 = "/fc"
 SLASH_FREECONTROL2 = "/freecontrol"
 SlashCmdList.FREECONTROL = function(message)
@@ -959,6 +1227,14 @@ SlashCmdList.FREECONTROL = function(message)
 		Set("page", tonumber(first))
 	elseif command == "buttons" then
 		Options:OpenButtons()
+	elseif command == "combos" then
+		Options:OpenCombos()
+	elseif command == "hold" and HOLD_NAMES[first] and second and second ~= "" then
+		SetHold(HOLD_NAMES[first], second == "none" and "none" or second:upper())
+	elseif command == "gamepointer" and ns.IsOneOf(first, "on", "off") then
+		Set("gamePointer", first == "on")
+	elseif command == "front" and ns.IsOneOf(first, "on", "off") then
+		Set("frontTargeting", first == "on")
 	elseif command == "slots" and ns.IsOneOf(first, "gamepad", "bars") then
 		Set("slotSource", first)
 	elseif command == "numbers" and ns.IsOneOf(first, "on", "off") then
