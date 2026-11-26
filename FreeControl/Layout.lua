@@ -201,6 +201,22 @@ Layout.CHAT_JOBS = {
 	{ "FREECONTROL_PHRASES", "Quick phrases", "Role-Phrases" },
 }
 
+-- Five more of FreeControl's own, for grouping up with whoever is targeted. Like the party jobs
+-- each is a secure button Bindings.lua makes, so they work in a fight:
+-- { the name a role is saved under, label, art file, the button's name after "FreeControlGroup" }.
+-- The first four run what a player would otherwise keep a macro for (Bindings.GROUP_MACROS); the
+-- last opens the game's own menu for the target, the one a right click on its portrait opens.
+Layout.GROUP_JOBS = {
+	{ "FREECONTROL_INVITE", "Invite target", "Role-Invite", "Invite" },
+	{ "FREECONTROL_REQUESTINVITE", "Ask to join target's group", "Role-Request", "Request" },
+	{ "FREECONTROL_INVITEORREQUEST", "Invite target, or ask to join", "Role-InviteOrRequest", "InviteOrRequest" },
+	{ "FREECONTROL_LEAVEPARTY", "Leave party", "Role-Leave", "Leave" },
+	{ "FREECONTROL_TARGETMENU", "Target's menu (inspect, mark, ...)", "Role-Menu", "Menu" },
+	-- Says yes to the game's question about a group: an invitation that came, or someone asking to
+	-- join yours. An ordinary button: it presses the question's own Accept.
+	{ "FREECONTROL_ACCEPTGROUP", "Accept group invite or request", "Role-Accept", "Accept" },
+}
+
 Layout.MORE_JOBS = {
 	{ "ASSISTTARGET", "Target your target's target", "Role-Assist" },
 	{ "TARGETPARTYMEMBER1", "Target party member 1", "Role-Party1" },
@@ -219,6 +235,8 @@ Layout.MORE_JOBS = {
 	{ "DISMOUNT", "Dismount", "Role-Dismount" },
 	{ "SITORSTAND", "Sit or stand", "Role-Sit" },
 	Layout.CHAT_JOBS[1], Layout.CHAT_JOBS[2],
+	Layout.GROUP_JOBS[1], Layout.GROUP_JOBS[2], Layout.GROUP_JOBS[3], Layout.GROUP_JOBS[4], Layout.GROUP_JOBS[5],
+	Layout.GROUP_JOBS[6],
 }
 
 ---------------------------------------------------------------------------
@@ -645,6 +663,24 @@ function Layout.GetGamepadSlotRange()
 	return gamepad.first, last
 end
 
+-- Every slot the bar keeps an action in with the controller's slots in use, as a list: the
+-- controller's own, and the twelve the no-trigger face buttons have (FACE_SLOTS, below). Empty
+-- when the client has no usable controller slots.
+function Layout.GetGamepadSlots()
+	local slots = {}
+	local first, last = Layout.GetGamepadSlotRange()
+	if not first then
+		return slots
+	end
+	for slot = first, last do
+		slots[#slots + 1] = slot
+	end
+	for slot = Layout.FACE_SLOTS.first, Layout.FACE_SLOTS.last do
+		slots[#slots + 1] = slot
+	end
+	return slots
+end
+
 -- The slot source in use: the saved choice, or the regular bars when this client has no usable
 -- controller slots.
 function Layout.GetSlotSource()
@@ -654,17 +690,23 @@ function Layout.GetSlotSource()
 	return "bars"
 end
 
+-- Blizzard gives the four face buttons with no trigger held no storage among the controller's
+-- slots. When the player turns one into an action slot (or switches mouse mode off, which makes
+-- the mouse button one) it needs a place of its own on each page: twelve slots. They are the
+-- second page of the game's main action bar, slots 13 to 24, four for each of the three pages.
+-- No button of FreeControl's shares them, so nothing put on one turns up on another.
+--
+-- Up to 1.8.0 such a button borrowed the LT + RT slot of the same button on the page before, and
+-- what was put on LT + RT + X on page 1 was on X on page 2 as well: one slot under two buttons,
+-- which a player who uses both has no way round. What those buttons held is still where it was,
+-- on the LT + RT buttons.
+local FACE_FIRST = 13
+Layout.FACE_SLOTS = { first = FACE_FIRST, last = FACE_FIRST + NUM_PAGES * 4 - 1 }
+
 local function GamepadSlot(first, page, set, index)
 	local unit = set * 8 + index
 	if unit >= 5 and unit <= 8 then
-		-- Blizzard gives the top face buttons no storage, so when the player turns one into an
-		-- action slot (or switches mouse mode off, which makes the mouse button one) it borrows
-		-- the bottom-bar face slot of the page before: page 3's on page 1, page 1's on page 2,
-		-- page 2's on page 3. So such a button has an action of its own on each page, and a page
-		-- never shows one slot on two buttons. Up to 1.6.0 page 2 borrowed page 3's as page 1
-		-- does, and the two pages showed the same action there.
-		local donor = (page + NUM_PAGES - 2) % NUM_PAGES + 1
-		return first + PAGE_SLOTS * (donor - 1) + 24 + (unit - 5)
+		return FACE_FIRST + (page - 1) * 4 + (unit - 5)
 	end
 	local offset = unit - 1
 	if unit > 8 then
