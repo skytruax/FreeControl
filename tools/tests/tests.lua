@@ -28,9 +28,8 @@ TRACKED = setmetatable({}, {
 
 -- Loads the addon the way the client does: every file in the .toc, in order, sharing one table.
 -- Most scenarios were written when the addon picked what changes with the stance by itself (the
--- "auto" choice) and when Main's jobs (Interact, the game menu, Jump) were on every page. They
--- still check those: /fc stance takes the older choices, and a job in db.roles is one for every
--- page. They start from there. A test of what a player gets out of the box, or of an older
+-- "auto" choice) and when a button's job was on every page. They still check those: /fc stance
+-- takes the older choices, and a job in db.roles or db.layerRoles is one for every page. They start from there. A test of what a player gets out of the box, or of an older
 -- saved setup being brought along, sets this to false before it loads the addon.
 local startOnAutomatic = true
 
@@ -45,7 +44,7 @@ local function Load(saved, character)
 			chunk("FreeControl", ns)
 			if line == "Core.lua" and startOnAutomatic then
 				ns.DEFAULTS.stanceSet, ns.DEFAULTS.stancePicked = "auto", true
-				ns.DEFAULTS.mainRolesPaged = true
+				ns.DEFAULTS.jobsPaged = true
 			end
 		end
 	end
@@ -1272,7 +1271,7 @@ test("the Key Bindings screen lists the page and release bindings", function()
 		truthy(_G["BINDING_NAME_" .. name], "with a name to show: " .. name)
 	end
 	table.sort(names)
-	eq(table.concat(names, " | "), "CLICK FreeControlLayerRelease:LeftButton | CLICK FreeControlPageNext:LeftButton | CLICK FreeControlPagePrev:LeftButton | CLICK FreeControlPartyFirst:LeftButton | CLICK FreeControlPartyLast:LeftButton | CLICK FreeControlPartyNext:LeftButton | CLICK FreeControlPartyPrev:LeftButton", "page buttons, layer release and the four party buttons")
+	eq(table.concat(names, " | "), "CLICK FreeControlChatToggle:LeftButton | CLICK FreeControlLayerRelease:LeftButton | CLICK FreeControlPageNext:LeftButton | CLICK FreeControlPagePrev:LeftButton | CLICK FreeControlPartyFirst:LeftButton | CLICK FreeControlPartyLast:LeftButton | CLICK FreeControlPartyNext:LeftButton | CLICK FreeControlPartyPrev:LeftButton | CLICK FreeControlPhrasesToggle:LeftButton", "page buttons, layer release, the four party buttons and the two for the chat")
 	eq(GetBindingName(ns.Bindings.PAGE_COMMANDS.next), "FreeControl: next page", "named")
 	eq(GetBindingName(ns.Bindings.PAGE_COMMANDS.prev), "FreeControl: previous page", "both of them")
 end)
@@ -3586,7 +3585,7 @@ test("the list of jobs: the pages, the mouse pointer, the game's common commands
 	rows["Paddle 2"]:GetScript("OnClick")(rows["Paddle 2"])
 	local labels = {}
 	for index, item in ipairs(menus.last.items) do labels[index] = item.text end
-	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Return to main layer | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Target party member 1 | Target party member 2 | Target party member 3 | Target party member 4 | Target next party member | Target previous party member | Target first party member | Target last party member | Ping (hold for the wheel) | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Something else...", "in this order, with the character's own stances among them")
+	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Return to main layer | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Target party member 1 | Target party member 2 | Target party member 3 | Target party member 4 | Target next party member | Target previous party member | Target first party member | Target last party member | Ping (hold for the wheel) | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Chat keyboard | Quick phrases | Something else...", "in this order, with the character's own stances among them")
 	eq(menus.last.items[#menus.last.items].plain, true, "the last is something to do, not a job to have")
 	Pick(menus.last, "Mouse pointer on / off")
 	eq(M.userBindings.PADPADDLE2, "CLICK FreeControlMouse:LeftButton", "the mouse button can go on any button")
@@ -3843,8 +3842,10 @@ test("a layer slot can turn the hotbar page in combat", function()
 	M.Tap("PADRTRIGGER")
 	M.Tap("PADDLEFT")
 	eq(ns.Layout.GetPage(), 2, "a controller slot advances the page")
+	eq(Binding("PADDUP"), "click:FreeControlKey2_2", "the job that goes back was given on page 1: on page 2 that button is a slot")
+	M.MouseClick(M.frames.FreeControlPagePrev)
 	M.Tap("PADDUP")
-	eq(ns.Layout.GetPage(), 1, "a controller slot goes back")
+	eq(ns.Layout.GetPage(), 3, "back on page 1 it turns the page back, round to 3")
 	M.LeaveCombat()
 end)
 
@@ -4447,7 +4448,7 @@ test("the menu of a no-trigger button offers the character's own stances and for
 	local list = table.concat(labels, " | ")
 	truthy(list:find("Stance or form: Battle Stance | Stance or form: Defensive Stance | Stance or form: Berserker Stance", 1, true), "all three stances are listed: " .. list)
 	Pick(menus.last, "Stance or form: Defensive Stance")
-	eq(ns.db.roles[1], "cmd:SHAPESHIFTBUTTON2", "picking one gives the button the game's command for it")
+	eq(ns.Layout.GetRole(0, 1), "cmd:SHAPESHIFTBUTTON2", "picking one gives the button the game's command for it")
 	eq(Binding("PADDLEFT"), "cmd:SHAPESHIFTBUTTON2", "bound")
 	eq(ns.Buttons.role[1].fc.icon:GetTexture(), "icon 71", "and wearing the stance's icon")
 	M.Tap("PADDLEFT")
@@ -5965,23 +5966,31 @@ test("a job belongs to the page it was given on: the same button is a plain slot
 	eq(ns.Layout.GetRole(2, 1, nil, 1), "cmd:TARGETPARTYMEMBER1", "without touching page 1")
 end)
 
-test("the jobs the bar is found its way around by are on every page", function()
+test("every job is for its page: turning the page, returning to the main layer and the mouse button too", function()
 	local menus = UseMenus()
 	Load()
 	ns.Options:OpenRoleMenu(ns.Buttons.action[2][1], 1, 2)
 	Pick(menus.last, "Next page")
 	ns.Options:OpenRoleMenu(ns.Buttons.action[2][2], 2, 2)
 	Pick(menus.last, "Return to main layer")
-	for page = 1, 3 do
-		eq(ns.Layout.GetRole(2, 1, nil, page), "cmd:FREECONTROL_NEXTPAGE", "turning the page, on page " .. page)
-		eq(ns.Layout.GetRole(2, 2, nil, page), "cmd:FREECONTROL_RELEASELAYER", "returning to the main layer, on page " .. page)
-		eq(ns.Layout.GetRole(0, 6, nil, page), "cmd:FREECONTROL_TOGGLECURSOR", "and the mouse button, on page " .. page)
+	ns.Options:OpenRoleMenu(ns.Buttons.action[2][3], 3, 2)
+	Pick(menus.last, "Mouse pointer on / off")
+	eq(ns.Layout.GetRole(2, 1, nil, 1), "cmd:FREECONTROL_NEXTPAGE", "turning the page, on page 1")
+	eq(ns.Layout.GetRole(2, 2, nil, 1), "cmd:FREECONTROL_RELEASELAYER", "returning to the main layer, on page 1")
+	eq(ns.Layout.GetRole(2, 3, nil, 1), "cmd:FREECONTROL_TOGGLECURSOR", "the mouse button, on page 1")
+	for page = 2, 3 do
+		for index = 1, 3 do
+			eq(ns.Layout.GetRole(2, index, nil, page), "action", ("button %d is a slot on page %d"):format(index, page))
+		end
 	end
-	ns.Options:OpenRoleMenu(ns.Buttons.layerRole[2][1], 1, 2)
-	Pick(menus.last, "Action slot")
-	for page = 1, 3 do
-		eq(ns.Layout.GetRole(2, 1, nil, page), "action", "taken off again, it is off every page: " .. page)
-	end
+	M.EnterCombat()
+	M.Tap("PADRTRIGGER")
+	eq(Binding("PADDRIGHT"), "click:FreeControlMouse", "page 1: the key is the mouse button")
+	M.Tap("PADDLEFT")
+	eq(ns.Layout.GetPage(), 2, "the job turns the page")
+	eq(Binding("PADDLEFT"), "click:FreeControlKey2_1", "and on page 2 the same key is a slot")
+	eq(Binding("PADDRIGHT"), "click:FreeControlKey2_3", "as is the one that was the mouse button")
+	M.LeaveCombat()
 end)
 
 test("jobs saved on a trigger layout by an older version are moved to page 1", function()
@@ -5995,11 +6004,13 @@ test("jobs saved on a trigger layout by an older version are moved to page 1", f
 	eq(ns.Layout.GetRole(0, 1, nil, 2), "action", "and not on page 2")
 	eq(ns.Layout.GetRole(0, 8, nil, 1), "cmd:JUMP", "Jump, which the bar starts with, is on page 1")
 	eq(ns.Layout.GetRole(0, 8, nil, 3), "action", "and its button is a slot on page 3")
-	for page = 1, 3 do
-		eq(ns.Layout.GetRole(0, 2, nil, page), "cmd:FREECONTROL_NEXTPAGE", "a button that turns the page stays on page " .. page)
-		eq(ns.Layout.GetRole(0, 6, nil, page), "cmd:FREECONTROL_TOGGLECURSOR", "and so does the mouse button, on page " .. page)
-	end
-	eq(ns.db.rolesPaged and ns.db.mainRolesPaged, true, "and it is done once")
+	eq(ns.Layout.GetRole(0, 2, nil, 1), "cmd:FREECONTROL_NEXTPAGE", "a button that turned the page does so on page 1")
+	eq(ns.Layout.GetRole(0, 2, nil, 2), "action", "and is a slot on page 2")
+	eq(ns.Layout.GetRole(0, 6, nil, 1), "cmd:FREECONTROL_TOGGLECURSOR", "the mouse button is on page 1")
+	eq(ns.Layout.GetRole(0, 6, nil, 2), "action", "and not on page 2")
+	eq(next(ns.db.pageRoles[2] or {}), nil, "page 2 has no job at all")
+	eq(next(ns.db.pageRoles[3] or {}), nil, "nor page 3")
+	eq(ns.db.jobsPaged, true, "and it is done once")
 end)
 
 test("saved page jobs that make no sense are dropped", function()
@@ -6028,20 +6039,28 @@ test("out of the box Main's jobs are on page 1, and on the other pages those but
 
 	M.EnterCombat()
 	M.MouseClick(M.frames.FreeControlPageNext)
-	eq(Slots(), "209 210 211 212 205 - 207 208", "page 2: three face buttons are slots, borrowed from the page before as a face slot is")
+	eq(Slots(), "209 210 211 212 205 206 207 208", "page 2: all four face buttons are slots, borrowed from the page before as a face slot is")
 	eq(Binding("PAD1"), "click:FreeControlKey0_8", "the Jump button casts its slot there")
-	eq(Binding("PAD4"), "click:FreeControlMouse", "and the mouse button is the mouse button on every page")
+	eq(Binding("PAD4"), "click:FreeControlKey0_6", "and the mouse button is a slot too: it was given on page 1")
 	M.used = {}
 	M.Tap("PAD1")
 	eq(Used(), "208", "the key casts it")
 	eq(ns.Buttons.role[8]:IsShown(), false, "with no picture of Jump over it")
 	M.MouseClick(M.frames.FreeControlPageNext)
-	eq(Slots(), "237 238 239 240 233 - 235 236", "page 3 likewise")
+	eq(Slots(), "237 238 239 240 233 234 235 236", "page 3 likewise")
 	M.MouseClick(M.frames.FreeControlPageNext)
 	eq(Slots(), "181 182 183 184 - - - -", "and page 1 has its jobs back")
 	eq(Binding("PAD1"), "cmd:JUMP", "Jump among them")
+	eq(Binding("PAD4"), "click:FreeControlMouse", "and the mouse button")
 	eq(ns.Buttons.role[8]:IsShown(), true, "with its picture")
 	M.LeaveCombat()
+	eq(#ns.Bindings:FindProblems(), 0, "a page without a mouse button is nothing to report: page 1 has one")
+
+	SlashCmdList.FREECONTROL("mouse off")
+	eq(Binding("PAD4"), "click:FreeControlKey0_6", "with mouse mode off the mouse button is a slot on page 1")
+	SlashCmdList.FREECONTROL("mouse on")
+	eq(Binding("PAD4"), "click:FreeControlMouse", "and with it on again it is back, on page 1")
+	eq(ns.Layout.GetRole(0, 6, nil, 2), "action", "and on no other page")
 
 	local menus = UseMenus()
 	M.MouseClick(M.frames.FreeControlPageNext)
@@ -6049,4 +6068,618 @@ test("out of the box Main's jobs are on page 1, and on the other pages those but
 	Pick(menus.last, "Jump")
 	eq(Binding("PAD1"), "cmd:JUMP", "a page can be given Jump of its own")
 	eq(ns.Layout.GetRole(0, 8, nil, 3), "action", "which leaves page 3 a slot")
+end)
+
+---------------------------------------------------------------------------
+-- The chat keyboard and the quick phrases (FreeControl/Chat)
+---------------------------------------------------------------------------
+-- The keyboard is one whole keyboard (QWERTY here) with a highlight that starts on G, the middle
+-- of the second row. The D-pad moves it, A types the key it is on, X deletes, Y sends, B empties
+-- and then closes, LB and RB change the channel.
+local function Taps(...)
+	for index = 1, select("#", ...) do M.Tap((select(index, ...))) end
+end
+
+local function LastSent()
+	return M.sent[#M.sent] or {}
+end
+
+test("the chat keyboard opens with the chat: the D-pad moves, A types, X deletes, Y sends and B closes", function()
+	Load()
+	local chat = ns.Chat
+	eq(chat:IsOpen(), false, "nothing on screen before the chat is opened")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "the trigger is the bar's")
+	eq(GetCVar("GamePadEmulateCtrl"), "PADLSHOULDER", "and the left bumper is the game's stand-in for Ctrl")
+
+	M.OpenChat()
+	eq(chat:IsOpen(), true, "the keyboard comes up with the chat")
+	eq(Binding("PAD1"), "click:FreeControlChatPadPAD1", "A is the keyboard's")
+	eq(Binding("PAD3"), "click:FreeControlChatPadPAD3", "and X")
+	eq(Binding("PAD4"), "click:FreeControlChatSend", "Y sends")
+	eq(Binding("PADDLEFT"), "click:FreeControlChatPadPADDLEFT", "the D-pad moves the highlight")
+	eq(Binding("PADLSHOULDER"), "click:FreeControlChatPadPADLSHOULDER", "the bumpers are the channels")
+	eq(Binding("PADLTRIGGER"), nil, "the bar has let go of its triggers")
+	eq(ns.Bindings:IsSuspended(), true, "and of everything else, until the keyboard closes")
+	eq(GetCVar("GamePadEmulateCtrl"), "none", "the bumper is no stand-in while the keyboard has it")
+
+	M.Tap("PAD1")
+	eq(chat:GetText(), "g", "the highlight starts on G")
+	Taps("PADDRIGHT", "PAD1")
+	eq(chat:GetText(), "gh", "right: H")
+	Taps("PADDUP", "PAD1")
+	eq(chat:GetText(), "ghy", "up: the key above, Y")
+	Taps("PADDDOWN", "PADDDOWN", "PAD1")
+	eq(chat:GetText(), "ghyb", "down twice: B, under H")
+	Taps("PADDDOWN", "PAD1")
+	eq(chat:GetText(), "ghyb ", "down again: Space is a key")
+	Taps("PADDUP", "PAD1")
+	eq(chat:GetText(), "ghyb b", "and up from Space is the key it came from")
+	M.Tap("PAD3")
+	eq(chat:GetText(), "ghyb ", "X deletes")
+
+	-- Shift is a key too: five to the left of B.
+	Taps("PADDLEFT", "PADDLEFT", "PADDLEFT", "PADDLEFT", "PADDLEFT", "PAD1")
+	eq(chat.state.shift, true, "Shift, pressed with A")
+	Taps("PADDRIGHT", "PAD1", "PAD1")
+	eq(chat:GetText(), "ghyb Zz", "holds for one letter")
+	Taps("PADDLEFT", "PADDLEFT", "PAD1")
+	eq(chat:GetText(), "ghyb Z", "left past the end of a row comes round to the other end: Delete")
+
+	-- The left stick moves the highlight as the D-pad does.
+	chat:SetText("")
+	M.Stick("Left", -1, 0)
+	M.Tap("PAD1")
+	eq(chat:GetText(), "m", "the stick pushed left: one key to the left")
+	M.Advance(0.5)
+	M.Advance(0.1)
+	M.Tap("PAD1")
+	eq(chat:GetText(), "mb", "held there, it goes on moving")
+	M.Stick("Left", 0, 0)
+	M.Advance(0.5)
+	M.Tap("PAD1")
+	eq(chat:GetText(), "mbb", "and stops when it is let go")
+
+	M.Tap("PAD4")
+	eq(#M.sent, 1, "Y: one message went out")
+	eq(LastSent().text, "mbb", "what was typed")
+	eq(LastSent().chatType, "SAY", "on the chat's channel")
+	eq(chat:GetText(), "", "the keyboard is empty for the next message")
+	eq(chat:IsOpen(), true, "and stays open")
+	eq(ChatFrame1EditBox:GetText(), nil, "the chat's own box was never written to")
+
+	M.Tap("PAD1")
+	eq(chat:GetText(), "b", "something typed")
+	M.Tap("PAD2")
+	eq(chat:GetText(), "", "B empties the message")
+	eq(chat:IsOpen(), true, "and the chat is still there")
+	M.KeyDown("PAD2")
+	eq(chat:IsOpen(), true, "B again closes on its release, not before")
+	M.KeyUp("PAD2")
+	eq(chat:IsOpen(), false, "the keyboard is gone")
+	eq(ChatFrame1EditBox:HasFocus(), false, "and so is the chat, as Escape would have closed it")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "the trigger is the bar's again")
+	eq(Binding("PAD1"), "cmd:JUMP", "and A does what it does on the bar")
+	eq(ns.Bindings:IsSuspended(), false, "the bar has its buttons back")
+	eq(GetCVar("GamePadEmulateCtrl"), "PADLSHOULDER", "the bumper is the game's stand-in again")
+	eq(#M.commands, 0, "none of it ran one of the bar's own jobs")
+end)
+
+test("the keyboard's 123 layer and the hold-to-delete of X", function()
+	Load()
+	local chat = ns.Chat
+	M.OpenChat()
+	-- 123 is the first key of the bottom row.
+	Taps("PADDDOWN", "PADDDOWN", "PADDLEFT", "PADDLEFT", "PADDLEFT", "PAD1")
+	eq(chat.state.layer, "symbols", "the 123 key")
+	Taps("PADDUP", "PADDUP", "PADDUP", "PAD1")
+	eq(chat:GetText(), "1", "the numbers are where the top row was")
+	Taps("PADDDOWN", "PADDDOWN", "PADDDOWN", "PAD1")
+	eq(chat.state.layer, "letters", "the same key brings the letters back")
+
+	chat:SetText("hello there")
+	M.KeyDown("PAD3")
+	eq(chat:GetText(), "hello ther", "X deletes one")
+	M.Advance(0.5)
+	M.Advance(0.1)
+	M.Advance(0.1)
+	eq(chat:GetText(), "hello t", "and goes on deleting while it is held")
+	M.KeyUp("PAD3")
+	M.Advance(0.5)
+	eq(chat:GetText(), "hello t", "until it is let go")
+end)
+
+test("the keyboard suggests words above the keys, and learns the player's own", function()
+	Load()
+	local chat = ns.Chat
+	M.OpenChat()
+	chat:SetText("th")
+	eq(chat.state.suggestions[1], "the", "the commonest English word that starts so")
+	eq(chat.state.activeRow, "keys", "the highlight is on the keys")
+	Taps("PADDUP", "PADDUP")
+	eq(chat.state.activeRow, "suggestions", "up from the top row: the suggestions")
+	M.Tap("PAD1")
+	eq(chat:GetText(), "the ", "A takes the one that is highlighted")
+	M.Tap("PADDRIGHT")
+	eq(chat.state.selected, 2, "left and right move along them")
+	M.Tap("PADDDOWN")
+	eq(chat.state.activeRow, "keys", "and down is the keys again")
+
+	chat:SetText("zugz")
+	eq(#chat.state.suggestions, 0, "a word no dictionary has")
+	chat:SetText("zugzug lok")
+	M.Tap("PAD4")
+	eq(LastSent().text, "zugzug lok", "sent")
+	chat:SetText("zugz")
+	eq(chat.state.suggestions[1], "zugzug", "is known once it has been sent")
+	Taps("PADDUP", "PAD1")
+	eq(chat:GetText(), "zugzug ", "and can be taken")
+	eq(chat.state.suggestions[1], "lok", "with the word that followed it next")
+	eq(FreeControlChatDB.words.zugzug, 1, "the words learned are in the account's file")
+
+	chat:SetText("/fc s")
+	eq(chat.state.suggestions[1], "/fc status", "a slash command is completed too")
+	SlashCmdList.FREECONTROL("keyboard forget")
+	eq(ns.Chat.db.words.zugzug, nil, "/fc keyboard forget empties what was learned")
+end)
+
+test("the keyboard comes back to the channel last written on, the next session too", function()
+	Load()
+	local chat = ns.Chat
+	M.inGuild = true
+	M.OpenChat()
+	eq(chat:GetChatAttr("chatType"), "SAY", "a first chat is on /s")
+	M.Tap("PADRSHOULDER")
+	eq(chat:GetChatAttr("chatType"), "YELL", "RB: the next channel")
+	M.Tap("PADRSHOULDER")
+	eq(chat:GetChatAttr("chatType"), "GUILD", "party and raid are passed over by someone in neither")
+	M.Tap("PADLSHOULDER")
+	eq(chat:GetChatAttr("chatType"), "YELL", "LB: the one before")
+	M.Tap("PADRSHOULDER")
+	Taps("PAD1", "PAD4")
+	eq(LastSent().chatType, "GUILD", "the message goes to the guild")
+	eq(ChatFrame1EditBox:GetAttribute("chatType"), "SAY", "the chat's own channel is not written to")
+	M.Tap("PAD2")
+	eq(chat:IsOpen(), false, "closed")
+
+	M.OpenChat()
+	eq(chat:GetChatAttr("chatType"), "GUILD", "the next chat opens on the guild")
+	M.Tap("PAD2")
+	eq(ns.db.chatChannel.chatType, "GUILD", "kept with the character's settings")
+
+	-- The next session: nothing is left in memory, only what was saved.
+	chat.sticky, chat.stickyBase = nil, nil
+	OtherCharacter(FreeControlCharacterDB)
+	M.OpenChat()
+	eq(chat:GetChatAttr("chatType"), "GUILD", "and it is the guild again after logging in")
+	M.Tap("PAD2")
+
+	-- A whisper opened by the game (a name clicked) is written on that once, and then kept too.
+	M.OpenChat("WHISPER", "Friend")
+	eq(chat:GetChatAttr("chatType"), "WHISPER", "a whisper the game opened is a whisper")
+	Taps("PAD1", "PAD4")
+	eq(LastSent().chatType, "WHISPER", "sent as one")
+	eq(LastSent().target, "Friend", "to that player")
+	M.Tap("PAD2")
+	M.OpenChat()
+	eq(chat:GetChatAttr("tellTarget"), "Friend", "the last channel written on is that whisper")
+	M.Tap("PAD2")
+	-- A whisper to someone else that is opened and closed without a word changes nothing.
+	M.OpenChat("WHISPER", "Stranger")
+	eq(chat:GetChatAttr("tellTarget"), "Stranger", "a whisper opened for someone else is theirs")
+	M.Tap("PAD2")
+	M.OpenChat()
+	eq(chat:GetChatAttr("tellTarget"), "Friend", "but nothing was written there: the channel kept is still the last one written on")
+	M.Tap("PAD2")
+
+	-- The player moves the chat's own channel by hand: that is the latest choice.
+	M.SetChatSticky("PARTY")
+	M.OpenChat()
+	eq(chat:GetChatAttr("chatType"), "PARTY", "a channel typed by hand since wins")
+	eq(ns.db.chatChannel, nil, "and the one kept is let go")
+	M.Tap("PAD2")
+
+	chat.db.settings.stickyChannel = false
+	M.SetChatSticky("SAY")
+	M.OpenChat()
+	Taps("PADRSHOULDER", "PAD1", "PAD4")
+	eq(LastSent().chatType, "YELL", "with the setting off a channel can still be picked")
+	M.Tap("PAD2")
+	M.OpenChat()
+	eq(chat:GetChatAttr("chatType"), "SAY", "but the next chat is on its own channel")
+end)
+
+test("no chat keyboard in a fight, and it is back afterwards", function()
+	Load()
+	local chat = ns.Chat
+	M.OpenChat()
+	M.Tap("PAD1")
+	eq(chat:IsOpen(), true, "open")
+	M.EnterCombat()
+	eq(chat:IsOpen(), false, "closed as the fight starts")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "the triggers are the bar's for the fight")
+	eq(Binding("PAD1"), "cmd:JUMP", "and its buttons")
+	M.Tap("PADRTRIGGER")
+	eq(ns.Bindings:GetActiveSet(), 2, "which select their set")
+	M.Tap("PADRTRIGGER")
+	M.frames.FreeControlChatToggle:GetScript("OnClick")(M.frames.FreeControlChatToggle, "LeftButton", true)
+	eq(chat:IsOpen(), false, "the Chat keyboard job does nothing in a fight")
+	eq(M.errors[#M.errors], "Not possible in combat", "and says why")
+	M.LeaveCombat()
+	eq(chat:IsOpen(), true, "the chat is still being typed in when the fight ends: the keyboard is back")
+	eq(Binding("PAD1"), "click:FreeControlChatPadPAD1", "with its keys")
+	eq(Binding("PADLTRIGGER"), nil, "and the bar out of the way again")
+end)
+
+test("a window opened from a trigger's layer keeps the controller when the trigger is let go", function()
+	Load()
+	local chat = ns.Chat
+	local phrases = chat.Phrases
+	-- Triggers that are held, not toggled: letting one go makes the bar bind its buttons again.
+	ns.db.toggleLayers = false
+	ns.Layout.SetRole(1, 1, "cmd:FREECONTROL_PHRASES")
+	ns.Layout.SetRole(1, 3, "cmd:FREECONTROL_CHATKEYBOARD")
+	ns.RequestRefresh()
+	M.KeyDown("PADLTRIGGER")
+	eq(Binding("PADDLEFT"), "click:FreeControlPhrasesToggle", "LT + D-pad Left is Quick phrases")
+	M.KeyDown("PADDLEFT")
+	eq(phrases:IsOpen(), true, "which opens the window")
+	M.KeyUp("PADDLEFT")
+	M.KeyUp("PADLTRIGGER")
+	M.Advance(0.05)
+	eq(Binding("PADDLEFT"), "click:FreeControlPhrasesPadPADDLEFT", "the D-pad is the window's, trigger let go or not")
+	eq(Binding("PAD1"), "click:FreeControlPhrasesSend", "and A")
+	eq(Binding("PAD2"), "click:FreeControlPhrasesPadPAD2", "and B")
+	Taps("PADDRIGHT", "PAD1")
+	eq(LastSent().text, "Nice one", "the D-pad picks and A sends")
+	eq(phrases:IsOpen(), false, "closed")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "the bar is back")
+	eq(ns.Bindings:GetActiveSet(), 0, "on its main layer")
+
+	M.KeyDown("PADLTRIGGER")
+	M.KeyDown("PADDRIGHT")
+	M.Advance(0)
+	M.KeyUp("PADDRIGHT")
+	M.KeyUp("PADLTRIGGER")
+	eq(chat:IsOpen(), true, "LT + D-pad Right opens the keyboard")
+	eq(Binding("PAD1"), "click:FreeControlChatPadPAD1", "whose keys stay its own too")
+	Taps("PAD1", "PAD4")
+	eq(LastSent().text, "g", "typed and sent")
+	Taps("PAD2")
+	eq(chat:IsOpen(), false, "B closes")
+
+	-- Triggers that toggle their layer.
+	ns.db.toggleLayers = true
+	ns.RequestRefresh()
+	M.Tap("PADLTRIGGER")
+	eq(ns.Bindings:GetActiveSet(), 1, "LT pressed once: its layer")
+	M.Tap("PADDLEFT")
+	M.Advance(0.05)
+	eq(phrases:IsOpen(), true, "the window opens from there as well")
+	Taps("PADDDOWN", "PAD1")
+	eq(LastSent().text, "brb", "and is worked the same: down from where the highlight was left")
+end)
+
+test("the bar's settings applied while the keyboard is open wait for it to close", function()
+	Load()
+	local chat = ns.Chat
+	M.OpenChat()
+	SlashCmdList.FREECONTROL("key 1 PADPADDLE4")
+	eq(Binding("PADLTRIGGER"), nil, "the bar binds nothing under the keyboard")
+	eq(Binding("PADPADDLE4"), nil, "not even a key the keyboard does not use")
+	eq(Binding("PAD1"), "click:FreeControlChatPadPAD1", "the keyboard keeps its keys")
+	M.Tap("PAD2")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "the triggers are the bar's once it closes")
+	eq(Binding("PADPADDLE4"), "click:FreeControlKey0_1", "with the setting that was changed meanwhile")
+end)
+
+test("the mouse pointer is put away when the keyboard opens", function()
+	Load()
+	local chat = ns.Chat
+	M.Tap("PAD4")
+	M.Advance(0.02)
+	eq(M.PointerVisible(), true, "Y brought the pointer out")
+	M.OpenChat()
+	eq(chat:IsOpen(), true, "the chat is opened")
+	eq(M.cursorControl, false, "the stick no longer steers the pointer")
+	M.Advance(0.02)
+	M.Advance(0.25)
+	eq(Binding("PAD1"), "click:FreeControlChatPadPAD1", "and the keyboard has its keys")
+	Taps("PADDRIGHT", "PAD1")
+	eq(chat:GetText(), "h", "which type")
+	eq(#M.clicks, 0, "no mouse click came of it")
+end)
+
+test("Chat keyboard and Quick phrases are jobs for a button, on the bar or off it", function()
+	Load()
+	local chat = ns.Chat
+	ns.Layout.SetRole(0, 1, "cmd:FREECONTROL_CHATKEYBOARD")
+	ns.RequestRefresh()
+	eq(Binding("PADDLEFT"), "click:FreeControlChatToggle", "the job on a button of the bar")
+	eq((ns.Layout.GetCommandInfo("FREECONTROL_CHATKEYBOARD")), "Chat keyboard", "by its name")
+	truthy(FileExists("FreeControl/Art/Role-Chat.tga"), "with a picture")
+	truthy(FileExists("FreeControl/Art/Role-Phrases.tga"), "and one for the phrases")
+	M.Tap("PADDLEFT")
+	M.Advance(0)
+	eq(chat:IsOpen(), true, "the button opens the chat with the keyboard")
+	eq(ChatFrame1EditBox:HasFocus(), true, "the chat is being typed in")
+	eq(Binding("PADDLEFT"), "click:FreeControlChatPadPADDLEFT", "the button is the keyboard's while it is open")
+	M.Tap("PAD2")
+	eq(Binding("PADDLEFT"), "click:FreeControlChatToggle", "and has its job back after")
+
+	ns.Options.Bind("PADPADDLE1", ns.Bindings.CHAT_COMMANDS.FREECONTROL_PHRASES)
+	eq(M.userBindings.PADPADDLE1, "CLICK FreeControlPhrasesToggle:LeftButton", "the other job on a paddle, as a key binding")
+	M.Tap("PADPADDLE1")
+	eq(chat.Phrases:IsOpen(), true, "the paddle opens the quick phrases")
+	M.Tap("PADPADDLE1")
+	eq(chat.Phrases:IsOpen(), false, "and closes them")
+
+	ns.Options.Bind("PADPADDLE2", ns.Bindings.CHAT_COMMANDS.FREECONTROL_CHATKEYBOARD)
+	M.Tap("PADPADDLE2")
+	M.Advance(0)
+	eq(chat:IsOpen(), true, "a paddle opens the keyboard")
+	M.Tap("PADPADDLE2")
+	eq(chat:IsOpen(), false, "and the same paddle closes it")
+	eq(ChatFrame1EditBox:HasFocus(), false, "with the chat")
+end)
+
+test("quick phrases: the D-pad or the stick picks, the bumpers change the channel, A sends and B closes", function()
+	Load()
+	local phrases = ns.Chat.Phrases
+	M.inGroup = true
+	SlashCmdList.FREECONTROL("phrases")
+	M.Advance(0.1)
+	eq(phrases:IsOpen(), true, "/fc phrases opens the window")
+	eq(phrases.channel, "p", "in a party it starts on the party's channel")
+	eq(Binding("PAD1"), "click:FreeControlPhrasesSend", "A sends")
+	eq(Binding("PADDRIGHT"), "click:FreeControlPhrasesPadPADDRIGHT", "the D-pad picks")
+	eq(Binding("PADLTRIGGER"), nil, "the bar has let go of the controller")
+	M.Tap("PAD1")
+	eq(LastSent().text, "gg", "the first phrase")
+	eq(LastSent().chatType, "PARTY", "to the party")
+	eq(#M.sent, 1, "once")
+	eq(phrases:IsOpen(), false, "and the window closes")
+	eq(Binding("PAD1"), "cmd:JUMP", "A is the bar's again")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "with its triggers")
+
+	phrases:Toggle()
+	M.Tap("PADDRIGHT")
+	M.Tap("PADRSHOULDER")
+	eq(phrases.channel, "y", "RB: the next channel there is (no raid, no guild)")
+	M.Tap("PAD1")
+	eq(LastSent().text, "Nice one", "the phrase the D-pad moved to")
+	eq(LastSent().chatType, "YELL", "on the channel picked")
+
+	phrases:Toggle()
+	M.Stick("Left", 0, -1)
+	eq(phrases.row, 2, "the left stick pulled down: the next row")
+	M.Advance(0.4)
+	eq(phrases.row, 3, "held, it goes on")
+	M.Stick("Left", 0, 0)
+	M.Advance(0.4)
+	eq(phrases.row, 3, "let go, it stops")
+	M.Stick("Left", 1, 0)
+	M.Stick("Left", 0, 0)
+	M.Tap("PAD1")
+	eq(LastSent().text, "Need mana", "and A sends what the stick picked: two rows down, one to the right")
+
+	phrases:Toggle()
+	for _ = 1, 2 do M.Tap("PADDDOWN") end
+	Taps("PADDLEFT", "PADDLEFT", "PAD1")
+	eq(M.macroLines[#M.macroLines], "/wave", "a phrase that is a command is run as one")
+	eq(#M.sent, 3, "and says nothing")
+
+	phrases:Toggle()
+	M.KeyDown("PAD2")
+	eq(phrases:IsOpen(), true, "B closes on its release")
+	M.KeyUp("PAD2")
+	eq(phrases:IsOpen(), false, "closed")
+	M.EnterCombat()
+	phrases:Toggle()
+	eq(phrases:IsOpen(), false, "not in a fight")
+	M.LeaveCombat()
+end)
+
+test("quick phrases: a phrase is rewritten with the keyboard, and the defaults can be put back", function()
+	Load()
+	local chat = ns.Chat
+	local phrases = chat.Phrases
+	eq(chat.db.settings.phrases, nil, "nothing is saved while the phrases are the default ones")
+	phrases:Toggle()
+	M.Tap("PAD3")
+	eq(chat:IsOpen(), true, "X brings the keyboard up to write the phrase")
+	eq(chat:GetText(), "gg", "holding the phrase as it is")
+	eq(Binding("PAD4"), "click:FreeControlChatPrompt", "Y confirms")
+	eq(Binding("PAD1"), "click:FreeControlChatPadPAD1", "A types")
+	M.Tap("PAD1")
+	eq(chat:GetText(), "ggg", "a letter added")
+	M.Tap("PAD4")
+	eq(chat:IsOpen(), false, "the keyboard goes")
+	eq(phrases:IsOpen(), true, "the window stays")
+	eq(chat.db.settings.phrases.rows[1].tiles[1], "ggg", "the phrase is the player's now, and saved")
+	eq(#M.sent, 0, "nothing was said")
+	M.Advance(0.05)
+	M.Tap("PAD1")
+	eq(LastSent().text, "ggg", "A sends the new one")
+
+	phrases:Toggle()
+	M.Tap("PAD3")
+	chat:SetText("something else")
+	M.Tap("PAD2")
+	eq(chat.db.settings.phrases.rows[1].tiles[1], "ggg", "B while writing changes nothing")
+	eq(phrases:IsOpen(), true, "and goes back to the window")
+	M.Advance(0.05)
+
+	-- Y: the keyboard with the phrase, to add to it and send it as a message.
+	M.Tap("PAD4")
+	eq(phrases:IsOpen(), false, "Y leaves the window")
+	eq(chat:IsOpen(), true, "for the keyboard")
+	eq(chat:GetText(), "ggg", "with the phrase in it")
+	M.Advance(0.05)
+	M.Tap("PAD4")
+	eq(LastSent().text, "ggg", "which Y sends")
+	eq(chat:IsOpen(), false, "and that closes a keyboard that is on no chat")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "the bar has the controller back")
+
+	phrases:Reset()
+	eq(chat.db.settings.phrases, nil, "the defaults are back, and nothing is saved again")
+	eq(phrases:Grid().rows[1].tiles[1], "gg", "gg")
+end)
+
+test("the phrases' bubble at the end of the suggestions opens them from the keyboard, and A closes the chat with them", function()
+	Load()
+	local chat = ns.Chat
+	local phrases = chat.Phrases
+	M.inGuild = true
+	M.OpenChat()
+	Taps("PADRSHOULDER", "PADRSHOULDER")
+	eq(chat:GetChatAttr("chatType"), "GUILD", "the keyboard on the guild")
+	Taps("PADDUP", "PADDUP")
+	eq(chat.state.activeRow, "suggestions", "up to the suggestions row: the bubble is there even with no word to suggest")
+	M.Tap("PADDLEFT")
+	eq(chat.state.phrasesChip, true, "left from the first place comes round to the bubble")
+	M.Tap("PAD1")
+	eq(phrases:IsOpen(), true, "A opens the phrases")
+	eq(chat:IsOpen(), false, "in place of the keyboard")
+	eq(phrases.channel, "g", "on the keyboard's channel")
+	M.Tap("PAD2")
+	eq(chat:IsOpen(), true, "B brings the keyboard back")
+	eq(ChatFrame1EditBox:HasFocus(), true, "on the chat, which never closed")
+
+	Taps("PADDUP", "PADDUP", "PADDLEFT", "PAD1")
+	eq(phrases:IsOpen(), true, "the phrases again")
+	M.Advance(0.05)
+	M.Tap("PAD1")
+	eq(LastSent().text, "gg", "a phrase sent from there")
+	eq(LastSent().chatType, "GUILD", "to the guild")
+	eq(phrases:IsOpen(), false, "closes the window")
+	eq(chat:IsOpen(), false, "the keyboard")
+	eq(ChatFrame1EditBox:HasFocus(), false, "and the chat")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "and the bar has the controller back")
+end)
+
+test("the chat keyboard stays away when it is switched off, when FreeControl is, and under the Gamepad UI", function()
+	Load()
+	local chat = ns.Chat
+	SlashCmdList.FREECONTROL("keyboard off")
+	M.OpenChat()
+	eq(chat:IsOpen(), false, "/fc keyboard off: the chat opens without it")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "and the keys are left alone")
+	ChatFrame1EditBox:GetScript("OnEscapePressed")(ChatFrame1EditBox)
+	M.frames.FreeControlChatToggle:GetScript("OnClick")(M.frames.FreeControlChatToggle, "LeftButton", true)
+	M.Advance(0)
+	eq(chat:IsOpen(), false, "the job does nothing either")
+	truthy(Printed("chat keyboard is switched off"), "and says so")
+	chat.Phrases:Toggle()
+	eq(chat.Phrases:IsOpen(), true, "the quick phrases are still there")
+	chat.Phrases:Toggle()
+
+	SlashCmdList.FREECONTROL("keyboard on")
+	chat.db.settings.autoOpen = false
+	M.OpenChat()
+	eq(chat:IsOpen(), false, "Open with the chat unticked: a chat opened by hand has no keyboard")
+	M.frames.FreeControlChatToggle:GetScript("OnClick")(M.frames.FreeControlChatToggle, "LeftButton", true)
+	eq(chat:IsOpen(), true, "the job brings it up on that chat")
+	M.Tap("PAD2")
+	chat.db.settings.autoOpen = true
+
+	SlashCmdList.FREECONTROL("off")
+	M.OpenChat()
+	eq(chat:IsOpen(), false, "FreeControl switched off: no keyboard")
+	chat.Phrases:Toggle()
+	eq(chat.Phrases:IsOpen(), false, "and no phrases")
+	ChatFrame1EditBox:GetScript("OnEscapePressed")(ChatFrame1EditBox)
+	SlashCmdList.FREECONTROL("on")
+	M.OpenChat()
+	eq(chat:IsOpen(), true, "back with it")
+end)
+
+test("under the Gamepad UI the chat keyboard is idle like the rest", function()
+	M.gamepadUI = true
+	Load()
+	M.OpenChat()
+	eq(ns.Chat:IsOpen(), false, "FreeControl stands down there, and so does its keyboard")
+	eq(M.bindings.PAD1, nil, "no key is taken")
+end)
+
+test("the Chat settings page: the keyboard, its place and size, the words and the phrases", function()
+	local menus = UseMenus()
+	Load()
+	local chat = ns.Chat
+	SlashCmdList.FREECONTROL("chat")
+	eq(M.opened[#M.opened], "Chat", "/fc chat opens the page")
+	Open(ns.Options.chatPanel)
+	SlashCmdList.FREECONTROL("keyboard scale 1.5")
+	eq(chat.db.settings.scale, 1.5, "its size")
+	SlashCmdList.FREECONTROL("keyboard scale 9")
+	eq(chat.db.settings.scale, 2, "within its range")
+	SlashCmdList.FREECONTROL("keyboard reset")
+	eq(chat.db.settings.scale, 1, "and back to its own")
+	SlashCmdList.FREECONTROL("keyboard unlock")
+	M.Advance(0)
+	eq(chat.db.settings.locked, false, "unlocked")
+	eq(chat:IsOpen(), true, "and shown, to be dragged into place")
+	eq(chat.frame.grip:IsShown(), true, "by its grip")
+	M.Tap("PAD2")
+	eq(chat:IsOpen(), false, "B closes a keyboard that is on no chat")
+	SlashCmdList.FREECONTROL("keyboard lock")
+	eq(chat.db.settings.locked, true, "locked again")
+
+	chat.db.settings.kbLayout = "azerty"
+	M.OpenChat()
+	Taps("PADDUP", "PAD1")
+	eq(chat:GetText(), "t", "another layout: the key above G on an AZERTY keyboard")
+	chat:SetLanguage("fr")
+	chat:SetText("bonj")
+	eq(chat.state.suggestions[1], "bonjour", "the French dictionary")
+	chat:SetLanguage("de")
+	chat:SetText("vielle")
+	eq(chat.state.suggestions[1], "vielleicht", "the German one")
+	chat:SetLanguage("en")
+	M.Tap("PAD2")
+	M.Tap("PAD2")
+	eq(menus.last, nil, "no menu was opened along the way")
+end)
+
+test("a saved chat file that was edited by hand does not stop the keyboard", function()
+	FreeControlChatDB = { settings = { scale = 40, kbLayout = "nonsense", lang = "xx", modules = "yes", phrases = { rows = "no" } }, words = "none", pos = 3 }
+	Load(nil, { chatChannel = { chatType = 5 } })
+	local chat = ns.Chat
+	eq(chat.db.settings.scale, 1, "a size out of range is the default")
+	eq(chat:GetLanguage().key, "en", "an unknown language is English")
+	eq(ns.db.chatChannel, nil, "a channel that is none is dropped")
+	M.OpenChat()
+	eq(chat:IsOpen(), true, "and the keyboard opens")
+	Taps("PAD1", "PAD4")
+	eq(LastSent().text, "g", "an unknown layout is QWERTY, and it sends")
+	M.Tap("PAD2")
+	chat.Phrases:Toggle()
+	eq(chat.Phrases:Grid().rows[1].tiles[1], "gg", "broken phrases are the default ones")
+end)
+
+test("every picture the chat keyboard and the phrases ask for is a file in Chat/Textures", function()
+	Load()
+	local chat = ns.Chat
+	for _, style in ipairs({ "xbox", "playstation", "nintendo" }) do
+		ns.db.labelStyle = style
+		M.OpenChat()
+		Taps("PAD1", "PADDUP", "PADDUP", "PADDDOWN", "PADDDOWN", "PADDLEFT")
+		chat:SetText("")
+		M.Tap("PAD2")
+		chat.Phrases:Toggle()
+		chat.Phrases:Toggle()
+	end
+	local prefix = "Interface\\AddOns\\FreeControl\\Chat\\Textures\\"
+	local count = 0
+	for texture in pairs(M.textures) do
+		if texture:sub(1, #prefix) == prefix then
+			local file = "FreeControl/Chat/Textures/" .. texture:sub(#prefix + 1) .. ".tga"
+			truthy(FileExists(file), "the file for " .. texture .. " (" .. file .. ")")
+			count = count + 1
+		end
+	end
+	truthy(count >= 15, "pictures asked for: " .. count)
+	-- And none is shipped that nothing asks for.
+	for _, name in ipairs({ "ck_wheel_bg_8", "ck_dw_hub", "ck_sk_cursor" }) do
+		eq(FileExists("FreeControl/Chat/Textures/" .. name .. ".tga"), false, "the old keyboards' " .. name .. " is gone")
+	end
 end)

@@ -30,6 +30,11 @@ local function IsOurKey(button)
 	if ns.db.plainKeys[button] or ns.Bindings:IsOwnCommand(GetBindingAction(button)) then
 		return true
 	end
+	-- A button the chat keyboard or the quick phrases window is using while it is open (LB deletes,
+	-- held to go on deleting): for that long it is no stand-in either (Chat/Input.lua).
+	if ns.Chat and ns.Chat:HoldsKey(button) then
+		return true
+	end
 	for _, key in ipairs(ns.db.keys) do
 		if key:upper() == button then
 			return true

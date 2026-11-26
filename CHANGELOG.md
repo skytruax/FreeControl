@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- New: a keyboard for the chat. Give a button the job "Chat keyboard" (click a button on the bar, or use Other buttons) and it opens the chat with an on-screen keyboard; it also comes up whenever the chat is opened another way, such as a name clicked to whisper. The D-pad or the left stick moves a highlight over the keys, A types the key it is on, X deletes, Y sends, and B empties the message and then closes the chat. Space, Shift and 123 are keys like the rest. Its settings are on the new Chat page (`/fc chat`).
+- The keyboard suggests words as you type, in English, French, German, Spanish or Italian, and learns the ones you use: move up from the top row of keys to reach them, and A takes one. `/fc keyboard forget` empties what it learned.
+- A row of channels under the keys (`/s /y /p /ra /g /1 /w /r`): LB and RB go through it. The channel you wrote on last is the one the keyboard opens on next time, for each character, after logging in again too ("Come back to the last channel" on the Chat page).
+- New: quick phrases. The job "Quick phrases" (or `/fc phrases`) opens a window of ready-made phrases, five a row by theme. The D-pad or the left stick picks one, LB and RB the channel, A sends it and closes. X rewrites a phrase or a row's name, Y opens the keyboard with the phrase, and rows of your own can be added, up to eight. A phrase that starts with `/` is run as a command. The phrases are the same for all your characters.
+- While the keyboard or the phrases window is open the controller is its own: the bar lets go of every button, triggers included, and has them back on its main layer when the window closes. Neither works in a fight: an open one closes when a fight starts, and the keyboard comes back afterwards if the chat is still being typed in.
+- `/fc keyboard` opens or closes the keyboard from chat; `on | off`, `unlock | lock | reset` and `scale` switch it, move it and size it.
+- The keyboard's frame, its word prediction, its channel row and the quick phrases are ported from Easy Controller - Forever by moust4ki (MIT), with its word lists from FrequencyWords (CC-BY-SA-4.0); the notices are in `Chat/LICENSE-EasyController.txt`. The keys and their buttons are FreeControl's own: that addon's two keyboards, a daisywheel and a split keyboard typed with the sticks and triggers, are not in it. Also left out: its quest links, drafts, keyboard for the game's other fields, and its other languages for the text on screen.
+
 ## v1.8.0
 
 - New: button combinations. Two or three buttons pressed together can have a job of their own: LB + D-pad Up to target a party member, or LB + RB + D-pad Right to turn the page. They are made on the new Combinations page (under FreeControl in the settings, or `/fc combos`): click "Press one...", hold the first button and press the second, and give the combination a job from the menu. A combination can end in any button, FreeControl's D-pad and face buttons included. The button on its own goes on doing what it did.

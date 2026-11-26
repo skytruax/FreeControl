@@ -192,9 +192,9 @@ because Blizzard's bar would be bound to the same buttons.
   stick clicks keep their jobs except while the mouse pointer is out.
 - **A job belongs to its page:** a job you give a button on the bar (click the button, or use
   *Button assignments* in the settings) is for the page the bar is showing. On the other pages
-  the same button is an ordinary slot, or has a job of its own. The exceptions are the jobs the
-  bar is found its way around by, which are on every page: turning the page, returning to the
-  main layer, the mouse button, and a stance or form's own button.
+  the same button is an ordinary slot, or has a job of its own. That goes for every job: the
+  mouse button, turning the page and returning to the main layer too. A job you want on every
+  page is given on each of them.
 - **Stepping through the party:** four of those jobs pick a party member without a button for
   each one: *Target next party member*, *previous*, *first* and *last*. They skip the places
   nobody is in, work in a fight, and can go on the bar's own buttons too, so a trigger layer's
@@ -209,6 +209,27 @@ because Blizzard's bar would be bound to the same buttons.
 - **Changing the no-trigger buttons:** click one on the bar, or use the settings page. Each can be
   an action slot, a command (Jump, Interact, Cancel, Target nearest enemy or friend, Auto-run,
   World map, Bags, one of your stances or forms, ...) or left to your own key binding.
+- **Typing in the chat:** give a button the job *Chat keyboard* and it opens the chat with an
+  on-screen keyboard. It also comes up whenever the chat is opened another way (a name clicked
+  to whisper, a link). The **D-pad or the left stick** moves a highlight over the keys, **A**
+  types the key it is on, **X** deletes (hold it to go on deleting), **Y** sends, and **B**
+  empties the message, then closes the chat. Space, Shift and 123 (numbers, accents, symbols)
+  are keys like the rest. Move up from the top row and the highlight is on the words the
+  keyboard suggests, in English, French, German, Spanish or Italian; A takes one, and it
+  learns the words you use. **LB and RB** go through the channels shown under the keys
+  (`/s /y /p /ra /g /1 /w /r`); the channel you wrote on last is the one the keyboard opens on
+  next time, on that character, after logging in again too.
+- **Quick phrases:** the job *Quick phrases* opens a window of ready-made phrases in rows of
+  five (social, status, combat, moving, emotes, your own). The D-pad or the left stick picks
+  one, LB and RB pick the channel, A sends it and closes. X rewrites a phrase or a row's name
+  with the keyboard (Y confirms), Y opens the keyboard with the phrase to add to it, B closes.
+  A phrase that starts with `/` is run as a command (`/wave`, `/roll`). The bubble at the end
+  of the keyboard's suggestions opens the same window. The phrases are shared by all your
+  characters.
+- **While either is open the controller is its own:** the bar lets go of every button,
+  triggers included, and has them back, on its main layer, when the window closes. Neither
+  works in a fight: an open one closes when a fight starts, and the keyboard comes back after
+  if the chat is still being typed in.
 
 <details>
 <summary><b>Three game defaults worth knowing when you set up the rest of your buttons</b></summary>
@@ -257,6 +278,11 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc click left PADLSHOULDER` | Use another button as the left (`left`) or right (`right`) mouse click while the pointer is out. `game` leaves that click to the game's own setting. |
 | `/fc pointer 150` | How fast the stick moves the mouse pointer, in percent (50 to 300). |
 | `/fc key lt PADLSHOULDER` | Use another button as a trigger (`lt`, `rt`) or for a slot (`1`-`8`). Keyboard keys work too, for Steam Input layouts that send keys. |
+| `/fc chat` | Open the Chat page: the chat keyboard and the quick phrases. |
+| `/fc keyboard` | Open the chat with the keyboard, or close it. `off` switches the keyboard off (`on` to bring it back). |
+| `/fc keyboard unlock` | Show the keyboard with a grip to drag it by (`lock` to keep it there, `reset` to put it back beside the chat, `scale 1.2` for its size, 0.4 to 2). |
+| `/fc keyboard forget` | Empty the words the keyboard learned from you. |
+| `/fc phrases` | Open the quick phrases window, or close it. |
 | `/fc status` | What FreeControl sees: controller, slots, keys, anything that would get in the way, and any error it ran into. Include this in bug reports. |
 | `/fc trace` | Records what the game reports about the next abilities you use, for twenty seconds. Type it again to see the result in a box you can copy from. For reports about cooldowns. |
 
@@ -264,9 +290,11 @@ Other settings on the page: how much the held set grows, how far the others fade
 (Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, whether the bar
 has pages and shows its page selector, what changes with your stance or form (*Change with stance*:
 automatic unless you choose otherwise, and its tooltip says what that comes to on your
-character), *Gamepad UI enemy targeting*, and the switch for mouse mode. Three more pages sit
+character), *Gamepad UI enemy targeting*, and the switch for mouse mode. Four more pages sit
 under FreeControl: **Mouse mode**, with the two click buttons, the pointer speed and whether the
-game may bring the pointer out by itself; **Other buttons**; and **Combinations**.
+game may bring the pointer out by itself; **Other buttons**; **Combinations**; and **Chat**, with
+the chat keyboard (on or off, whether it opens with the chat, key layout, the language of its
+words, whether it learns yours and comes back to the last channel) and the quick phrases.
 
 ## What it changes, and puts back
 
@@ -527,7 +555,19 @@ FreeControl is released under the [MIT licence](LICENSE). One file is the except
 and stays under the GPL 3.0, whose text sits next to it. It is test tooling and is not part of the
 addon you install.
 
-The addon's artwork is drawn by the scripts in `tools/`, and the addon ships no Blizzard art. The
+The chat keyboard's frame, its word prediction, its channel row and the quick phrases
+(`FreeControl/Chat/`) are ported from
+[Easy Controller - Forever](https://github.com/moust4ki/EasyControllerWowForever) by moust4ki,
+under its MIT licence; the pictures in `FreeControl/Chat/Textures/` are that addon's. The keys
+themselves and their buttons (`Keyboard.lua`, `Input.lua`) are FreeControl's own, on that addon's
+key layouts. The five
+word lists (`Dict_*.lua`) come with it from
+[FrequencyWords](https://github.com/hermitdave/FrequencyWords) by Hermit Dave and are under
+CC-BY-SA-4.0. Both notices are in
+[FreeControl/Chat/LICENSE-EasyController.txt](FreeControl/Chat/LICENSE-EasyController.txt), which
+ships in the addon's zip.
+
+The rest of the addon's artwork is drawn by the scripts in `tools/`, and the addon ships no Blizzard art. The
 spell icons that appear in the pictures are Blizzard Entertainment's, shown the way any screenshot
 of the game shows them; they are not part of the addon and are not covered by the MIT licence.
 World of Warcraft is a trademark of Blizzard Entertainment. FreeControl is a fan-made addon and is
