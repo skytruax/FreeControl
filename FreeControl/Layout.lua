@@ -178,24 +178,38 @@ Layout.OTHER_KEYS = {
 	"PADPADDLE1", "PADPADDLE2", "PADPADDLE3", "PADPADDLE4",
 }
 
--- Game commands offered for them on top of Layout.COMMANDS: { binding name, label }. The names
+-- Game commands offered for them on top of Layout.COMMANDS: { binding name, label, art file }.
+-- Each has a picture of its own, if only in its colour, so a row of them can be told apart. The names
 -- are the ones the Key Bindings screen uses (Blizzard_FrameXML/Bindings_Camelot.xml).
+--
+-- The four in Layout.PARTY_JOBS are not game commands. They step through the party: next and
+-- previous from the member picked last, and the first and the last there is, each skipping the
+-- places nobody is in. Bindings.lua makes a secure button for each, so they work in a fight:
+-- { the name a role is saved under, label, art file, the button's name after "FreeControlParty" }.
+Layout.PARTY_JOBS = {
+	{ "FREECONTROL_PARTYNEXT", "Target next party member", "Role-PartyNext", "Next" },
+	{ "FREECONTROL_PARTYPREV", "Target previous party member", "Role-PartyPrev", "Prev" },
+	{ "FREECONTROL_PARTYFIRST", "Target first party member", "Role-PartyFirst", "First" },
+	{ "FREECONTROL_PARTYLAST", "Target last party member", "Role-PartyLast", "Last" },
+}
+
 Layout.MORE_JOBS = {
-	{ "ASSISTTARGET", "Target your target's target" },
-	{ "TARGETPARTYMEMBER1", "Target party member 1" },
-	{ "TARGETPARTYMEMBER2", "Target party member 2" },
-	{ "TARGETPARTYMEMBER3", "Target party member 3" },
-	{ "TARGETPARTYMEMBER4", "Target party member 4" },
+	{ "ASSISTTARGET", "Target your target's target", "Role-Assist" },
+	{ "TARGETPARTYMEMBER1", "Target party member 1", "Role-Party1" },
+	{ "TARGETPARTYMEMBER2", "Target party member 2", "Role-Party2" },
+	{ "TARGETPARTYMEMBER3", "Target party member 3", "Role-Party3" },
+	{ "TARGETPARTYMEMBER4", "Target party member 4", "Role-Party4" },
+	Layout.PARTY_JOBS[1], Layout.PARTY_JOBS[2], Layout.PARTY_JOBS[3], Layout.PARTY_JOBS[4],
 	-- The game's own Ping key (Blizzard_PingUI/Bindings.xml): a press pings what is under the
 	-- pointer or in the middle of the screen, and holding it brings up the wheel of pings.
-	{ "TOGGLEPINGLISTENER", "Ping (hold for the wheel)" },
-	{ "TOGGLECHARACTER0", "Character" },
-	{ "TOGGLESPELLBOOK", "Spellbook" },
-	{ "TOGGLETALENTS", "Talents" },
-	{ "TOGGLEQUESTLOG", "Quest log" },
-	{ "TOGGLESOCIAL", "Friends and guild" },
-	{ "DISMOUNT", "Dismount" },
-	{ "SITORSTAND", "Sit or stand" },
+	{ "TOGGLEPINGLISTENER", "Ping (hold for the wheel)", "Role-Ping" },
+	{ "TOGGLECHARACTER0", "Character", "Role-Character" },
+	{ "TOGGLESPELLBOOK", "Spellbook", "Role-Spellbook" },
+	{ "TOGGLETALENTS", "Talents", "Role-Talents" },
+	{ "TOGGLEQUESTLOG", "Quest log", "Role-Quests" },
+	{ "TOGGLESOCIAL", "Friends and guild", "Role-Social" },
+	{ "DISMOUNT", "Dismount", "Role-Dismount" },
+	{ "SITORSTAND", "Sit or stand", "Role-Sit" },
 }
 
 ---------------------------------------------------------------------------
@@ -280,15 +294,47 @@ Layout.COMMANDS = {
 -- Bindings.lua binds such a button itself; see Mouse.lua.
 Layout.CURSOR_COMMAND = "FREECONTROL_TOGGLECURSOR"
 Layout.CURSOR_ROLE = "cmd:" .. Layout.CURSOR_COMMAND
+Layout.PAGE_ROLES = { { "FREECONTROL_NEXTPAGE", "Next page", 1 }, { "FREECONTROL_PREVPAGE", "Previous page", -1 } }
+Layout.RELEASE_ROLE_COMMAND = "FREECONTROL_RELEASELAYER"
 
 function Layout.IsCursorRole(role)
 	return role == Layout.CURSOR_ROLE
+end
+
+function Layout.GetRole(set, index, spell)
+	local db = ns.db
+	if set == Layout.SET_NONE and not spell then
+		return db.roles[index]
+	end
+	local roles = spell and db.mainFormRoles[spell] or (not spell and db.layerRoles[set])
+	local role = roles and roles[index]
+	if not db.mouseMode and Layout.IsCursorRole(role) then
+		return "action"
+	end
+	return role or "action"
+end
+
+function Layout.GetFormSpell(index)
+	local _, _, _, spell = GetShapeshiftFormInfo(index)
+	if not ns.IsSealed(spell) and type(spell) == "number" then return spell end
+end
+
+function Layout.GetActiveMainFormSpell()
+	local header = ns.Bindings.header
+	return header and header:GetAttribute("fc-active-main-spell")
 end
 
 local COMMAND_BY_NAME = {}
 for _, command in ipairs(Layout.COMMANDS) do
 	COMMAND_BY_NAME[command[1]] = command
 end
+for _, command in ipairs(Layout.PAGE_ROLES) do
+	COMMAND_BY_NAME[command[1]] = { command[1], command[2], command[3] > 0 and "Role-PageNext" or "Role-PagePrev" }
+end
+for _, command in ipairs(Layout.MORE_JOBS) do
+	COMMAND_BY_NAME[command[1]] = command
+end
+COMMAND_BY_NAME[Layout.RELEASE_ROLE_COMMAND] = { Layout.RELEASE_ROLE_COMMAND, "Return to main layer", "Role-Release" }
 
 -- Splits a saved role into its kind ("action", "pass" or "cmd") and, for commands, the binding name.
 function Layout.ParseRole(role)
@@ -394,6 +440,7 @@ Layout.REACTIVE_TIME = 20 -- seconds a glow may last; the game takes the ability
 local PAGE_SLOTS = 28
 local NUM_PAGES = 3
 local NUM_STANCE_BARS = 5
+local MAIN_FORM_BLOCKS = 7
 Layout.NUM_PAGES = NUM_PAGES
 
 -- Regular action bar slots used by the "bars" source: Bottom Left, Bottom Right, Right and Left bar.
@@ -429,6 +476,65 @@ function Layout.HasStanceSlots()
 	return gamepad.stanceValid
 end
 
+-- The extra blocks follow the standard controller pages and Blizzard's stance bars.
+-- Keep assignments keyed by spell ID so learning a form cannot move an existing layout.
+function Layout.GetMainFormSlots()
+	local slots = {}
+	if ns.GetBarProfile().stanceSet == "none" or not gamepad.stanceValid then
+		return slots
+	end
+	local first = gamepad.first + PAGE_SLOTS * NUM_PAGES + NUM_STANCE_BARS * 8
+	local isValid = C_GamepadUI.IsValidGamepadActionStorageSlotIndex
+	local saved = ns.db.mainFormSlots
+	local used = {}
+	local function BlockFirst(block)
+		return first + (block - 1) * 8
+	end
+	local function CanUseBlock(block, requireEmpty)
+		local start = BlockFirst(block)
+		for slot = start, start + 7 do
+			if not isValid(slot) or (requireEmpty and C_ActionBar.HasAction(slot)) then
+				return false
+			end
+		end
+		return true
+	end
+	for spell, block in pairs(saved) do
+		if type(spell) ~= "number" or type(block) ~= "number" or block < 1
+			or block > MAIN_FORM_BLOCKS or block % 1 ~= 0 or used[block] then
+			saved[spell] = nil
+		else
+			used[block] = true
+		end
+	end
+	for index = 1, math.min(Layout.GetNumForms(), Layout.NUM_FORM_COMMANDS) do
+		local spell = Layout.GetFormSpell(index)
+		if spell then
+			local block = saved[spell]
+			for candidate = 1, MAIN_FORM_BLOCKS do
+				if block then break end
+				if not used[candidate] and CanUseBlock(candidate, true) then
+					block = candidate
+					saved[spell], used[block] = block, true
+				end
+			end
+			if block and CanUseBlock(block, false) then
+				slots[index] = BlockFirst(block)
+			end
+		end
+	end
+	return slots
+end
+
+function Layout.GetMainFormCondition()
+	local parts = {}
+	for form = 1, Layout.NUM_FORM_COMMANDS do
+		parts[#parts + 1] = ("[form:%d] %d"):format(form, form)
+	end
+	parts[#parts + 1] = "0"
+	return table.concat(parts, "; ")
+end
+
 -- The first and the last of the controller's slots: its three pages and, where the client has
 -- them, the stance bars after those. Nothing when the client has no usable controller slots.
 function Layout.GetGamepadSlotRange()
@@ -445,7 +551,7 @@ end
 -- The slot source in use: the saved choice, or the regular bars when this client has no usable
 -- controller slots.
 function Layout.GetSlotSource()
-	if ns.db.slotSource == "gamepad" and gamepad.pagesValid then
+	if ns.GetBarProfile().slotSource == "gamepad" and gamepad.pagesValid then
 		return "gamepad"
 	end
 	return "bars"
@@ -484,12 +590,12 @@ end
 
 -- How many pages there are to turn through: three, or one when there is nothing to turn.
 function Layout.GetPageCount()
-	return ns.db.pages and Layout.GetStoredPages() or 1
+	return ns.GetBarProfile().pages and Layout.GetStoredPages() or 1
 end
 
 -- The page being shown: the saved one, or the first when the slots in use have no such page.
 function Layout.GetPage()
-	local page = ns.db.page
+	local page = ns.GetBarProfile().page
 	return page <= Layout.GetStoredPages() and page or 1
 end
 
@@ -571,7 +677,7 @@ end
 function Layout.GetStanceGroups()
 	local groups = {}
 	local source = Layout.GetSlotSource()
-	local choice = ns.db.stanceSet
+	local choice = ns.GetBarProfile().stanceSet
 	-- With the regular action bars as the slots nothing changes unless the player asks for it:
 	-- those bars have never followed the stance, and a Warrior is always in one.
 	if choice == "none" or (choice == "auto" and source ~= "gamepad") then

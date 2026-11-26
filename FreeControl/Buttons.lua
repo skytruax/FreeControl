@@ -21,7 +21,8 @@ ns.Buttons = Buttons
 
 Buttons.action = {} -- [set][index] = visible action button
 Buttons.proxy = {}  -- [set][index] = key button
-Buttons.role = {}   -- [index] = stand-in shown for a no-trigger button that is not an action slot
+Buttons.role = {}   -- main layer's command widgets
+Buttons.layerRole = { [0] = Buttons.role }
 
 local ART = ns.ART
 local ICON_INSET = 2       -- the icon starts just under the inner edge of the rim
@@ -203,8 +204,10 @@ local ShowTooltip
 -- the glow. On a client that seals what is in a slot, neither is known while it does.
 local function ReadAction(fc)
 	local item, spell
+	fc.isMacro = false
 	if fc.hasAction then
 		local kind, id, subKind = GetActionInfo(fc.slot)
+		fc.isMacro = not ns.IsSealed(kind) and kind == "macro"
 		if id and not ns.IsSealed(id) then
 			if kind == "item" then
 				item = id
@@ -409,6 +412,9 @@ end
 -- one in this stance alone.
 local function OwnSlot(button)
 	local fc = button.fc
+	if fc.set == Layout.SET_NONE and ns.Bindings.header:GetAttribute("fc-active-main-form") then
+		return fc.slot
+	end
 	if fc.group and FollowedPage() then
 		return OwnSlots(fc)[FollowedStance()]
 	end
@@ -466,13 +472,16 @@ end
 function ShowTooltip(button)
 	local fc = button.fc
 	GameTooltip_SetDefaultAnchor(GameTooltip, button)
-	if fc.hasAction and GameTooltip:SetAction(fc.slot) then
+	if fc.hasAction then
+		-- SetAction reports whether the tooltip needs a cooldown refresh. Macro sequences
+		-- can also change while hovered, including when their reset timer expires.
+		local refresh = GameTooltip:SetAction(fc.slot)
 		GameTooltip:AddLine(Layout.GetButtonName(fc.set, fc.index), 0.37, 0.84, 1)
 		if OwnSlot(button) ~= fc.slot then
 			GameTooltip:AddLine("A stance or form you put on this button elsewhere. It shows here because this stance has nothing of its own on the button: drop something on it to give it that.", 0.6, 0.6, 0.6, true)
 		end
 		GameTooltip:Show()
-		button.UpdateTooltip = ShowTooltip -- the tooltip calls this while it stays up (cooldown text)
+		button.UpdateTooltip = (refresh or fc.isMacro) and ShowTooltip or nil
 	else
 		GameTooltip:SetText(Layout.GetButtonName(fc.set, fc.index), 0.37, 0.84, 1)
 		GameTooltip:AddLine("Empty. Drop a spell, item or macro here.", 1, 1, 1, true)
@@ -566,9 +575,9 @@ end
 -- to that command: no click passes through this addon, so the key itself is watched (Blizzard's
 -- ClassActionFlyout watches its own combination the same way).
 local function WatchRoleKeys()
-	for index, widget in pairs(Buttons.role) do
+	for index, widget in ipairs(Buttons.layerRole[activeSet]) do
 		if widget:IsShown() then
-			Press(widget, "keyDown", activeSet == 0 and IsKeyDown(ns.db.keys[index]))
+			Press(widget, "keyDown", IsKeyDown(ns.db.keys[index]))
 		end
 	end
 end
@@ -796,20 +805,23 @@ local function CreateKeyButton(set, index, button)
 end
 
 ---------------------------------------------------------------------------
--- Stand-ins for no-trigger buttons that run a command or are left alone
+-- Stand-ins for buttons that run a command or are left alone
 ---------------------------------------------------------------------------
 local function RoleTooltip(widget)
-	local index = widget.fc.index
-	local kind, command = Layout.ParseRole(ns.db.roles[index])
+	local set, index = widget.fc.set, widget.fc.index
+	local spell = set == 0 and Layout.GetActiveMainFormSpell()
+	local kind, command = Layout.ParseRole(Layout.GetRole(set, index, spell))
 	GameTooltip_SetDefaultAnchor(GameTooltip, widget)
-	GameTooltip:SetText(Layout.GetButtonName(0, index), 0.37, 0.84, 1)
+	GameTooltip:SetText(Layout.GetButtonName(set, index), 0.37, 0.84, 1)
 	if kind == "cmd" then
 		GameTooltip:AddLine(Layout.GetCommandInfo(command), 1, 1, 1, true)
 		if command == Layout.CURSOR_COMMAND then
 			GameTooltip:AddLine(("Press it to bring the mouse pointer out, and again to put it away. The right stick moves the pointer; %s."):format(ns.Mouse:DescribeClicks()), 0.8, 0.8, 0.8, true)
 		elseif Layout.GetCommandForm(command) then
-			GameTooltip:AddLine("This button changes to that stance or form on every page and in every stance: nothing on the bar can cover it.", 0.8, 0.8, 0.8, true)
+			GameTooltip:AddLine("This button changes to that stance or form whenever this layout is active.", 0.8, 0.8, 0.8, true)
 		end
+	elseif kind == "none" then
+		GameTooltip:AddLine("Nothing assigned on this layout.", 1, 1, 1, true)
 	else
 		local bound = GetBindingAction(ns.db.keys[index], true)
 		if bound and bound ~= "" then
@@ -822,11 +834,12 @@ local function RoleTooltip(widget)
 	GameTooltip:Show()
 end
 
-local function CreateRoleWidget(index, parent)
-	local widget = CreateFrame("Button", nil, parent)
+local function CreateRoleWidget(set, index, parent)
+	local widget = CreateFrame("Button", nil, parent, "SecureFrameTemplate")
 	widget:SetSize(Layout.BUTTON_SIZE, Layout.BUTTON_SIZE)
 	widget:SetPoint("CENTER", parent, "CENTER", unpack(Layout.BUTTON_OFFSET[index]))
-	widget.fc = { index = index, round = Layout.IsRound(index) }
+	widget.fc = { set = set, index = index, round = Layout.IsRound(index) }
+	widget:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	-- Its icon is a ring that reaches the edge of the picture: trimmed, the ring would be cut.
 	AddArt(widget, widget.fc.round, true)
 	-- A bright ring while what the button switches is on: the mouse pointer being out.
@@ -843,7 +856,7 @@ local function CreateRoleWidget(index, parent)
 		GameTooltip:Hide()
 	end)
 	widget:SetScript("OnClick", function(self)
-		ns.Options:OpenRoleMenu(self, index)
+		ns.Options:OpenRoleMenu(self, index, set, set == 0 and Layout.GetActiveMainFormSpell())
 	end)
 	return widget
 end
@@ -855,7 +868,8 @@ local mouseLit = false -- the controller's mouse pointer is out
 -- of the game's it is trimmed on a square button; the addon's own icons are drawn to the edge.
 local function UpdateRoleWidget(widget)
 	local fc = widget.fc
-	local kind, command = Layout.ParseRole(ns.db.roles[fc.index])
+	local spell = fc.set == 0 and Layout.GetActiveMainFormSpell()
+	local kind, command = Layout.ParseRole(Layout.GetRole(fc.set, fc.index, spell))
 	local lit, dark, gameIcon = false, false, false
 	if kind == "cmd" then
 		local _, art = Layout.GetCommandInfo(command)
@@ -889,8 +903,12 @@ end
 -- Called by Mouse.lua (in combat too) when the mouse pointer comes out or goes away. Alpha only.
 function Buttons:SetMouseLit(out)
 	mouseLit = out
-	for _, widget in pairs(self.role) do
-		UpdateRoleWidget(widget)
+	self:UpdateRoleWidgets()
+end
+
+function Buttons:UpdateRoleWidgets()
+	for _, layer in pairs(self.layerRole) do
+		for _, widget in ipairs(layer) do UpdateRoleWidget(widget) end
 	end
 end
 
@@ -902,13 +920,12 @@ function Buttons:Create()
 	for _, set in ipairs(Layout.SETS) do
 		local parent = ns.Bars.sets[set]
 		self.action[set], self.proxy[set] = {}, {}
+		self.layerRole[set] = self.layerRole[set] or {}
 		for index = 1, 8 do
 			local button = CreateActionButton(set, index, parent)
 			self.action[set][index] = button
 			self.proxy[set][index] = CreateKeyButton(set, index, button)
-			if set == Layout.SET_NONE then
-				self.role[index] = CreateRoleWidget(index, parent)
-			end
+			self.layerRole[set][index] = CreateRoleWidget(set, index, parent)
 		end
 	end
 	if secureClickMissing then
@@ -916,9 +933,8 @@ function Buttons:Create()
 	end
 end
 
--- True when a no-trigger button is an action slot; the other sets always are.
 function Buttons:IsActionSlot(set, index)
-	return set ~= Layout.SET_NONE or Layout.ParseRole(ns.db.roles[index]) == "action"
+	return Layout.GetRole(set, index) == "action"
 end
 
 -- Out of combat. Hands the secure header (Bindings.lua) everything it needs to point each button
@@ -929,6 +945,24 @@ function Buttons:Assign()
 	local header = ns.Bindings.header
 	local groups = Layout.GetStanceGroups()
 	local stored = Layout.GetStoredPages()
+	local formSlots = Layout.GetMainFormSlots()
+	header:SetAttribute("fc-main-forms", next(formSlots) ~= nil)
+	for form = 1, Layout.NUM_FORM_COMMANDS do
+		local start = formSlots[form]
+		local spell = start and Layout.GetFormSpell(form)
+		header:SetAttribute("fc-main-form-" .. form, start)
+		header:SetAttribute("fc-main-spell-" .. form, spell)
+		if spell then
+			for index = 1, 8 do
+				local role = Layout.GetRole(0, index, spell)
+				local kind, target = ns.Bindings:GetRoleBinding(role, 0, index)
+				local id = spell .. "-" .. index
+				header:SetAttribute("fc-form-action-" .. id, role == "action")
+				header:SetAttribute("fc-form-kind-" .. id, kind)
+				header:SetAttribute("fc-form-target-" .. id, target)
+			end
+		end
+	end
 	for _, set in ipairs(Layout.SETS) do
 		for index = 1, 8 do
 			local button, proxy = self.action[set][index], self.proxy[set][index]
@@ -943,11 +977,8 @@ function Buttons:Assign()
 			button.fc.group = group
 			button:SetShown(isSlot)
 			proxy:SetShown(isSlot)
-			if set == Layout.SET_NONE then
-				local widget = self.role[index]
-				widget:SetShown(not isSlot)
-				UpdateRoleWidget(widget)
-			end
+			local widget = self.layerRole[set][index]
+			widget:SetShown(not isSlot)
 		end
 	end
 	for stance = 1, Layout.NUM_STANCES do
@@ -965,7 +996,17 @@ function Buttons:Assign()
 	else
 		UnregisterStateDriver(header, "fc-stance")
 	end
+	if next(formSlots) then
+		RegisterStateDriver(header, "fc-main-form", Layout.GetMainFormCondition())
+		local form = GetShapeshiftForm and GetShapeshiftForm()
+		if not ns.IsSealed(form) and type(form) == "number" then
+			header:SetAttribute("state-fc-main-form", form)
+		end
+	else
+		UnregisterStateDriver(header, "fc-main-form")
+	end
 	header:Execute([[ self:RunAttribute("fc-assign") ]])
+	self:UpdateRoleWidgets()
 
 	-- The pictures follow the "action" attribute as it changes; this draws each one afresh for
 	-- what did not change it (another controller style, a setting), and empties the hidden ones.
@@ -986,8 +1027,10 @@ function Buttons:UpdateGlyphs()
 		button.fc.glyph:SetTexture(file)
 		button.fc.badge:SetTexture(file)
 	end
-	for index, widget in pairs(self.role) do
-		widget.fc.glyph:SetTexture(ART .. Layout.GetGlyph(index))
+	for _, layer in pairs(self.layerRole) do
+		for index, widget in ipairs(layer) do
+			widget.fc.glyph:SetTexture(ART .. Layout.GetGlyph(index))
+		end
 	end
 end
 
@@ -1013,6 +1056,7 @@ function Buttons:Release()
 		Press(frame, "keyDown", false)
 	end
 	UnregisterStateDriver(ns.Bindings.header, "fc-stance")
+	UnregisterStateDriver(ns.Bindings.header, "fc-main-form")
 	for _, button in ipairs(all) do
 		SetRangeSlot(button, nil)
 	end
@@ -1049,13 +1093,28 @@ ns.On("ACTIONBAR_SLOT_CHANGED", function(_, slot)
 	KeptMayHaveChanged()
 end)
 
+ns.On("UPDATE_MACROS", function()
+	ForEachWithAction(function(button)
+		if button.fc.isMacro then Update(button) end
+	end)
+end)
+
+ns.On("UPDATE_SHAPESHIFT_FORMS", function()
+	-- A newly learned form needs a slot allocation and a refreshed secure map.
+	if ns.IsBuilt() and ns.IsActive() then
+		ns.RunOutOfCombat("main-form-layout", function()
+			if ns.IsActive() then ns.Buttons:Assign() end
+		end)
+	end
+end)
+
 -- A button that changes to a stance or form follows the game's own stance bar: which stances
 -- there are, which one the character is in, which can be changed to. Pictures only, so in a
 -- fight too.
 for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_SHAPESHIFT_FORM", "UPDATE_SHAPESHIFT_FORMS", "UPDATE_SHAPESHIFT_USABLE" }) do
 	ns.On(event, function()
-		for _, widget in pairs(Buttons.role) do
-			UpdateRoleWidget(widget)
+		for _, layer in pairs(Buttons.layerRole) do
+			for _, widget in ipairs(layer) do UpdateRoleWidget(widget) end
 		end
 	end)
 end

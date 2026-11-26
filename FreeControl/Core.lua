@@ -16,6 +16,7 @@ ns.ART = "Interface\\AddOns\\" .. ADDON .. "\\Art\\"
 --        4            8           5-8 = face left/top/right/bottom
 local DEFAULTS = {
 	enabled = true,
+	toggleLayers = true,
 	locked = true,
 	scale = 1,
 	point = { 0, 270 },    -- centre of the bar, measured from the bottom-centre of the screen
@@ -43,6 +44,9 @@ local DEFAULTS = {
 	--   "cmd:<NAME>"  run a game command (the names used by the Key Bindings screen)
 	-- The top face button (Y) is the mouse button; its role is Layout.CURSOR_ROLE, see Mouse.lua.
 	roles = { "action", "action", "action", "action", "cmd:INTERACTTARGET", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" },
+	layerRoles = {},       -- [trigger set][button]; absent entries are action slots
+	mainFormSlots = {},    -- [form spell ID] = reserved eight-slot block
+	mainFormRoles = {},    -- [form spell ID][button]; absent entries are action slots
 	-- The two buttons that are the mouse buttons while the controller's mouse cursor is out: a
 	-- button name, or "game" to leave that one to the game's own setting.
 	mouseMode = true,      -- a button on the bar brings the mouse pointer out; off, that button is an action slot
@@ -90,7 +94,17 @@ ns.IsOneOf = IsOneOf
 -- Saved variables are plain text the player can edit, and they outlive versions of this addon,
 -- so anything out of range goes back to its default instead of breaking the bars later.
 local function IsRole(value)
-	return type(value) == "string" and (value == "action" or value == "pass" or value:match("^cmd:[%w_]+$") ~= nil)
+	return type(value) == "string" and (value == "action" or value == "pass" or value == "none" or value:match("^cmd:[%w_]+$") ~= nil)
+end
+
+local BAR_SETTINGS = { page = true, pages = true, showPager = true, slotSource = true, stanceSet = true }
+
+local function SanitizeBarSettings(bar)
+	if not IsOneOf(bar.page, 1, 2, 3) then bar.page = DEFAULTS.page end
+	if type(bar.pages) ~= "boolean" then bar.pages = DEFAULTS.pages end
+	if type(bar.showPager) ~= "boolean" then bar.showPager = DEFAULTS.showPager end
+	if not IsOneOf(bar.slotSource, "gamepad", "bars") then bar.slotSource = DEFAULTS.slotSource end
+	if not IsOneOf(bar.stanceSet, unpack(ns.Layout.STANCE_CHOICES)) then bar.stanceSet = DEFAULTS.stanceSet end
 end
 
 local function Sanitize(db)
@@ -102,10 +116,8 @@ local function Sanitize(db)
 	if type(db.activeScale) ~= "number" or db.activeScale < 1 or db.activeScale > 1.6 then Reset("activeScale") end
 	if type(db.inactiveAlpha) ~= "number" or db.inactiveAlpha < 0.2 or db.inactiveAlpha > 1 then Reset("inactiveAlpha") end
 	if type(db.cursorSpeed) ~= "number" or db.cursorSpeed < 0.25 or db.cursorSpeed > 4 then Reset("cursorSpeed") end
-	if not IsOneOf(db.page, 1, 2, 3) then Reset("page") end
 	if not IsOneOf(db.labelStyle, "auto", "xbox", "playstation", "nintendo") then Reset("labelStyle") end
-	if not IsOneOf(db.slotSource, "gamepad", "bars") then Reset("slotSource") end
-	if not IsOneOf(db.stanceSet, unpack(ns.Layout.STANCE_CHOICES)) then Reset("stanceSet") end
+	SanitizeBarSettings(db)
 	if type(db.point[1]) ~= "number" or type(db.point[2]) ~= "number" then
 		Reset("point")
 	end
@@ -113,6 +125,20 @@ local function Sanitize(db)
 		if type(db.keys[i]) ~= "string" or db.keys[i] == "" then db.keys[i] = DEFAULTS.keys[i] end
 		if not IsRole(db.roles[i]) then
 			db.roles[i] = DEFAULTS.roles[i]
+		end
+	end
+	for _, layouts in ipairs({ db.layerRoles, db.mainFormRoles }) do
+		for id, roles in pairs(layouts) do
+			if type(id) ~= "number" or id % 1 ~= 0 or id < 1
+				or (layouts == db.layerRoles and id > 3) or type(roles) ~= "table" then
+				layouts[id] = nil
+			else
+				for index, role in pairs(roles) do
+					if type(index) ~= "number" or index < 1 or index > 8 or index % 1 ~= 0 or not IsRole(role) then
+						roles[index] = nil
+					end
+				end
+			end
 		end
 	end
 	for i = 1, 2 do
@@ -142,6 +168,24 @@ local function Sanitize(db)
 	for key, plain in pairs(db.plainKeys) do
 		if type(key) ~= "string" or key ~= key:upper() or plain ~= true then db.plainKeys[key] = nil end
 	end
+	local seen = {}
+	for _, key in ipairs(ns.Layout.OTHER_KEYS) do seen[key] = true end
+	local extraKeys = {}
+	if type(db.extraKeys) == "table" then
+		for _, key in ipairs(db.extraKeys) do
+			if type(key) == "string" and key ~= "" and key == key:upper() and not seen[key] then
+				extraKeys[#extraKeys + 1] = key
+				seen[key] = true
+			end
+		end
+	else
+		-- Earlier versions kept the bindings but only displayed the last captured key.
+		for key in pairs(db.plainKeys) do
+			if key ~= "" and not seen[key] then extraKeys[#extraKeys + 1] = key end
+		end
+		table.sort(extraKeys)
+	end
+	db.extraKeys = extraKeys
 	db.mouseTipShown = nil -- used by 1.2.0 only
 	-- Version 1.3.0 kept its own notes on the mouse button. Its "given" meant the button had no
 	-- job before, which is what "pass" says now; anything else it wrote is dropped.
@@ -151,7 +195,7 @@ local function Sanitize(db)
 	end
 	if type(db.mouseStep) ~= "number" then Reset("mouseStep") end
 	if db.mouseNews ~= nil and not IsRole(db.mouseNews) then db.mouseNews = nil end
-	for _, key in ipairs({ "pages", "showPager", "mouseMode", "gamePointer", "frontTargeting" }) do
+	for _, key in ipairs({ "mouseMode", "gamePointer", "frontTargeting", "toggleLayers" }) do
 		if type(db[key]) ~= "boolean" then Reset(key) end
 	end
 	for modifier, button in pairs(db.standIns) do
@@ -371,13 +415,54 @@ function ns.IsBuilt()
 	return built
 end
 
+function ns.GetBarProfile()
+	return ns.barProfile or ns.db
+end
+
+function ns.GetSettingStore(key)
+	return BAR_SETTINGS[key] and ns.GetBarProfile() or ns.db
+end
+
+-- Forever's primary and secondary talent groups can have the same class specialization.
+local function SelectBarProfile()
+	local getGroup = C_SpecializationInfo and C_SpecializationInfo.GetActiveSpecGroup
+	local group = getGroup and getGroup()
+	if ns.IsSealed(group) or not IsOneOf(group, 1, 2) or ns.activeSpecGroup == group then
+		return false
+	end
+	local db = ns.db
+	if type(db.barProfiles) ~= "table" then db.barProfiles = {} end
+	local profile = db.barProfiles[group]
+	if type(profile) ~= "table" then
+		profile = {}
+		for key in pairs(BAR_SETTINGS) do profile[key] = db[key] end
+		db.barProfiles[group] = profile
+	end
+	SanitizeBarSettings(profile)
+	ns.activeSpecGroup, ns.barProfile = group, profile
+	return true
+end
+
+local function RefreshBarProfile()
+	if not ns.db then return end
+	ns.RunOutOfCombat("bar-profile", function()
+		if SelectBarProfile() then ns.Refresh() end
+	end)
+end
+
+if C_EventUtils and C_EventUtils.IsEventValid and C_EventUtils.IsEventValid("ACTIVE_TALENT_GROUP_CHANGED") then
+	ns.On("ACTIVE_TALENT_GROUP_CHANGED", RefreshBarProfile)
+end
+ns.On("PLAYER_ENTERING_WORLD", RefreshBarProfile)
+
 -- Called by the secure header (in combat too) each time it has pointed the buttons at their
 -- slots, with the page they now show. The page is remembered for the next login; with the
 -- regular action bars as the slots there is only one, and the saved page is kept for later.
 function ns.OnPageShown(page)
 	ns.Bars:OnPageChanged(page)
-	if ns.Layout.GetPageCount() > 1 and ns.db.page ~= page then
-		ns.db.page = page
+	local profile = ns.GetBarProfile()
+	if ns.Layout.GetPageCount() > 1 and profile.page ~= page then
+		profile.page = page
 		ns.Options:Sync()
 	end
 end
@@ -398,7 +483,7 @@ function ns.SetMouseMode(on)
 		for index = 1, 8 do
 			has = has or Layout.IsCursorRole(db.roles[index])
 		end
-		if not has and db.roles[db.mouseIndex] == "action" then
+		if not has and not ns.Mouse:GetBarButtonName() and db.roles[db.mouseIndex] == "action" then
 			db.roles[db.mouseIndex] = Layout.CURSOR_ROLE
 		end
 	else
@@ -446,8 +531,13 @@ ns.On("ADDON_LOADED", function(_, name)
 	if name ~= ADDON then
 		return
 	end
-	FreeControlDB = CopyDefaults(type(FreeControlDB) == "table" and FreeControlDB or {}, DEFAULTS)
-	ns.db = FreeControlDB
+	if type(FreeControlCharacterDB) ~= "table" then
+		-- Each character gets its own copy of the old account settings on first login.
+		local legacy = type(FreeControlDB) == "table" and FreeControlDB
+		FreeControlCharacterDB = legacy and CopyTable(legacy) or {}
+	end
+	ns.db = CopyDefaults(FreeControlCharacterDB, DEFAULTS)
+	ns.activeSpecGroup, ns.barProfile = nil, nil
 	Sanitize(ns.db)
 	GiveMouseButton(ns.db)
 end)
@@ -477,7 +567,7 @@ end
 -- player coming from another class, or from an earlier version, would expect.
 local function SayStanceNote()
 	local db = ns.db
-	if db.stanceNoteShown or db.stanceSet ~= "auto" then
+	if db.stanceNoteShown or ns.GetBarProfile().stanceSet ~= "auto" then
 		return
 	end
 	-- On automatic only a class whose forms replace the whole bar has more than one group.
@@ -486,11 +576,16 @@ local function SayStanceNote()
 		return
 	end
 	db.stanceNoteShown = true
+	if ns.IsBuilt() and ns.Bindings.header:GetAttribute("fc-main-forms") then
+		ns.Print("All eight Main buttons have their own action slots in each form. Leave the form to get your normal Main layout back.")
+		return
+	end
 	ns.Print(("Druid: %s change with your form on page %d, so each form has its own buttons there. The %s set, the face buttons and the other pages stay the same in every form: put your shapeshifts there. Stance sets on the settings page (/fc) changes this."):format(
 		ns.Layout.DescribeStanceGroups(groups), ns.Layout.GetStancePage(), ns.Layout.GetSetName(ns.Layout.SET_BOTH)))
 end
 
 ns.On("PLAYER_LOGIN", function()
+	SelectBarProfile()
 	ns.Options:Create()
 	ns.RunOutOfCombat("refresh", ns.Refresh)
 	if ns.IsGamepadUI() and ns.db.enabled then
@@ -502,7 +597,7 @@ ns.On("PLAYER_LOGIN", function()
 	if not ns.db.introShown then
 		ns.db.introShown = true
 		ns.db.mouseNews = nil -- these lines cover the mouse button
-		ns.Print("Hold a trigger to switch sets and drop spells, items or macros onto any slot. /fc opens the settings; /fc unlock lets you drag the bar.")
+		ns.Print("Press a trigger to toggle its layer, or press both to toggle the combined layer. Assign Return to main layer under /fc buttons or Key Bindings.")
 		if ns.Mouse:IsAvailable() and ns.Mouse:GetBarButtonName() then
 			ns.Print(("%s brings out a mouse pointer that the right stick steers; %s."):format(ns.Mouse:GetBarButtonName(), ns.Mouse:DescribeClicks()))
 		end

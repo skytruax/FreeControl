@@ -5,4 +5,10 @@
 	     addon needs it binds itself. -->
 	<Binding name="CLICK FreeControlPageNext:LeftButton" category="FreeControl"/>
 	<Binding name="CLICK FreeControlPagePrev:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlLayerRelease:LeftButton" category="FreeControl"/>
+	<!-- Stepping through the party: next, previous, first and last (Layout.PARTY_JOBS). -->
+	<Binding name="CLICK FreeControlPartyNext:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPartyPrev:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPartyFirst:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPartyLast:LeftButton" category="FreeControl"/>
 </Bindings>

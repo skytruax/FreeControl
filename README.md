@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>The controller cross hotbar for World of Warcraft: Forever, in the normal interface.</b><br>
-  Hold LT, RT or both for 32 buttons. Gamepad UI mode stays off, and your targeting, menus and layout stay yours.
+  Press LT, RT or both to toggle a layer. Assign Return to main layer under Other buttons or Key Bindings.
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ controller and play.
     <td width="50%" valign="top">
       <img src="curseforge/gallery/02-sets.png" alt="The four sets: no trigger, LT, RT, and LT with RT">
       <b>32 buttons under your thumbs.</b> Four sets of eight on the D-pad and face buttons: no
-      trigger, LT, RT, and both. The set you are holding grows, and the others step back.
+      trigger, LT, RT, and both. The active set grows, and the others step back.
     </td>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/03-drop.png" alt="A spell being dragged onto an empty slot of the bar">
@@ -86,8 +86,9 @@ controller and play.
     </td>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/08-controls.png" alt="The empty bar with each set labelled">
-      <b>Yours to rearrange.</b> Every no-trigger button can be an action slot, a command or your
-      own key binding, and the settings page covers the rest.
+      <b>Yours to rearrange.</b> All eight buttons on each layer can be action slots, commands or
+      your own key bindings. Open <code>/fc</code> and select a layer or a form's Main layout under
+      <i>Button assignments</i>.
     </td>
   </tr>
 </table>
@@ -145,7 +146,7 @@ because Blizzard's bar would be bound to the same buttons.
   button on the bar is lit while it is out. FreeControl binds Y itself, the way it binds
   Interact: there is nothing to set up in the Key Bindings screen. Both click buttons and the
   pointer's speed can be changed on the *Mouse mode* page of the settings. To have Y do something
-  else, click it on the bar; any other no-trigger button can be the mouse button instead (choose
+  else, use *Button assignments* to put it on any button of any layer (choose
   *Mouse pointer on / off*).
 - **No mouse mode:** untick *Mouse mode* on the settings page (`/fc mouse off`) and the mouse
   button is an ordinary action slot instead: drop a spell, an item or a macro on it, a different
@@ -189,6 +190,11 @@ because Blizzard's bar would be bound to the same buttons.
   one does and offers the common jobs in a menu: turning the page, targeting (a party member,
   the nearest enemy), Ping, the map and more. **Options > Key Bindings** does the rest. The
   stick clicks keep their jobs except while the mouse pointer is out.
+- **Stepping through the party:** four of those jobs pick a party member without a button for
+  each one: *Target next party member*, *previous*, *first* and *last*. They skip the places
+  nobody is in, work in a fight, and can go on the bar's own buttons too, so a trigger layer's
+  D-pad can be the party. Next and previous go on from the member picked last. *Target yourself*
+  is its own job.
 - **Buttons together:** two or three buttons pressed together can have a job of their own, such
   as LB + D-pad Up for a party member or LB + RB + D-pad Right for the next page. On the
   *Combinations* page (`/fc combos`) click *Press one...*, hold the first button, press the
