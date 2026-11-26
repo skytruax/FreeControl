@@ -5,6 +5,53 @@ First written 2026-11-14, before any stance code was changed, and built in versi
 to work as intended and the design was checked against every class that has stances. What changed
 since the first plan is listed at the end.
 
+## Fork implementation plan
+
+### Character settings and talent groups
+
+- `FreeControlCharacterDB` is saved per character. The first load copies the legacy account
+  settings, including bindings and button roles. Edits on the Other buttons and Combinations
+  pages save WoW's active binding map to the character binding set.
+- Forever's `C_SpecializationInfo.GetActiveSpecGroup()` and
+  `ACTIVE_TALENT_GROUP_CHANGED` identify primary and secondary talents even if both builds use
+  the same class specialization. The event and API were present on the live client. The test
+  character had one talent group.
+- The active talent group selects that group's saved page, paging options, slot source and
+  stance-set configuration. Controller keys and button jobs belong to the character. Changing
+  groups reapplies the bar outside combat.
+- Action contents still live in Blizzard's action slots. Blizzard documents a [Secondary Talents
+  action-bar persistence fix](https://worldofwarcraft.blizzard.com/en-us/news/24315281/wow-forever-hotfixes-november-13-2026).
+  Verify a two-group character by placing different actions at the same slot in each group,
+  switching both ways and relogging. Check a standard action slot, a controller-page slot, a
+  standard stance slot and a controller stance slot separately. If any family is shared, it needs
+  explicit profile storage before it can be counted as independent.
+
+### Eight-button main bar
+
+The existing layout consumes gamepad storage 181–304 on the live client. The client reported
+181–360 as valid gamepad action storage. The pinned Forever UI source used by the simulator
+defines three 28-slot standard pages and five 8-slot stance bars. It uses a separate pet-action
+index for the possess bar. That leaves 305–360 as candidates for the additional layouts.
+The validity check establishes the range. Ownership, secure use and persistence of those slots
+still need verification.
+
+The fork allocates one empty eight-slot block per form spell ID, skipping occupied blocks.
+A secure form driver swaps all eight Main slots on every page and restores normal Main on
+exit. Trigger sets retain their bonus-bar mapping. The Layout selector under Button assignments
+lets each form's eight Main buttons mix commands and action slots. Existing action slots
+are left in place. The mock covers drag and drop, combat switching, forms without a bonus bar,
+and reordered Warrior stances. Live casting and persistence of these slots still need testing.
+
+### Trigger locking
+
+Press either configured trigger to lock its set. Press the second while the first is held to lock
+the combined set. Releasing the triggers preserves the selection. Press the same trigger or
+both triggers again to unlock its layer. Assign **Return to main layer**
+under Other buttons, Combinations, or WoW's Key Bindings. Both selection and release run through
+secure click handlers in and out of combat.
+
+Uncheck **Toggle layers** in FreeControl settings for the original hold-to-shift behavior.
+
 ## The short version
 
 - Some buttons change when you change stance or form, so each stance has its own abilities. For
@@ -37,7 +84,9 @@ works for the Druid and does nothing for the Warrior. That was the gap in 1.5.0.
 
 ## What changes, and where
 
-"Stance sets" on the settings page:
+"Change with stance" on the settings page (called "Stance sets" up to 1.8.0). Its menu has
+Automatic, Nothing and a tick for each of the four layouts; the other choices below are still
+there for `/fc stance`:
 
 | Choice | What changes with your stance or form |
 | --- | --- |
@@ -46,6 +95,14 @@ works for the Druid and does nothing for the Warrior. That was the gap in 1.5.0.
 | Left trigger set, Right trigger set, Both triggers set | That set |
 | Left and right sets | Both of them |
 | Left, right and D-pad | Both of them and the four D-pad slots |
+| My own pick | The layouts ticked at the bottom of the menu (`/fc stance custom main lt rt both`): Main and up to two of the three trigger sets |
+
+With the player's own pick, Main changes with the form on the stance page alone, as the trigger
+sets do, so the other pages are the same in every stance. With a ready-made choice Main still
+changes on every page. Two trigger sets is the limit because the game has two places to keep a
+set's buttons for each stance: the controller's stance bars and the regular action bar's stance
+slots. The first set ticked (left, right, both, in that order) is kept in the first, the second
+in the second.
 
 They change on the **stance page**: the page Options > Gamepad > Stance bar puts the stance bar
 on, which is page 1 unless the player moved it. This is how the game's own bars behave: its

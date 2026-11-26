@@ -581,6 +581,52 @@ def draw_generic(d):
     d.ellipse(s(28, 28, 36, 36), fill=W)
 
 
+# Stepping through the party, which the game lists from the top down: next is down, previous is
+# up, and the first and the last are the top and the bottom, marked by a bar.
+def draw_party_next(d):
+    line(d, [(17, 25), (32, 41), (47, 25)], 6.6, W)
+
+
+def draw_party_prev(d):
+    line(d, [(17, 39), (32, 23), (47, 39)], 6.6, W)
+
+
+def draw_party_first(d):
+    line(d, [(18, 15), (46, 15)], 5.6, W)
+    line(d, [(18, 46), (32, 31), (46, 46)], 6.2, W)
+
+
+def draw_party_last(d):
+    line(d, [(18, 49), (46, 49)], 5.6, W)
+    line(d, [(18, 18), (32, 33), (46, 18)], 6.2, W)
+
+
+PIPS = {
+    1: [(32, 32)],
+    2: [(23, 32), (41, 32)],
+    3: [(32, 22), (22, 40), (42, 40)],
+    4: [(23, 23), (41, 23), (23, 41), (41, 41)],
+}
+
+
+def draw_pips(count):
+    """A party member by number: that many dots."""
+    def draw(d):
+        for x, y in PIPS[count]:
+            d.ellipse(s(x - 6, y - 6, x + 6, y + 6), fill=W)
+    return draw
+
+
+def draw_page_next(d):
+    line(d, [(18, 30), (32, 17), (46, 30)], 5.6, W)
+    line(d, [(18, 46), (32, 33), (46, 46)], 5.6, faint(205))
+
+
+def draw_page_prev(d):
+    line(d, [(18, 18), (32, 31), (46, 18)], 5.6, faint(205))
+    line(d, [(18, 34), (32, 47), (46, 34)], 5.6, W)
+
+
 # name -> (the disc's colour, what is drawn on it, and for some the size it is set at). The first
 # four are the buttons the bar starts with, in the colours the emblem gives X, Y, B and A. The
 # mouse button does not show a pointer: it wears the mascot, which is the addon's calling card.
@@ -596,6 +642,30 @@ ROLES = {
     "Map": ((206, 176, 112), draw_map),
     "Bags": ((178, 124, 76), draw_bags),
     "Generic": ((132, 138, 152), draw_generic),
+    # The jobs that step through the party, the party members by number and the page turns: a
+    # symbol and a colour each, so that a row of them on the bar can be told apart.
+    "PartyNext": ((70, 190, 110), draw_party_next),
+    "PartyPrev": ((64, 164, 222), draw_party_prev),
+    "PartyFirst": ((236, 186, 62), draw_party_first),
+    "PartyLast": ((204, 104, 196), draw_party_last),
+    "Party1": ((92, 150, 240), draw_pips(1)),
+    "Party2": ((104, 196, 96), draw_pips(2)),
+    "Party3": ((238, 176, 60), draw_pips(3)),
+    "Party4": ((230, 106, 88), draw_pips(4)),
+    "PageNext": ((136, 112, 232), draw_page_next),
+    "PagePrev": ((186, 112, 214), draw_page_prev),
+    # The rest of the jobs in the menus have no symbol of their own: the plain one, in a colour
+    # of their own.
+    "Release": ((96, 200, 204), draw_generic),
+    "Assist": ((222, 132, 84), draw_generic),
+    "Ping": ((244, 214, 92), draw_generic),
+    "Character": ((112, 164, 232), draw_generic),
+    "Spellbook": ((164, 116, 228), draw_generic),
+    "Talents": ((120, 204, 132), draw_generic),
+    "Quests": ((232, 196, 108), draw_generic),
+    "Social": ((232, 128, 176), draw_generic),
+    "Dismount": ((176, 136, 92), draw_generic),
+    "Sit": ((88, 184, 168), draw_generic),
 }
 
 
