@@ -102,8 +102,9 @@ local function AddJobChoices(choices, asRole)
 		choices[#choices + 1] = { asRole and "cmd:" .. job[1] or job[1], job[2] }
 	end
 	for _, job in ipairs(Layout.MORE_JOBS) do
-		-- One of FreeControl's own party buttons is bound as a click on it, not as a game command.
-		local binding = asRole and "cmd:" .. job[1] or ns.Bindings.PARTY_COMMANDS[job[1]] or job[1]
+		-- One of FreeControl's own buttons (the party's, the chat's) is bound as a click on it, not
+		-- as a game command.
+		local binding = asRole and "cmd:" .. job[1] or ns.Bindings.PARTY_COMMANDS[job[1]] or ns.Bindings.CHAT_COMMANDS[job[1]] or job[1]
 		choices[#choices + 1] = { binding, job[2] }
 	end
 end
@@ -1134,6 +1135,117 @@ local function BuildMouse(panel)
 end
 
 ---------------------------------------------------------------------------
+-- The Chat page
+---------------------------------------------------------------------------
+-- The chat keyboard and the quick phrases (the Chat folder). Their settings are the account's,
+-- kept apart from the bar's (FreeControlChatDB): ns.Chat.db.settings.
+local KEYBOARD_LAYOUTS = {
+	{ "qwerty", "QWERTY" }, { "azerty", "AZERTY" }, { "qwertz", "QWERTZ" },
+	{ "qwerty_es", "QWERTY (Spanish)" }, { "qwerty_it", "QWERTY (Italian)" },
+}
+
+local function KeyboardLanguages()
+	local choices = {}
+	for index, language in ipairs(ns.Chat.LANGUAGES) do
+		choices[index] = { language.key, language.name }
+	end
+	return choices
+end
+
+-- Brings the keyboard on screen, if it is, in line with a setting that changes how it is drawn.
+local function RedrawKeyboard()
+	local chat = ns.Chat
+	if chat.frame then
+		chat:Layout()
+		chat:UpdateLock()
+		chat:UpdateMethod()
+	end
+end
+
+-- A tick box for one of the chat settings: get() answers it, set(value) stores it.
+local function ChatCheck(panel, x, y, label, tooltip, get, set)
+	local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+	check:SetSize(26, 26)
+	check:SetPoint("TOPLEFT", x, y)
+	check.Text:SetText(label)
+	check.Text:SetFontObject("GameFontHighlight")
+	AddTooltip(check, label, tooltip)
+	check:SetScript("OnClick", function(self)
+		set(self:GetChecked() and true or false)
+		RedrawKeyboard()
+		Options:Sync()
+	end)
+	check.Sync = function(self)
+		self:SetChecked(get())
+	end
+	controls[#controls + 1] = check
+	return y - ROW
+end
+
+-- The same for a setting that is just a name in the chat settings.
+local function ChatSetting(panel, x, y, label, tooltip, key)
+	return ChatCheck(panel, x, y, label, tooltip,
+		function() return ns.Chat.db.settings[key] end,
+		function(value) ns.Chat.db.settings[key] = value end)
+end
+
+-- The keyboard itself, on or off. Off, an open one is closed with the chat it is on.
+local function SetKeyboard(on)
+	local chat = ns.Chat
+	chat.db.settings.modules.keyboard = on
+	if not on and chat:IsOpen() then
+		chat:CloseChat()
+	end
+end
+
+local function BuildChat(panel)
+	local chat = ns.Chat
+	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalHuge")
+	title:SetPoint("TOPLEFT", 16, -14)
+	title:SetText("Chat")
+
+	local note = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", 18, -40)
+	note:SetPoint("RIGHT", -20, 0)
+	note:SetJustifyH("LEFT")
+	note:SetText("A keyboard for the chat, and a window of ready-made phrases sent in one press. Give a button the job \"Chat keyboard\" or \"Quick phrases\": click a button on the bar, or use Other buttons. Neither works in a fight, and while one is open the controller is its own: the bar lets go of its buttons until it closes. On the keyboard the D-pad or the left stick moves the highlight, A types the key, X deletes, Y sends, B empties the message and then closes the chat, and LB and RB change the channel.")
+
+	local left, right = 16, 340
+	local y = -100
+	y = Heading(panel, "The keyboard", left, y)
+	y = ChatCheck(panel, left, y, "Chat keyboard", "The keyboard for the chat. Unticked, the chat opens without it and the Chat keyboard job does nothing; the quick phrases stay.",
+		function() return chat.db.settings.modules.keyboard end, SetKeyboard)
+	y = ChatSetting(panel, left, y, "Open with the chat", "The keyboard comes up whenever the chat is opened, by a key, a click on a name or a link. Unticked, only the Chat keyboard job brings it up.", "autoOpen")
+	y = Choice(panel, left, y, "Key layout", "How the keyboard's keys are laid out.", KEYBOARD_LAYOUTS,
+		function() return chat.db.settings.kbLayout end,
+		function(value) chat.db.settings.kbLayout = value; RedrawKeyboard(); Options:Sync() end)
+	y = Choice(panel, left, y, "Words", "The language of the words suggested above the keyboard, and of the accented letters on its 123 layer.", KeyboardLanguages,
+		function() return chat:GetLanguage().key end,
+		function(value) chat:SetLanguage(value); Options:Sync() end)
+	y = ChatSetting(panel, left, y, "Learn the words I use", "Every message you send, from the keyboard or not, teaches the suggestions your words and the order you use them in. They are kept on this computer, for all your characters. /fc keyboard forget empties them.", "learn")
+	y = ChatSetting(panel, left, y, "Come back to the last channel", "The keyboard opens on the channel you wrote on last (party, guild, a whisper...), on this character, the next time you play too. Unticked, it opens on the chat's own channel.", "stickyChannel")
+	y = ChatSetting(panel, left, y, "Buttons for the mouse", "A row of buttons under the keys for a mouse or a touch screen: Shift, 123, Space, Delete, Send and close.", "showActions")
+	ChatCheck(panel, left, y, "Keep the keyboard where it is", "Unticked, the keyboard shows a grip to drag it by. /fc keyboard reset puts it back beside the chat window.",
+		function() return chat.db.settings.locked end,
+		function(value) chat.db.settings.locked = value end)
+
+	local ry = Heading(panel, "Quick phrases", right, -100)
+	ry = ChatSetting(panel, right, ry, "Bubble in the keyboard", "A bubble at the end of the keyboard's suggestions opens the quick phrases: D-pad right up to it, then the right stick's click. The keyboard comes back after, with what it held.", "phrasesChip")
+	ry = Action(panel, right, ry, "Open", "Opens the quick phrases window. In it: the D-pad picks, LB and RB change the channel, A sends, X rewrites a phrase or a row's name, Y opens the keyboard with the phrase, B closes.", function()
+		chat.Phrases:Toggle()
+	end, "The window")
+	ry = Action(panel, right, ry, "Default phrases", "Puts the phrases and their rows back as they came. Yours are lost.", function()
+		chat.Phrases:Reset()
+		ns.Print("The quick phrases are the default ones again.")
+	end, "Start over")
+
+	ry = Heading(panel, "Buttons", right, ry - 8)
+	Action(panel, right, ry, "Other buttons...", "Opens the page where a bumper, a stick click, Start, Back or a paddle is given a job: Chat keyboard and Quick phrases are in the list.", function()
+		Options:OpenButtons()
+	end, "Give a button the job")
+end
+
+---------------------------------------------------------------------------
 -- Registering the pages
 ---------------------------------------------------------------------------
 -- A page is built the first time it is opened; most sessions never open one.
@@ -1160,6 +1272,8 @@ function Options:Create()
 	self.buttonsCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.buttonsPanel, "Other buttons")
 	self.combosPanel = CreatePanel(BuildCombos)
 	self.combosCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.combosPanel, "Combinations")
+	self.chatPanel = CreatePanel(BuildChat)
+	self.chatCategory = Settings.RegisterCanvasLayoutSubcategory(self.category, self.chatPanel, "Chat")
 end
 
 -- Brings the pages in line with the saved settings and the player's key bindings. A page that
@@ -1168,7 +1282,7 @@ end
 function Options:Sync()
 	comboCache = nil -- bindings or the buttons that are held may have changed
 	local showing = false
-	for _, panel in ipairs({ self.panel, self.mousePanel, self.buttonsPanel, self.combosPanel }) do
+	for _, panel in ipairs({ self.panel, self.mousePanel, self.buttonsPanel, self.combosPanel, self.chatPanel }) do
 		showing = showing or panel:IsVisible()
 	end
 	if not showing then
@@ -1193,6 +1307,10 @@ end
 
 function Options:OpenCombos()
 	Settings.OpenToCategory(self.combosCategory:GetID())
+end
+
+function Options:OpenChat()
+	Settings.OpenToCategory(self.chatCategory:GetID())
 end
 
 -- Bindings changed somewhere else, in the Key Bindings screen for one: the rows follow.
@@ -1389,6 +1507,10 @@ local HELP = {
 	"/fc front on | off - have the game pick only enemies in front of you, as Gamepad UI mode does",
 	"/fc click left | right <BUTTON> - the button that clicks while the mouse pointer is out (game = leave it to the game)",
 	"/fc pointer <50-300> - how fast the stick moves the mouse pointer, in percent",
+	"/fc chat - the settings of the chat keyboard and the quick phrases",
+	"/fc keyboard - open the chat with the keyboard, or close it (on | off: the keyboard itself)",
+	"/fc keyboard unlock | lock | reset | scale <0.4-2> - move the keyboard, put it back, or change its size (forget: empty the words it learned)",
+	"/fc phrases - open the quick phrases window, or close it",
 	"/fc status - what FreeControl sees, for bug reports",
 	"/fc trace - record what the game reports about the next abilities you use (type it again to see the result)",
 }
@@ -1413,6 +1535,45 @@ local function SetKey(which, key)
 end
 
 local HOLD_NAMES = { ctrl = "Ctrl", alt = "Alt", shift = "Shift" }
+
+-- /fc keyboard, and what can follow it. Alone it opens the chat with the keyboard, or closes it.
+local function KeyboardCommand(what, value)
+	local chat = ns.Chat
+	local settings = chat.db.settings
+	if what == nil or what == "" then
+		-- The chat edit box is still sending this command: open once it has closed.
+		C_Timer.After(0, function() ns.Try(chat.Toggle, chat) end)
+	elseif what == "on" or what == "off" then
+		SetKeyboard(what == "on")
+		ns.Print(("The chat keyboard is switched %s."):format(what))
+	elseif what == "lock" or what == "unlock" then
+		settings.locked = what == "lock"
+		chat:UpdateLock()
+		if what == "unlock" then
+			ns.Print("The chat keyboard can be dragged by its grip. /fc keyboard lock keeps it where it is.")
+			-- Shown to be placed, once the chat that sent this has closed.
+			C_Timer.After(0, function() ns.Try(chat.OpenStandalone, chat) end)
+		else
+			ns.Print("The chat keyboard stays where it is.")
+		end
+	elseif what == "reset" then
+		chat.db.pos = nil
+		settings.scale = 1
+		if chat.frame then chat:RestorePosition() end
+		ns.Print("The chat keyboard is back beside the chat window, at its own size.")
+	elseif what == "scale" and tonumber(value) then
+		settings.scale = math.max(0.4, math.min(2, tonumber(value)))
+		if chat.frame then chat:RestorePosition() end
+		ns.Print(("The chat keyboard is at %d%% of its size."):format(settings.scale * 100 + 0.5))
+	elseif what == "forget" then
+		chat.Predict:Forget()
+		ns.Print("The words the chat keyboard learned from you are forgotten.")
+	else
+		ns.Print("/fc keyboard [on | off | unlock | lock | reset | scale <0.4-2> | forget]")
+		return
+	end
+	Options:Sync()
+end
 
 SLASH_FREECONTROL1 = "/fc"
 SLASH_FREECONTROL2 = "/freecontrol"
@@ -1487,6 +1648,13 @@ SlashCmdList.FREECONTROL = function(message)
 		if SetClick(first == "left" and 1 or 2, second == "game" and "game" or second:upper()) and not InCombatLockdown() then
 			ns.Print(("Mouse clicks: %s."):format(ns.Mouse:DescribeClicks()))
 		end
+	elseif command == "chat" then
+		Options:OpenChat()
+	elseif command == "keyboard" then
+		KeyboardCommand(first, second)
+	elseif command == "phrases" then
+		-- The chat edit box is still sending this command: open once it is done.
+		C_Timer.After(0.1, function() ns.Try(ns.Chat.Phrases.Toggle, ns.Chat.Phrases) end)
 	elseif command == "status" then
 		PrintStatus()
 	elseif command == "trace" then

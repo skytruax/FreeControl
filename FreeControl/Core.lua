@@ -57,8 +57,7 @@ local DEFAULTS = {
 	-- What a button does on one page instead of the two above: [page][set 0-3][button]. A job
 	-- given on the bar or in the settings goes here (Layout.SetRole).
 	pageRoles = {},
-	rolesPaged = false,    -- the trigger layouts' jobs of an older version have been moved to their page
-	mainRolesPaged = false, -- and Main's, the ones the bar starts with among them
+	jobsPaged = false,     -- the jobs of an older version, which were on every page, have been moved to their page
 	mainFormSlots = {},    -- [form spell ID] = reserved eight-slot block
 	mainFormRoles = {},    -- [form spell ID][button]; absent entries are action slots
 	-- The two buttons that are the mouse buttons while the controller's mouse cursor is out: a
@@ -180,26 +179,6 @@ local function Sanitize(db)
 			end
 		end
 	end
-	-- Up to 1.8.0 a job was on its button on every page. Jobs belong to a page now, and the ones
-	-- there were are moved to the page they were most likely given on: the first, or the page the
-	-- bar was kept on with pages switched off. That goes for Main as well, the jobs the bar starts
-	-- with among them (Interact, the game menu, Jump): on the other pages those buttons are slots.
-	-- The jobs that are on every page by their nature stay where they are (Layout.IsEveryPageJob).
-	-- Main's are moved by PageMainRoles, once the mouse button has been seen to.
-	local page = db.pages == false and IsOneOf(db.page, 1, 2, 3) and db.page or 1
-	if not db.rolesPaged then
-		db.rolesPaged = true
-		for set, roles in pairs(db.layerRoles) do
-			for index, role in pairs(roles) do
-				db.pageRoles[page] = db.pageRoles[page] or {}
-				db.pageRoles[page][set] = db.pageRoles[page][set] or {}
-				if db.pageRoles[page][set][index] == nil then
-					db.pageRoles[page][set][index] = role
-				end
-			end
-			db.layerRoles[set] = nil
-		end
-	end
 	for i = 1, 2 do
 		if type(db.modKeys[i]) ~= "string" or db.modKeys[i] == "" then db.modKeys[i] = DEFAULTS.modKeys[i] end
 	end
@@ -262,6 +241,10 @@ local function Sanitize(db)
 		if not IsOneOf(modifier, "Ctrl", "Alt", "Shift") or not isName then db.standIns[modifier] = nil end
 	end
 	if not IsOneOf(db.mouseIndex, 1, 2, 3, 4, 5, 6, 7, 8) then Reset("mouseIndex") end
+	-- The chat channel this character wrote on last with the chat keyboard (Chat/Message.lua).
+	if db.chatChannel ~= nil and (type(db.chatChannel) ~= "table" or type(db.chatChannel.chatType) ~= "string") then
+		db.chatChannel = nil
+	end
 	-- With mouse mode off no button is the mouse button: one that still says so is an action slot.
 	if not db.mouseMode then
 		for index = 8, 1, -1 do
@@ -541,19 +524,27 @@ function ns.SetMouseMode(on)
 	local Layout = ns.Layout
 	db.mouseMode = on
 	if on then
-		local has = false
-		for index = 1, 8 do
-			has = has or Layout.IsCursorRole(db.roles[index])
-		end
-		if not has and not ns.Mouse:GetBarButtonName() and db.roles[db.mouseIndex] == "action" then
-			db.roles[db.mouseIndex] = Layout.CURSOR_ROLE
-		end
-	else
-		for index = 8, 1, -1 do
-			if Layout.IsCursorRole(db.roles[index]) then
-				db.roles[index], db.mouseIndex = "action", index
+		-- A mouse button saved on a page was only hidden while mouse mode was off, and is back.
+		-- With none on any page, the button that was the mouse button is made one again: on every
+		-- page if it was (mouseEveryPage, noted below), on the page being shown otherwise.
+		if not Layout.HasCursorRole() then
+			if db.mouseEveryPage ~= false and db.roles[db.mouseIndex] == "action" and Layout.GetRole(0, db.mouseIndex) == "action" then
+				db.roles[db.mouseIndex] = Layout.CURSOR_ROLE
+			elseif Layout.GetRole(0, db.mouseIndex) == "action" then
+				Layout.SetRole(0, db.mouseIndex, Layout.CURSOR_ROLE)
 			end
 		end
+	else
+		-- A mouse button that is on every page (an older setup's, or with slots that have no
+		-- pages) is taken off, and where it was is remembered. One saved on a page stays saved:
+		-- Layout.GetRole shows it as a slot while mouse mode is off.
+		local everyPage = false
+		for index = 8, 1, -1 do
+			if Layout.IsCursorRole(db.roles[index]) then
+				db.roles[index], db.mouseIndex, everyPage = "action", index, true
+			end
+		end
+		db.mouseEveryPage = everyPage
 		-- This setting does not reach the pointer the game brings out by itself. A player who wants
 		-- no stick pointer at all is told where the switch for that one is.
 		if db.gamePointer and ns.Mouse:IsAvailable() then
@@ -589,25 +580,36 @@ local function GiveMouseButton(db)
 	db.roles[MOUSE_INDEX] = ns.Layout.CURSOR_ROLE
 end
 
--- Once. Moves Main's jobs to their page, as Sanitize does for the trigger layouts: the first
--- page, or the one the bar was kept on with pages switched off. It runs after GiveMouseButton,
--- which looks at what Y was doing before; the mouse button itself is on every page and stays.
-local function PageMainRoles(db)
-	if db.mainRolesPaged then
+-- Once. Up to 1.8.0 a job was on its button on every page. Jobs belong to a page now, every one
+-- of them: the ones the bar starts with on Main (Interact, the game menu, Jump), the mouse
+-- button, and whatever the player gave a button on any layout. The ones there were are moved to
+-- the page they were most likely given on: the first, or the page the bar was kept on with pages
+-- switched off. On the other pages those buttons are slots. It runs after GiveMouseButton, which
+-- looks at what Y was doing before.
+local function PageJobs(db)
+	if db.jobsPaged then
 		return
 	end
-	db.mainRolesPaged = true
+	db.jobsPaged = true
 	local page = db.pages == false and IsOneOf(db.page, 1, 2, 3) and db.page or 1
+	local function Move(set, index, role)
+		db.pageRoles[page] = db.pageRoles[page] or {}
+		db.pageRoles[page][set] = db.pageRoles[page][set] or {}
+		if db.pageRoles[page][set][index] == nil then
+			db.pageRoles[page][set][index] = role
+		end
+	end
 	for index = 1, 8 do
-		local role = db.roles[index]
-		if role ~= "action" and not ns.Layout.IsEveryPageJob(role) then
-			db.pageRoles[page] = db.pageRoles[page] or {}
-			db.pageRoles[page][0] = db.pageRoles[page][0] or {}
-			if db.pageRoles[page][0][index] == nil then
-				db.pageRoles[page][0][index] = role
-			end
+		if db.roles[index] ~= "action" then
+			Move(0, index, db.roles[index])
 			db.roles[index] = "action"
 		end
+	end
+	for set, roles in pairs(db.layerRoles) do
+		for index, role in pairs(roles) do
+			Move(set, index, role)
+		end
+		db.layerRoles[set] = nil
 	end
 end
 
@@ -624,7 +626,7 @@ ns.On("ADDON_LOADED", function(_, name)
 	ns.activeSpecGroup, ns.barProfile = nil, nil
 	Sanitize(ns.db)
 	GiveMouseButton(ns.db)
-	PageMainRoles(ns.db)
+	PageJobs(ns.db)
 end)
 
 -- Said at the first login at which FreeControl is in use, which need not be the one that made the change.

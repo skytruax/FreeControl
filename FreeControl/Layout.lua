@@ -193,6 +193,14 @@ Layout.PARTY_JOBS = {
 	{ "FREECONTROL_PARTYLAST", "Target last party member", "Role-PartyLast", "Last" },
 }
 
+-- FreeControl's own two for the chat (the Chat folder): the keyboard that types with the sticks,
+-- and the window of ready-made phrases. Like the party jobs they are not game commands:
+-- Bindings.lua binds each as a click on a button of its own. Neither works in a fight.
+Layout.CHAT_JOBS = {
+	{ "FREECONTROL_CHATKEYBOARD", "Chat keyboard", "Role-Chat" },
+	{ "FREECONTROL_PHRASES", "Quick phrases", "Role-Phrases" },
+}
+
 Layout.MORE_JOBS = {
 	{ "ASSISTTARGET", "Target your target's target", "Role-Assist" },
 	{ "TARGETPARTYMEMBER1", "Target party member 1", "Role-Party1" },
@@ -210,6 +218,7 @@ Layout.MORE_JOBS = {
 	{ "TOGGLESOCIAL", "Friends and guild", "Role-Social" },
 	{ "DISMOUNT", "Dismount", "Role-Dismount" },
 	{ "SITORSTAND", "Sit or stand", "Role-Sit" },
+	Layout.CHAT_JOBS[1], Layout.CHAT_JOBS[2],
 }
 
 ---------------------------------------------------------------------------
@@ -303,10 +312,12 @@ end
 
 -- What a button does: "action", "pass", "none" or "cmd:<NAME>".
 --
--- A job belongs to a page. db.roles (Main) and db.layerRoles (the trigger layouts) hold what a
--- button does on every page; db.pageRoles[page][set][index] holds what it does on that one page
--- instead, which is where a job given on the bar or in the settings goes (Layout.SetRole). So a
--- job put on a button on page 1 is not on that button on pages 2 and 3.
+-- A job belongs to a page: db.pageRoles[page][set][index], which is where a job given on the bar
+-- or in the settings goes (Layout.SetRole). So a job put on a button on page 1 is not on that
+-- button on pages 2 and 3. db.roles (Main) and db.layerRoles (the trigger layouts) are what a
+-- button does on every page that says nothing else: where versions up to 1.8.0 kept the jobs,
+-- and where they are kept still when the slots have no pages. A saved setup's are moved to their
+-- page once (Core.lua).
 --
 -- `spell` asks for a form's own Main layout, which is the same on every page. `page` is the page
 -- to answer for; the one being shown without it.
@@ -343,31 +354,41 @@ function Layout.GetRole(set, index, spell, page)
 	return role or "action"
 end
 
--- The jobs that are on their button on every page, because the bar is found its way around by
--- them: turning the page (given on page 1 only, there would be no turning back from page 2),
--- returning to the main layer, the mouse button, and a stance or form's own button.
-function Layout.IsEveryPageJob(role)
-	local kind, command = Layout.ParseRole(role)
-	if kind ~= "cmd" then
-		return false
-	end
-	for _, page in ipairs(Layout.PAGE_ROLES) do
-		if command == page[1] then
+-- True when some button, on some page, is the mouse button: in what is saved, whether or not
+-- mouse mode is on.
+function Layout.HasCursorRole()
+	local db = ns.db
+	for index = 1, 8 do
+		if Layout.IsCursorRole(db.roles[index]) then
 			return true
 		end
 	end
-	return command == Layout.CURSOR_COMMAND or command == Layout.RELEASE_ROLE_COMMAND
-		or Layout.GetCommandForm(command) ~= nil
+	for _, roles in pairs(db.layerRoles) do
+		for _, role in pairs(roles) do
+			if Layout.IsCursorRole(role) then
+				return true
+			end
+		end
+	end
+	for _, sets in pairs(db.pageRoles) do
+		for _, roles in pairs(sets) do
+			for _, role in pairs(roles) do
+				if Layout.IsCursorRole(role) then
+					return true
+				end
+			end
+		end
+	end
+	return false
 end
 
--- Gives a button its job on the page being shown, and on that page only. A job is for every
--- page instead where the slots have no pages (the regular action bars), and when it is one of
--- the jobs above, or takes the place of one.
+-- Gives a button its job on the page being shown, and on that page only. That goes for every
+-- job there is, the mouse button and turning the page among them. Only where the slots have no
+-- pages (the regular action bars) is a job for every page, there being one.
 function Layout.SetRole(set, index, value)
 	local db = ns.db
 	local base = BaseRole(set, index)
-	local everyPage = Layout.GetStoredPages() == 1 or Layout.IsEveryPageJob(value) or Layout.IsEveryPageJob(base)
-	if everyPage then
+	if Layout.GetStoredPages() == 1 then
 		if set == Layout.SET_NONE then
 			db.roles[index] = value
 		else

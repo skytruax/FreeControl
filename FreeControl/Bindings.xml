@@ -11,4 +11,8 @@
 	<Binding name="CLICK FreeControlPartyPrev:LeftButton" category="FreeControl"/>
 	<Binding name="CLICK FreeControlPartyFirst:LeftButton" category="FreeControl"/>
 	<Binding name="CLICK FreeControlPartyLast:LeftButton" category="FreeControl"/>
+	<!-- The chat keyboard and the quick phrases window (Layout.CHAT_JOBS; the Chat folder). Neither
+	     works in a fight, so their buttons are ordinary ones. -->
+	<Binding name="CLICK FreeControlChatToggle:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPhrasesToggle:LeftButton" category="FreeControl"/>
 </Bindings>

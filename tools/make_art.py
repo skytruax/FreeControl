@@ -627,6 +627,27 @@ def draw_page_prev(d):
     line(d, [(18, 34), (32, 47), (46, 34)], 5.6, W)
 
 
+# The two jobs for the chat. A speech bubble is a rounded box with a tail at its bottom left.
+def bubble(d, box, tail, fill):
+    d.rounded_rectangle(s(*box), radius=7 * SS, fill=fill)
+    poly(d, tail, fill)
+
+
+def draw_chat(d):
+    # The chat keyboard: a speech bubble holding the three dots of someone typing.
+    bubble(d, (12, 15, 52, 42), [(19, 40), (19, 53), (32, 41)], W)
+    for x in (22.5, 32, 41.5):
+        d.ellipse(s(x - 3.4, 25.1, x + 3.4, 31.9), fill=(34, 86, 132, 255))
+
+
+def draw_phrases(d):
+    # The quick phrases: two bubbles, one behind the other, the front one with its lines written.
+    bubble(d, (22, 11, 54, 32), [(44, 30), (49, 40), (38, 31)], faint(170))
+    bubble(d, (10, 24, 44, 47), [(16, 45), (16, 56), (27, 46)], W)
+    line(d, [(17.5, 32), (36.5, 32)], 3.4, (132, 78, 30, 255))
+    line(d, [(17.5, 39), (30, 39)], 3.4, (132, 78, 30, 255))
+
+
 # name -> (the disc's colour, what is drawn on it, and for some the size it is set at). The first
 # four are the buttons the bar starts with, in the colours the emblem gives X, Y, B and A. The
 # mouse button does not show a pointer: it wears the mascot, which is the addon's calling card.
@@ -654,6 +675,8 @@ ROLES = {
     "Party4": ((230, 106, 88), draw_pips(4)),
     "PageNext": ((136, 112, 232), draw_page_next),
     "PagePrev": ((186, 112, 214), draw_page_prev),
+    "Chat": ((84, 168, 228), draw_chat),
+    "Phrases": ((228, 152, 80), draw_phrases),
     # The rest of the jobs in the menus have no symbol of their own: the plain one, in a colour
     # of their own.
     "Release": ((96, 200, 204), draw_generic),

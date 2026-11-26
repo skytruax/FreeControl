@@ -316,11 +316,24 @@ for _, job in ipairs(Layout.PARTY_JOBS) do
 	_G["BINDING_NAME_" .. command] = "FreeControl: " .. job[2]:lower()
 end
 
+-- The chat keyboard and the quick phrases window (the Chat folder) as bindings: [the role's
+-- name] = the click, on a button Chat/Chat.lua makes. Neither works in a fight, so the buttons
+-- are ordinary ones; they are clicks all the same, like every other binding FreeControl lists.
+Bindings.CHAT_BUTTONS = { FREECONTROL_CHATKEYBOARD = "FreeControlChatToggle", FREECONTROL_PHRASES = "FreeControlPhrasesToggle" }
+Bindings.CHAT_COMMANDS = {}
+local IS_CHAT_COMMAND = {}
+for _, job in ipairs(Layout.CHAT_JOBS) do
+	local command = ("CLICK %s:LeftButton"):format(Bindings.CHAT_BUTTONS[job[1]])
+	Bindings.CHAT_COMMANDS[job[1]] = command
+	IS_CHAT_COMMAND[command] = true
+	_G["BINDING_NAME_" .. command] = "FreeControl: " .. job[2]:lower()
+end
+
 -- True for a command that clicks one of FreeControl's own buttons.
 function Bindings:IsOwnCommand(command)
 	return command == self.PAGE_COMMANDS.next or command == self.PAGE_COMMANDS.prev
 		or command == self.MOUSE_COMMAND or command == self.RELEASE_COMMAND
-		or IS_PARTY_COMMAND[command] == true
+		or IS_PARTY_COMMAND[command] == true or IS_CHAT_COMMAND[command] == true
 end
 
 -- Out of combat. Needs the set frames and the buttons to exist.
@@ -435,6 +448,7 @@ function Bindings:GetRoleBinding(role, set, index)
 		return "click", self.release:GetName()
 	elseif kind == "cmd" then
 		if self.partyButtons[command] then return "click", self.partyButtons[command]:GetName() end
+		if self.CHAT_BUTTONS[command] then return "click", self.CHAT_BUTTONS[command] end
 		for _, page in ipairs(Layout.PAGE_ROLES) do
 			if command == page[1] then return "click", self.pageButtons[page[3]]:GetName() end
 		end
@@ -442,8 +456,12 @@ function Bindings:GetRoleBinding(role, set, index)
 	end
 end
 
--- Out of combat. Hands the header the current settings and binds everything.
+-- Out of combat. Hands the header the current settings and binds everything. While the bar's
+-- buttons are lent out (Suspend, below) nothing is bound: Resume does it.
 function Bindings:Apply()
+	if self.suspended then
+		return
+	end
 	local db = ns.db
 	local header = self.header
 	ClearOverrideBindings(header)
@@ -505,6 +523,36 @@ function Bindings:Clear()
 	ClearOverrideBindings(header)
 end
 
+-- The chat keyboard and the quick phrases window (the Chat folder) are worked with the D-pad and
+-- the face buttons, which are the bar's. While one of them is open the bar lets go of every
+-- button it has, triggers included, and binds none: the secure header binds the eight slot keys
+-- again at each press or release of a trigger, and what is bound last is what a key does, so a
+-- window that only bound its keys over the bar's lost them at the next trigger. Both are out of
+-- combat only, as the windows are. The bar comes back on the main layer.
+function Bindings:Suspend()
+	if self.suspended then
+		return
+	end
+	self.suspended = true
+	if self.header then
+		self:Clear()
+	end
+end
+
+function Bindings:Resume()
+	if not self.suspended then
+		return
+	end
+	self.suspended = false
+	if self.header and ns.IsActive() then
+		self:Apply()
+	end
+end
+
+function Bindings:IsSuspended()
+	return self.suspended == true
+end
+
 -- The selected set (0 main, 1 left, 2 right, 3 both).
 function Bindings:GetActiveSet()
 	return self.header and self.header:GetAttribute("fc-set") or 0
@@ -547,7 +595,7 @@ function Bindings:FindProblems()
 			end
 		end
 	end
-	if ns.Mouse:IsEnabled() and not ns.Mouse:GetBarButtonName() and not GetBindingKey(Bindings.MOUSE_COMMAND) then
+	if ns.Mouse:IsEnabled() and not Layout.HasCursorRole() and not GetBindingKey(Bindings.MOUSE_COMMAND) then
 		problems[#problems + 1] = "No button brings the mouse pointer out. Click a no-trigger button on the bar and choose \"Mouse pointer on / off\", or give another button that job under Other buttons in the settings."
 	end
 	-- A button chosen on the Combinations page that cannot be held after all: FreeControl uses it
