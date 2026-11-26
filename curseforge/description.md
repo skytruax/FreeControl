@@ -125,7 +125,7 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 - Spell flyouts (one slot holding a group of spells) open below the button and need the mouse pointer to choose from. Put the individual spells on the bar instead.
 - A Druid's left set and D-pad keep their form actions in the slots of the game's own action bar for that form, so what you drop on them in a form shows on that bar as well.
 - Stances and forms change the buttons on one page: page 1, unless the Gamepad options put the stance bar on another.
-- The game's controller slots have no place for the face buttons with no trigger held. One you turn into an action slot (which is what Y becomes with mouse mode off) shares its action with LT + RT + the same button on the page before.
+- The game's controller slots have no place for the face buttons with no trigger held. One you turn into an action slot (which is what Y becomes with mouse mode off) keeps its action, one for each page, on the second page of the game's main action bar.
 - A button you hold for combinations has no job of its own, and the buttons FreeControl uses itself (D-pad, face buttons, triggers, the two click buttons) cannot be the ones held. They can be the button a combination ends in.
 - Targeting is the game's own. *Gamepad UI enemy targeting* in the settings narrows the enemy the game picks for you to those in front of you, as that mode does; making it your target when you attack is something the game keeps for its own interface.
 - There is no vehicle or possess bar yet. Use the game's own bar for those.

@@ -329,11 +329,79 @@ for _, job in ipairs(Layout.CHAT_JOBS) do
 	_G["BINDING_NAME_" .. command] = "FreeControl: " .. job[2]:lower()
 end
 
+-- The five jobs for grouping up (Layout.GROUP_JOBS) as bindings: [the role's name] = the click.
+Bindings.GROUP_COMMANDS = {}
+local IS_GROUP_COMMAND = {}
+for _, job in ipairs(Layout.GROUP_JOBS) do
+	local command = ("CLICK FreeControlGroup%s:LeftButton"):format(job[4])
+	Bindings.GROUP_COMMANDS[job[1]] = command
+	IS_GROUP_COMMAND[command] = true
+	_G["BINDING_NAME_" .. command] = "FreeControl: " .. job[2]:lower()
+end
+
+-- What three of them run: the lines a player would put in a macro for it. "/invite" alone invites
+-- the target, and %t is the target's name. A secure button runs its macro text in a fight too,
+-- as long as the text was there before the fight began.
+Bindings.GROUP_MACROS = {
+	Invite = "/invite",
+	Request = "/requestinvite %t",
+	Leave = "/run C_PartyInfo.LeaveParty()",
+}
+-- The fourth invites the target, or asks to join the group the target is in already. Which of
+-- the two applies is what the game's own menu for a player shows (GetDisplayedInviteType), and
+-- out of combat the button is given just that line for the press, and both lines again straight
+-- after it. In a fight its text cannot be changed, and who the target is may be sealed: there it
+-- holds both lines, as it does whenever it is not being pressed, of which the game carries out
+-- the one that applies and refuses the other with a line of red text. (It is not left to the
+-- start of a fight to put both back: a client can be locked down already when it says so.)
+local INVITE_BOTH = Bindings.GROUP_MACROS.Invite .. "\n" .. Bindings.GROUP_MACROS.Request
+
+local function PickInvite(button)
+	if InCombatLockdown() then
+		return
+	end
+	local text = Bindings.GROUP_MACROS.Invite
+	local guid = UnitGUID("target")
+	if guid and not ns.IsSealed(guid) and GetDisplayedInviteType and GetDisplayedInviteType(guid) == "REQUEST_INVITE" then
+		text = Bindings.GROUP_MACROS.Request
+	end
+	button:SetAttribute("macrotext", text)
+end
+
+local function BothInvites(button)
+	if not InCombatLockdown() then
+		button:SetAttribute("macrotext", INVITE_BOTH)
+	end
+end
+
+-- The sixth says yes to a question the game is asking about a group. There are two, each a
+-- dialog of the game's with an Accept button: an invitation to a group (PARTY_INVITE), and, for
+-- the one who leads, somebody asking to join or a member suggesting someone
+-- (GROUP_INVITE_CONFIRMATION). The job presses that button the way a click would, through the
+-- game's own function for it, so whatever the dialog does on Accept is done. With neither on
+-- screen it does nothing, and no other dialog is ever answered by it.
+local GROUP_QUESTIONS = { "PARTY_INVITE", "GROUP_INVITE_CONFIRMATION" }
+
+function Bindings:AcceptGroup()
+	if not (StaticPopup_FindVisible and StaticPopup_OnClick) then
+		return false
+	end
+	for _, which in ipairs(GROUP_QUESTIONS) do
+		local dialog = StaticPopup_FindVisible(which)
+		if dialog then
+			StaticPopup_OnClick(dialog, 1)
+			return true
+		end
+	end
+	return false
+end
+
 -- True for a command that clicks one of FreeControl's own buttons.
 function Bindings:IsOwnCommand(command)
 	return command == self.PAGE_COMMANDS.next or command == self.PAGE_COMMANDS.prev
 		or command == self.MOUSE_COMMAND or command == self.RELEASE_COMMAND
 		or IS_PARTY_COMMAND[command] == true or IS_CHAT_COMMAND[command] == true
+		or IS_GROUP_COMMAND[command] == true
 end
 
 -- Out of combat. Needs the set frames and the buttons to exist.
@@ -405,6 +473,52 @@ function Bindings:Create()
 		header:WrapScript(party, "OnClick", PARTY_ONCLICK)
 		self.partyButtons[job[1]] = party
 	end
+	-- The six buttons for grouping up. Four run a macro's lines; the fifth opens the game's own
+	-- menu for the target, where the pointer is, and since that menu is worked with a pointer it
+	-- brings the controller's out (with mouse mode on; a real mouse needs nothing); the sixth
+	-- answers the game's question about a group (Bindings:AcceptGroup).
+	self.groupButtons = {}
+	for _, job in ipairs(Layout.GROUP_JOBS) do
+		local isAccept = job[4] == "Accept"
+		local button = CreateFrame("Button", "FreeControlGroup" .. job[4], header, not isAccept and "SecureActionButtonTemplate" or nil)
+		button:RegisterForClicks("AnyDown", "AnyUp")
+		if isAccept then
+			-- An ordinary button: answering the game's dialog is nothing an addon needs leave for.
+			button:SetScript("OnClick", function(_, _, down)
+				if down then
+					ns.Try(self.AcceptGroup, self)
+				end
+			end)
+		elseif job[4] == "Menu" then
+			button:SetAttribute("useOnKeyDown", true)
+			button:SetAttribute("type", "togglemenu")
+			button:SetAttribute("unit", "target")
+			button:SetScript("PostClick", function(_, _, down)
+				-- With nobody targeted there is no menu. (In a fight the answer may be sealed, which
+				-- cannot be compared with anything: sealed means there is someone.)
+				local target = UnitGUID("target")
+				local someone = ns.IsSealed(target) or target ~= nil
+				if down and someone and ns.Mouse:IsEnabled() and not ns.Mouse:IsOut() then
+					ns.Try(ns.Mouse.BringOut, ns.Mouse)
+				end
+			end)
+		else
+			button:SetAttribute("useOnKeyDown", true)
+			button:SetAttribute("type", "macro")
+			button:SetAttribute("macrotext", self.GROUP_MACROS[job[4]] or INVITE_BOTH)
+			if job[4] == "InviteOrRequest" then
+				button:SetScript("PreClick", function(clicked, _, down)
+					if down then
+						ns.Try(PickInvite, clicked)
+					end
+				end)
+				button:SetScript("PostClick", function(clicked)
+					ns.Try(BothInvites, clicked)
+				end)
+			end
+		end
+		self.groupButtons[job[1]] = button
+	end
 	-- An explicit empty role consumes the key on this layer without changing its WoW binding.
 	self.noAction = CreateFrame("Button", "FreeControlNoAction", header, "SecureHandlerClickTemplate")
 
@@ -449,6 +563,7 @@ function Bindings:GetRoleBinding(role, set, index)
 	elseif kind == "cmd" then
 		if self.partyButtons[command] then return "click", self.partyButtons[command]:GetName() end
 		if self.CHAT_BUTTONS[command] then return "click", self.CHAT_BUTTONS[command] end
+		if self.groupButtons[command] then return "click", self.groupButtons[command]:GetName() end
 		for _, page in ipairs(Layout.PAGE_ROLES) do
 			if command == page[1] then return "click", self.pageButtons[page[3]]:GetName() end
 		end

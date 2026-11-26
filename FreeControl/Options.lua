@@ -104,7 +104,8 @@ local function AddJobChoices(choices, asRole)
 	for _, job in ipairs(Layout.MORE_JOBS) do
 		-- One of FreeControl's own buttons (the party's, the chat's) is bound as a click on it, not
 		-- as a game command.
-		local binding = asRole and "cmd:" .. job[1] or ns.Bindings.PARTY_COMMANDS[job[1]] or ns.Bindings.CHAT_COMMANDS[job[1]] or job[1]
+		local binding = asRole and "cmd:" .. job[1] or ns.Bindings.PARTY_COMMANDS[job[1]] or ns.Bindings.CHAT_COMMANDS[job[1]]
+			or ns.Bindings.GROUP_COMMANDS[job[1]] or job[1]
 		choices[#choices + 1] = { binding, job[2] }
 	end
 end
@@ -230,7 +231,7 @@ local function MouseModeTip()
 	if Layout.GetSlotSource() ~= "gamepad" then
 		return text .. ": it holds whatever you drop on it."
 	end
-	return text .. ": on each page it holds whatever you drop on it. It keeps that in the LT + RT slot of the same button on the page before, the one spare place the game's controller slots have."
+	return text .. ": on each page it holds whatever you drop on it. It keeps that in a slot of its own for each page, on the second page of the game's main action bar (the controller's slots have no place for it)."
 end
 
 -- The explanation of a page setting, which says so while there are no pages for it to act on.

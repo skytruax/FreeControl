@@ -200,6 +200,16 @@ because Blizzard's bar would be bound to the same buttons.
   nobody is in, work in a fight, and can go on the bar's own buttons too, so a trigger layer's
   D-pad can be the party. Next and previous go on from the member picked last. *Target yourself*
   is its own job.
+- **Grouping up:** six jobs in place of the macros you would write.
+  *Invite target*, *Ask to join target's group* and *Leave party* each do just that. *Invite
+  target, or ask to join* picks for you: it invites a target who is alone and asks to join one
+  who is in a group already, the way the game's own menu for a player offers one or the other.
+  In a fight it cannot look, so there it tries both and the game refuses the one that does not
+  apply, with a line of red text. *Target's menu* opens the game's own menu for your target
+  (inspect, mark, whisper, trade, ...) where the mouse pointer is, and brings the pointer out
+  so you can pick from it. *Accept group invite or request* presses Accept on the game's
+  dialog when you are invited to a group, or when someone asks to join yours; it answers no
+  other dialog. All six work in a fight.
 - **Buttons together:** two or three buttons pressed together can have a job of their own, such
   as LB + D-pad Up for a party member or LB + RB + D-pad Right for the next page. On the
   *Combinations* page (`/fc combos`) click *Press one...*, hold the first button, press the
@@ -349,9 +359,9 @@ when FreeControl is switched off.
   to the enemies in front of you.
 - The game's controller slots have no place for the four face buttons with no trigger held. A
   face button you make an action slot (which is what the mouse button becomes with mouse mode
-  off) borrows the LT + RT slot of the same button on the page before: Y on page 1 and LT + RT +
-  Y on page 3 are one slot, and so on round. It has its own action on each page, but that action
-  also shows on the other button.
+  off) keeps its action in a slot of its own for each page, on the second page of the game's
+  main action bar (slots 13 to 24). No other button of FreeControl's shows those, but the
+  game's main bar does if you turn it to its second page.
 - A second changing set and the D-pad keep their stance actions in the slots of the game's own
   action bar for that stance, so what you drop on them in a form also shows on that bar. The
   rest of your regular action bars is never touched.

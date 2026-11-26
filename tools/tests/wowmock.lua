@@ -615,6 +615,12 @@ function SecureActionButton_OnClick(self, inputButton, down, isKeyPress, isSecur
 			if unit then M.targeted[#M.targeted + 1] = unit end
 			return true
 		end
+		if self:GetAttribute("type") == "togglemenu" then
+			-- SECURE_ACTIONS.togglemenu: the game's own menu for the button's unit, at the pointer.
+			M.menusOpened = M.menusOpened or {}
+			M.menusOpened[#M.menusOpened + 1] = self:GetAttribute("unit")
+			return true
+		end
 		if self:GetAttribute("type") == "macro" then
 			-- SECURE_ACTIONS.macro: the button's own text is run, line by line, as a macro's is.
 			local text = self:GetAttribute("macrotext")
@@ -1417,9 +1423,25 @@ function M.ShapeshiftTo(name)
 	end
 	error("this class has no form called " .. name)
 end
+-- The player, and whoever is targeted (M.target: a name, or nil for nobody). In a fight on a
+-- client that seals things, who the target is comes back sealed.
 function UnitGUID(unit)
-	assert(unit == "player", "mock only knows the player")
+	if unit == "target" then
+		if not M.target then return nil end
+		local guid = "Player-1-" .. M.target
+		if M.sealTarget and M.combat and M.secure == 0 then return M.Seal(guid) end
+		return guid
+	end
+	assert(unit == "player", "mock only knows the player and the target")
 	return M.guid
+end
+-- What the game's own menu for a player offers: to invite them, or, for one who is in a group
+-- already (M.grouped[name]), to ask to join it. Blizzard's function, in its interface code.
+M.grouped = {}
+function GetDisplayedInviteType(guid)
+	assert(type(guid) == "string", "GetDisplayedInviteType wants a GUID that can be read")
+	local name = guid:match("^Player%-1%-(.+)$")
+	return M.grouped[name] and "REQUEST_INVITE" or "INVITE"
 end
 function IsModifiedClick(action) return action == "PICKUPACTION" and M.pickupModifier end
 
@@ -1673,3 +1695,15 @@ function M.Stick(stick, x, y)
 		if fn then fn(frame, stick, x, y) end
 	end
 end
+-- The game's dialogs that ask a question (static popups): the ones on screen, by kind
+-- (M.popups[which] = a dialog), and the answers given them: { which, button }.
+M.popups = {}
+M.popupAnswers = {}
+function StaticPopup_FindVisible(which) return M.popups[which] end
+function StaticPopup_OnClick(dialog, index)
+	assert(dialog and M.popups[dialog.which] == dialog, "StaticPopup_OnClick wants a dialog that is on screen")
+	M.popupAnswers[#M.popupAnswers + 1] = { which = dialog.which, button = index }
+	M.popups[dialog.which] = nil
+end
+-- The game asks: an invitation ("PARTY_INVITE"), someone asking to join ("GROUP_INVITE_CONFIRMATION").
+function M.Ask(which) M.popups[which] = { which = which } end

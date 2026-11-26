@@ -15,4 +15,12 @@
 	     works in a fight, so their buttons are ordinary ones. -->
 	<Binding name="CLICK FreeControlChatToggle:LeftButton" category="FreeControl"/>
 	<Binding name="CLICK FreeControlPhrasesToggle:LeftButton" category="FreeControl"/>
+	<!-- Grouping up with the target: invite, ask to join, whichever of the two applies, leave the
+	     party, and the game's own menu for the target (Layout.GROUP_JOBS). Secure buttons. -->
+	<Binding name="CLICK FreeControlGroupInvite:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupRequest:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupInviteOrRequest:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupLeave:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupMenu:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupAccept:LeftButton" category="FreeControl"/>
 </Bindings>

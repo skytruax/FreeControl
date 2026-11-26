@@ -728,16 +728,16 @@ test("a no-trigger button can be turned into an action slot", function()
 	Load()
 	ns.db.roles[5] = "action"
 	ns.RequestRefresh()
-	eq(Slots(0), "181 182 183 184 261 - - -", "borrows a slot from page 3")
+	eq(Slots(0), "181 182 183 184 13 - - -", "it has a slot of its own, outside the controller's")
 	eq(Binding("PAD3"), "click:FreeControlKey0_5", "X now presses that slot")
 	truthy(M.frames.FreeControlButton0_5:IsShown(), "action button shown")
 	eq(ns.Buttons.role[5]:IsShown(), false, "stand-in hidden")
 	M.Tap("PAD3")
-	eq(Used(), "261", "casts")
+	eq(Used(), "13", "casts")
 
 	ns.db.page = 3
 	ns.RequestRefresh()
-	eq(Slots(0), "237 238 239 240 233 - - -", "on page 3 it borrows from page 2 instead")
+	eq(Slots(0), "237 238 239 240 21 - - -", "and another one on page 3")
 	eq(Slots(3), "257 258 259 260 261 262 263 264", "page 3 LT+RT set keeps its own slots")
 end)
 
@@ -932,7 +932,7 @@ test("only D-pad buttons that are action slots change with the stance", function
 	Load({ stanceSet = "all", roles = roles })
 	M.bonusbar = 1
 	M.RunDrivers()
-	eq(Slots(0), "- 82 83 84 261 - - -", "D-pad Left runs a command and X is a plain slot; neither changes")
+	eq(Slots(0), "- 82 83 84 13 - - -", "D-pad Left runs a command and X is a plain slot; neither changes")
 	eq(Binding("PADDLEFT"), "cmd:TARGETNEARESTENEMY", "the command button still runs its command")
 end)
 
@@ -1271,7 +1271,7 @@ test("the Key Bindings screen lists the page and release bindings", function()
 		truthy(_G["BINDING_NAME_" .. name], "with a name to show: " .. name)
 	end
 	table.sort(names)
-	eq(table.concat(names, " | "), "CLICK FreeControlChatToggle:LeftButton | CLICK FreeControlLayerRelease:LeftButton | CLICK FreeControlPageNext:LeftButton | CLICK FreeControlPagePrev:LeftButton | CLICK FreeControlPartyFirst:LeftButton | CLICK FreeControlPartyLast:LeftButton | CLICK FreeControlPartyNext:LeftButton | CLICK FreeControlPartyPrev:LeftButton | CLICK FreeControlPhrasesToggle:LeftButton", "page buttons, layer release, the four party buttons and the two for the chat")
+	eq(table.concat(names, " | "), "CLICK FreeControlChatToggle:LeftButton | CLICK FreeControlGroupAccept:LeftButton | CLICK FreeControlGroupInvite:LeftButton | CLICK FreeControlGroupInviteOrRequest:LeftButton | CLICK FreeControlGroupLeave:LeftButton | CLICK FreeControlGroupMenu:LeftButton | CLICK FreeControlGroupRequest:LeftButton | CLICK FreeControlLayerRelease:LeftButton | CLICK FreeControlPageNext:LeftButton | CLICK FreeControlPagePrev:LeftButton | CLICK FreeControlPartyFirst:LeftButton | CLICK FreeControlPartyLast:LeftButton | CLICK FreeControlPartyNext:LeftButton | CLICK FreeControlPartyPrev:LeftButton | CLICK FreeControlPhrasesToggle:LeftButton", "page buttons, layer release, the four party buttons and the two for the chat")
 	eq(GetBindingName(ns.Bindings.PAGE_COMMANDS.next), "FreeControl: next page", "named")
 	eq(GetBindingName(ns.Bindings.PAGE_COMMANDS.prev), "FreeControl: previous page", "both of them")
 end)
@@ -1431,14 +1431,14 @@ end)
 test("a Y that was an action slot becomes the mouse button, and what was in the slot is kept", function()
 	local roles = { unpack(OLD_ROLES) }
 	roles[6] = "action"
-	M.actions[262] = { texture = "icon" } -- the slot Y borrows on page 1
+	M.actions[14] = { texture = "icon" } -- Y's own slot on page 1
 	Load(OldSetup({ roles = roles }))
 	eq(ns.db.roles[6], "cmd:FREECONTROL_TOGGLECURSOR", "Y is the mouse button")
 	truthy(Printed("It was an action slot before, and what was in it is still there: to put that back, click Y on the bar%."), "told")
 	eq(#M.picked + #M.placed, 0, "nothing was moved out of the slot")
 	ns.db.roles[6] = "action"
 	ns.RequestRefresh()
-	eq(ns.Buttons:GetSlot(0, 6), 262, "switched back, it shows the same slot")
+	eq(ns.Buttons:GetSlot(0, 6), 14, "switched back, it shows the same slot")
 	eq(M.frames.FreeControlButton0_6.fc.hasAction, true, "with its action")
 end)
 
@@ -2868,11 +2868,11 @@ test("switched off, a button bound to a page arrow does nothing", function()
 	ShowsPage(2, "on again, it works again")
 end)
 
-test("a face button made a slot borrows from another page on every page, and no page shows a slot twice", function()
+test("a face button made a slot has a slot of its own on every page, shared with no other button", function()
 	Load({ roles = { "action", "action", "action", "action", "action", "cmd:FREECONTROL_TOGGLECURSOR", "action", "cmd:JUMP" }, mouseStep = 2 })
-	local borrowed = { "261 - 263 -", "205 - 207 -", "233 - 235 -" } -- from the page before: 3, 1, 2
+	local borrowed = { "13 - 15 -", "17 - 19 -", "21 - 23 -" } -- the main action bar's second page, four to a page
 	for page = 1, 3 do
-		eq(Slots(0), PAGE[page][0]:sub(1, 15) .. " " .. borrowed[page], "page " .. page .. ": the D-pad is the page's own, the face slots are borrowed")
+		eq(Slots(0), PAGE[page][0]:sub(1, 15) .. " " .. borrowed[page], "page " .. page .. ": the D-pad is the page's own, and so are the face slots")
 		local seen = {}
 		for set = 0, 3 do
 			for index = 1, 8 do
@@ -3585,7 +3585,7 @@ test("the list of jobs: the pages, the mouse pointer, the game's common commands
 	rows["Paddle 2"]:GetScript("OnClick")(rows["Paddle 2"])
 	local labels = {}
 	for index, item in ipairs(menus.last.items) do labels[index] = item.text end
-	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Return to main layer | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Target party member 1 | Target party member 2 | Target party member 3 | Target party member 4 | Target next party member | Target previous party member | Target first party member | Target last party member | Ping (hold for the wheel) | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Chat keyboard | Quick phrases | Something else...", "in this order, with the character's own stances among them")
+	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Return to main layer | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Target party member 1 | Target party member 2 | Target party member 3 | Target party member 4 | Target next party member | Target previous party member | Target first party member | Target last party member | Ping (hold for the wheel) | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Chat keyboard | Quick phrases | Invite target | Ask to join target's group | Invite target, or ask to join | Leave party | Target's menu (inspect, mark, ...) | Accept group invite or request | Something else...", "in this order, with the character's own stances among them")
 	eq(menus.last.items[#menus.last.items].plain, true, "the last is something to do, not a job to have")
 	Pick(menus.last, "Mouse pointer on / off")
 	eq(M.userBindings.PADPADDLE2, "CLICK FreeControlMouse:LeftButton", "the mouse button can go on any button")
@@ -3907,7 +3907,7 @@ test("without the menu system a row steps through the jobs, and never onto the w
 	local rows = ButtonRows()
 	local row = rows.RB
 	local seen = {}
-	for _ = 1, 40 do
+	for _ = 1, 60 do -- more steps than there are jobs in the list
 		row:GetScript("OnClick")(row)
 		seen[#seen + 1] = M.userBindings.PADRSHOULDER or "-"
 	end
@@ -4807,7 +4807,7 @@ test("with mouse mode switched off its button is an ordinary slot, with an actio
 		eq(M.placed[#M.placed], slot, "page " .. page .. ": what is dropped on it goes there")
 		M.MouseClick(M.frames.FreeControlPageNext)
 	end
-	eq(table.concat(slots, " "), "262 206 234", "kept in the LT + RT slot of the same button on the page before")
+	eq(table.concat(slots, " "), "14 18 22", "kept in slots of its own, which no other button shows")
 	for page = 1, 3 do
 		eq(button.fc.icon:GetTexture(), "spell " .. (1000 + page), "page " .. page .. " shows its own action")
 		M.used = {}
@@ -5094,7 +5094,7 @@ test("with the regular action bars as the slots, the page settings say they chan
 	eq(mouse:find("LT %+ RT"), nil, "that borrows from nowhere")
 	SlashCmdList.FREECONTROL("slots gamepad")
 	eq(Tip(TickBox(panel, "Pages")):find("changes nothing"), nil, "on the controller's slots the page settings say no such thing")
-	truthy(Tip(TickBox(panel, "Mouse mode")):find("It keeps that in the LT %+ RT slot of the same button on the page before"), "and the mouse mode tip says where the slot keeps its action")
+	truthy(Tip(TickBox(panel, "Mouse mode")):find("It keeps that in a slot of its own for each page"), "and the mouse mode tip says where the slot keeps its action")
 	SlashCmdList.FREECONTROL("slots bars")
 	SlashCmdList.FREECONTROL("mouse off")
 	eq(ns.Buttons:GetSlot(0, 6), 42, "the slot itself is the sixth of the Bottom Left bar's own")
@@ -6039,15 +6039,15 @@ test("out of the box Main's jobs are on page 1, and on the other pages those but
 
 	M.EnterCombat()
 	M.MouseClick(M.frames.FreeControlPageNext)
-	eq(Slots(), "209 210 211 212 205 206 207 208", "page 2: all four face buttons are slots, borrowed from the page before as a face slot is")
+	eq(Slots(), "209 210 211 212 17 18 19 20", "page 2: all four face buttons are slots, with slots of their own")
 	eq(Binding("PAD1"), "click:FreeControlKey0_8", "the Jump button casts its slot there")
 	eq(Binding("PAD4"), "click:FreeControlKey0_6", "and the mouse button is a slot too: it was given on page 1")
 	M.used = {}
 	M.Tap("PAD1")
-	eq(Used(), "208", "the key casts it")
+	eq(Used(), "20", "the key casts it")
 	eq(ns.Buttons.role[8]:IsShown(), false, "with no picture of Jump over it")
 	M.MouseClick(M.frames.FreeControlPageNext)
-	eq(Slots(), "237 238 239 240 233 234 235 236", "page 3 likewise")
+	eq(Slots(), "237 238 239 240 21 22 23 24", "page 3 likewise")
 	M.MouseClick(M.frames.FreeControlPageNext)
 	eq(Slots(), "181 182 183 184 - - - -", "and page 1 has its jobs back")
 	eq(Binding("PAD1"), "cmd:JUMP", "Jump among them")
@@ -6682,4 +6682,139 @@ test("every picture the chat keyboard and the phrases ask for is a file in Chat/
 	for _, name in ipairs({ "ck_wheel_bg_8", "ck_dw_hub", "ck_sk_cursor" }) do
 		eq(FileExists("FreeControl/Chat/Textures/" .. name .. ".tga"), false, "the old keyboards' " .. name .. " is gone")
 	end
+end)
+
+---------------------------------------------------------------------------
+-- Grouping up with the target (Layout.GROUP_JOBS)
+---------------------------------------------------------------------------
+local function LastLine()
+	return M.macroLines[#M.macroLines]
+end
+
+test("invite, ask to join and leave the party are jobs that run the macro a player would write, in a fight too", function()
+	Load()
+	M.target = "Friend"
+	ns.Layout.SetRole(0, 1, "cmd:FREECONTROL_INVITE")
+	ns.Layout.SetRole(0, 2, "cmd:FREECONTROL_REQUESTINVITE")
+	ns.Layout.SetRole(0, 3, "cmd:FREECONTROL_LEAVEPARTY")
+	ns.RequestRefresh()
+	eq(Binding("PADDLEFT"), "click:FreeControlGroupInvite", "Invite target on a button of the bar")
+	M.Tap("PADDLEFT")
+	eq(LastLine(), "/invite", "runs /invite, which invites the target")
+	eq(#M.macroLines, 1, "once for a press and its release")
+	M.Tap("PADDUP")
+	eq(LastLine(), "/requestinvite %t", "Ask to join runs /requestinvite for the target")
+	M.Tap("PADDRIGHT")
+	eq(LastLine(), "/run C_PartyInfo.LeaveParty()", "Leave party runs the game's own call")
+
+	M.EnterCombat()
+	Taps("PADDLEFT", "PADDUP", "PADDRIGHT")
+	eq(#M.macroLines, 6, "all three work in a fight")
+	eq(LastLine(), "/run C_PartyInfo.LeaveParty()", "the same way")
+	M.LeaveCombat()
+
+	ns.Options.Bind("PADPADDLE1", ns.Bindings.GROUP_COMMANDS.FREECONTROL_INVITE)
+	eq(M.userBindings.PADPADDLE1, "CLICK FreeControlGroupInvite:LeftButton", "and they go on any other button, as key bindings")
+	M.Tap("PADPADDLE1")
+	eq(#M.macroLines, 7, "which run them too")
+	for _, job in ipairs(ns.Layout.GROUP_JOBS) do
+		truthy(FileExists("FreeControl/Art/" .. job[3] .. ".tga"), "a picture for " .. job[2])
+	end
+end)
+
+test("invite or ask to join: the one that applies out of combat, both lines in a fight", function()
+	Load()
+	ns.Layout.SetRole(0, 1, "cmd:FREECONTROL_INVITEORREQUEST")
+	ns.RequestRefresh()
+	M.target = "Loner"
+	M.Tap("PADDLEFT")
+	eq(table.concat(M.macroLines, " | "), "/invite", "a target who is alone is invited, and nothing else is tried")
+	M.target = "Member"
+	M.grouped.Member = true
+	M.Tap("PADDLEFT")
+	eq(table.concat(M.macroLines, " | "), "/invite | /requestinvite %t", "one who is in a group is asked to let you join")
+	M.target = nil
+	M.Tap("PADDLEFT")
+	eq(LastLine(), "/invite", "with nobody targeted it is the plain invite, which the game answers itself")
+
+	-- In a fight the button cannot be changed, and the game may not say who the target is.
+	M.sealTarget = true
+	M.target = "Member"
+	M.macroLines = {}
+	M.EnterCombat()
+	M.Tap("PADDLEFT")
+	eq(table.concat(M.macroLines, " | "), "/invite | /requestinvite %t", "both lines: the game carries out the one that applies")
+	M.target = "Loner"
+	M.Tap("PADDLEFT")
+	eq(#M.macroLines, 4, "whoever is targeted")
+	M.LeaveCombat()
+	M.macroLines = {}
+	M.Tap("PADDLEFT")
+	eq(table.concat(M.macroLines, " | "), "/invite", "and after the fight it picks again")
+end)
+
+test("Target's menu opens the game's own menu for the target, and brings the pointer out to work it", function()
+	Load()
+	ns.Layout.SetRole(0, 1, "cmd:FREECONTROL_TARGETMENU")
+	ns.RequestRefresh()
+	eq(Binding("PADDLEFT"), "click:FreeControlGroupMenu", "the job on a button of the bar")
+	M.target = "Friend"
+	M.Tap("PADDLEFT")
+	M.Advance(0.02)
+	eq(#M.menusOpened, 1, "one menu, for a press and its release")
+	eq(M.menusOpened[1], "target", "the target's")
+	eq(M.PointerVisible(), true, "the mouse pointer is out to pick from it")
+
+	M.sealTarget = true
+	M.EnterCombat()
+	M.Tap("PADDLEFT")
+	eq(#M.menusOpened, 2, "in a fight too")
+	M.LeaveCombat()
+
+	SlashCmdList.FREECONTROL("mouse off")
+	M.GameHidesPointer()
+	M.Tap("PADDLEFT")
+	M.Advance(0.02)
+	eq(#M.menusOpened, 3, "with mouse mode off the menu still opens")
+	eq(M.cursorControl, false, "but the pointer is left to the mouse")
+	eq(#M.luaErrors, 0, "and nothing went wrong along the way")
+end)
+
+test("Accept group invite or request says yes to the game's question about a group, and to no other", function()
+	Load()
+	ns.Layout.SetRole(0, 1, "cmd:FREECONTROL_ACCEPTGROUP")
+	ns.RequestRefresh()
+	eq(Binding("PADDLEFT"), "click:FreeControlGroupAccept", "the job on a button of the bar")
+	M.Tap("PADDLEFT")
+	eq(#M.popupAnswers, 0, "with nothing asked it does nothing")
+	M.Ask("DELETE_ITEM")
+	M.Tap("PADDLEFT")
+	eq(#M.popupAnswers, 0, "a question about something else is not answered")
+	M.Ask("PARTY_INVITE")
+	M.Tap("PADDLEFT")
+	eq(#M.popupAnswers, 1, "an invitation is accepted, once for a press and its release")
+	eq(M.popupAnswers[1].which, "PARTY_INVITE", "that one")
+	eq(M.popupAnswers[1].button, 1, "by its first button, Accept")
+	M.Ask("GROUP_INVITE_CONFIRMATION")
+	M.EnterCombat()
+	M.Tap("PADDLEFT")
+	eq(M.popupAnswers[2].which, "GROUP_INVITE_CONFIRMATION", "and so is someone asking to join, in a fight too")
+	M.LeaveCombat()
+	truthy(FileExists("FreeControl/Art/Role-Accept.tga"), "the job has a picture")
+end)
+test("every page has thirty-two slots of its own: eight for Main and eight for each trigger set, none shared", function()
+	Load({ roles = { "action", "action", "action", "action", "action", "action", "action", "action" }, mouseStep = 2, mouseMode = false })
+	local owner, count = {}, 0
+	for page = 1, 3 do
+		for set = 0, 3 do
+			for index = 1, 8 do
+				local slot = ns.Layout.GetSlot(set, index, page)
+				local name = ("page %d, set %d, button %d"):format(page, set, index)
+				eq(owner[slot], nil, name .. " has slot " .. slot .. " to itself")
+				owner[slot] = name
+				count = count + 1
+			end
+		end
+	end
+	eq(count, 96, "three pages of thirty-two")
 end)

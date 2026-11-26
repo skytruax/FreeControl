@@ -123,7 +123,7 @@ local function Check(all)
 		record, all = {}, true
 		ns.db.ranks[character] = record
 	end
-	for slot = first, last do
+	for _, slot in ipairs(Layout.GetGamepadSlots()) do
 		local kind, spell = GetActionInfo(slot)
 		if kind ~= "spell" or ns.IsSealed(spell) then
 			record[slot] = nil
@@ -224,7 +224,7 @@ function Ranks:Describe()
 	end
 	local newest, older = ReadSpellBook()
 	local names, listed = {}, {}
-	for slot = first, last do
+	for _, slot in ipairs(Layout.GetGamepadSlots()) do
 		local kind, spell = GetActionInfo(slot)
 		local name = kind == "spell" and not ns.IsSealed(spell) and older[spell]
 		if name and newest[name] and not listed[name] then
