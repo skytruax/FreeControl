@@ -56,7 +56,7 @@ Change stance or form and the bar changes with you, in the middle of a fight too
 
 Your stances stay put: a form, Stealth or a stance you put on a button shows there in every stance that has nothing of its own on it, so the way back is never lost. Or give a stance a button of its own: any no-trigger button, bumper or paddle can be *Bear Form* or *Battle Stance* for good, wearing the stance's icon and lit while you are in it. The D-pad makes a fine stance switcher.
 
-Already have Cat and Bear bars set up in the normal interface? They are on the left set and the D-pad the moment you shift. Any class can pick how much changes under *Stance sets* on the settings page.
+Already have Cat and Bear bars set up in the normal interface? They are on the left set and the D-pad the moment you shift. Any class can pick how much changes under *Change with stance* on the settings page.
 
 ### Speaks your controller
 

@@ -84,7 +84,9 @@ works for the Druid and does nothing for the Warrior. That was the gap in 1.5.0.
 
 ## What changes, and where
 
-"Stance sets" on the settings page:
+"Change with stance" on the settings page (called "Stance sets" up to 1.8.0). Its menu has
+Automatic, Nothing and a tick for each of the four layouts; the other choices below are still
+there for `/fc stance`:
 
 | Choice | What changes with your stance or form |
 | --- | --- |
@@ -93,6 +95,14 @@ works for the Druid and does nothing for the Warrior. That was the gap in 1.5.0.
 | Left trigger set, Right trigger set, Both triggers set | That set |
 | Left and right sets | Both of them |
 | Left, right and D-pad | Both of them and the four D-pad slots |
+| My own pick | The layouts ticked at the bottom of the menu (`/fc stance custom main lt rt both`): Main and up to two of the three trigger sets |
+
+With the player's own pick, Main changes with the form on the stance page alone, as the trigger
+sets do, so the other pages are the same in every stance. With a ready-made choice Main still
+changes on every page. Two trigger sets is the limit because the game has two places to keep a
+set's buttons for each stance: the controller's stance bars and the regular action bar's stance
+slots. The first set ticked (left, right, both, in that order) is kept in the first, the second
+in the second.
 
 They change on the **stance page**: the page Options > Gamepad > Stance bar puts the stance bar
 on, which is page 1 unless the player moved it. This is how the game's own bars behave: its

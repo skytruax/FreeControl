@@ -27,6 +27,13 @@ TRACKED = setmetatable({}, {
 })
 
 -- Loads the addon the way the client does: every file in the .toc, in order, sharing one table.
+-- Most scenarios were written when the addon picked what changes with the stance by itself (the
+-- "auto" choice) and when Main's jobs (Interact, the game menu, Jump) were on every page. They
+-- still check those: /fc stance takes the older choices, and a job in db.roles is one for every
+-- page. They start from there. A test of what a player gets out of the box, or of an older
+-- saved setup being brought along, sets this to false before it loads the addon.
+local startOnAutomatic = true
+
 local function Load(saved, character)
 	FreeControlDB = saved
 	FreeControlCharacterDB = character
@@ -36,6 +43,10 @@ local function Load(saved, character)
 			local chunk = assert(loadstring(ReadFile("FreeControl/" .. line), "@FreeControl/" .. line))
 			setfenv(chunk, TRACKED)
 			chunk("FreeControl", ns)
+			if line == "Core.lua" and startOnAutomatic then
+				ns.DEFAULTS.stanceSet, ns.DEFAULTS.stancePicked = "auto", true
+				ns.DEFAULTS.mainRolesPaged = true
+			end
 		end
 	end
 	M.Fire("ADDON_LOADED", "FreeControl")
@@ -949,23 +960,32 @@ test("a Druid who chose the changing sets by hand is not told what automatic doe
 	eq(Slots(0), CASTER[0], "nor the D-pad")
 end)
 
+-- The button of the "Change with stance" row: the one whose tooltip has that title.
+local function StanceButton()
+	Open(ns.Options.panel)
+	for _, frame in ipairs(M.all) do
+		local enter = frame.GetText and frame:GetScript("OnEnter")
+		if enter and frame:GetParent() == ns.Options.panel then
+			GameTooltip.lines = {}
+			enter(frame)
+			if GameTooltip.lines[1] == "Change with stance" then return frame end
+		end
+	end
+end
+
 test("the settings page offers every stance choice", function()
 	Load()
-	local panel = ns.Options.panel
-	Open(panel)
-	local button
-	for _, frame in ipairs(M.all) do
-		if frame:GetText() == "Automatic" then button = frame end
-	end
+	local button = StanceButton()
 	truthy(button, "the button showing the current choice")
 	local seen, labels = {}, {}
-	for _ = 1, #ns.Layout.STANCE_CHOICES do
+	-- Every choice but the player's own pick of layouts, which is ticked in the menu or typed.
+	for _ = 1, #ns.Layout.STANCE_CHOICES - 1 do
 		button:GetScript("OnClick")(button)
 		seen[#seen + 1] = ns.db.stanceSet
 		labels[#labels + 1] = button:GetText()
 	end
 	eq(table.concat(seen, " "), "none lt rt both ltrt all auto", "stepping through them reaches every choice the addon accepts")
-	eq(table.concat(labels, " | "), "Nothing | Left trigger set | Right trigger set | Both triggers set | Left and right sets | Left, right and D-pad | Automatic", "each with a name")
+	eq(table.concat(labels, " | "), "Nothing | LT | RT | LT + RT | LT, RT | LT, RT, D-pad | RT", "each shown as the layouts it changes; the last is what the game's own option comes to here")
 end)
 
 test("settings changed in combat wait for the fight to end", function()
@@ -1793,7 +1813,7 @@ test("mouse mode has a page of its own that explains it and names the button tha
 	local main = ns.Options.panel
 	Open(main)
 	truthy(PageSays(main, "^Mouse mode and other buttons$"), "the main page has its heading and its switch")
-	truthy(PageSays(main, "^Stance sets$"), "and the stance choice under its name")
+	truthy(PageSays(main, "^Change with stance$"), "and the stance choice under its name")
 	local toMouse
 	for _, frame in ipairs(M.all) do
 		if frame:GetText() == "Clicks and speed..." then toMouse = frame end
@@ -1866,7 +1886,7 @@ test("settings page buttons step through choices when there is no menu system", 
 	eq(ns.db.labelStyle, "auto", "starts on auto")
 	ns.db.roles[6] = "pass"
 	ns.Options:OpenRoleMenu(ns.Buttons.role[6], 6)
-	eq(ns.db.roles[6], "cmd:INTERACTTARGET", "'pass' steps to the first command")
+	eq(ns.Layout.GetRole(0, 6), "cmd:INTERACTTARGET", "'pass' steps to the first command")
 	eq(Binding("PAD4"), "cmd:INTERACTTARGET", "and it is bound")
 end)
 
@@ -1890,7 +1910,7 @@ test("settings page buttons open a menu when the client has one", function()
 	eq(picked.items[1].text, "Action slot", "first choice")
 	eq(picked.items[2].isSelected(), true, "'My own key binding' is the current one")
 	picked.items[4].onSelect()
-	eq(ns.db.roles[6], "cmd:JUMP", "picking sets the role")
+	eq(ns.Layout.GetRole(0, 6), "cmd:JUMP", "picking sets the role")
 	eq(picked.items[4].isSelected(), true, "and the menu shows it selected")
 	eq(picked.items[2].isSelected(), false, "and no longer the old one")
 end)
@@ -3116,6 +3136,8 @@ local function Expected(class, choice, option, page, bar)
 		first, pair, dpad = optionSet, class == "DRUID", class == "DRUID"
 	elseif choice == "ltrt" or choice == "all" then
 		first, pair, dpad = optionSet, true, choice == "all"
+	elseif choice == "custom" then
+		first = nil -- the player's own pick, which starts out with nothing ticked
 	elseif choice ~= "none" then
 		first = ({ lt = 1, rt = 2, both = 3 })[choice]
 	end
@@ -3304,19 +3326,17 @@ end)
 test("the stance sets choice says what it comes to on this character", function()
 	M.class = "DRUID"
 	Load()
-	Open(ns.Options.panel)
-	local button
-	for _, frame in ipairs(M.all) do
-		if frame:GetText() == "Automatic" then button = frame end
-	end
+	local button = StanceButton()
+	eq(button:GetText(), "LT, RT, D-pad", "the button names what changes, not a choice that picks it")
 	button:GetScript("OnEnter")(button)
-	eq(GameTooltip.lines[1], "Stance sets", "title")
+	eq(GameTooltip.lines[1], "Change with stance", "title")
+	truthy(GameTooltip.lines[2]:find("four layouts: Main %(no trigger%), LT, RT and LT %+ RT"), "it names the four layouts it is about")
 	truthy(GameTooltip.lines[2]:find("On this character: RT set, LT set and the D%-pad, on page 1%.$"), "a Druid on automatic")
 	truthy(GameTooltip.lines[2]:find("They change on one page only"), "with the rule about pages")
 	eq(GameTooltip.lines[2]:find("regular action bars as the slots"), nil, "and not a word about a setup the player is not using")
 	SlashCmdList.FREECONTROL("slots bars")
 	button:GetScript("OnEnter")(button)
-	truthy(GameTooltip.lines[2]:find("With the regular action bars as the slots, Automatic changes nothing"), "and why nothing does with the regular bars")
+	truthy(GameTooltip.lines[2]:find("With the regular action bars as the slots, nothing changes until you tick a layout"), "and why nothing does with the regular bars")
 	truthy(GameTooltip.lines[2]:find("On this character: nothing%.$"), "said plainly")
 end)
 
@@ -5732,4 +5752,301 @@ test("four jobs step through the party in a fight, skipping the places nobody is
 	eq(#M.targeted, 6, "with no party nothing is targeted")
 	M.LeaveCombat()
 	eq(#M.luaErrors, 0, "and nothing was blocked")
+end)
+
+test("the player's own pick of layouts changes with the stance on the stance page, two trigger sets at most", function()
+	M.class = "DRUID"
+	M.lastGamepadSlot = 360
+	Load()
+	local function Slot(set, index) return ns.Buttons:GetSlot(set, index) end
+	local caster = { [0] = Slot(0, 1), Slot(1, 1), Slot(2, 1), Slot(3, 1) }
+	SlashCmdList.FREECONTROL("stance custom lt both")
+	eq(ns.db.stanceSet, "custom", "the choice is the player's own pick")
+	eq(ns.db.stanceLT and ns.db.stanceBoth and not ns.db.stanceRT and not ns.db.stanceMain, true, "the two layouts named, and no other")
+	truthy(Printed("Changes with your stance or form: LT set and LT %+ RT set, on page 1%."), "said back")
+
+	M.EnterCombat()
+	M.ShapeshiftTo("Cat Form")
+	local bar = M.bonusbar
+	eq(Slot(1, 1), 181 + 84 + (bar - 1) * 8, "the left set is kept in the controller's stance bar")
+	eq(Slot(3, 1), 73 + (bar - 1) * 12, "the both-triggers set in the regular bar's stance slots")
+	eq(Slot(2, 1), caster[2], "the right set, not picked, stays as it is")
+	eq(Slot(0, 1), caster[0], "and so does Main")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Slot(1, 1), caster[1] + 28, "page 2 is the same in every stance: the left set shows its page 2 slot")
+	eq(Slot(3, 1), caster[3] + 28, "and the both-triggers set too")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Slot(1, 1), 181 + 84 + (bar - 1) * 8, "back on page 1 the left set changes again")
+	M.ShapeshiftTo(nil)
+	M.LeaveCombat()
+
+	M.printed = {}
+	SlashCmdList.FREECONTROL("stance custom main lt rt both")
+	truthy(Printed("Only two of LT, RT and LT %+ RT can change with your stance or form"), "a third trigger set is said to be one too many")
+	eq(ns.db.stanceLT and ns.db.stanceRT and ns.db.stanceMain and not ns.db.stanceBoth, true, "and the last of the three is left out")
+end)
+
+test("picked as a layout, Main changes with the form on the stance page alone", function()
+	M.class = "DRUID"
+	M.lastGamepadSlot = 360
+	Load()
+	local function Slots(set)
+		local slots = {}
+		for index = 1, 8 do slots[index] = tostring(ns.Buttons:GetSlot(set, index)) end
+		return table.concat(slots, " ")
+	end
+	local caster = Slots(0)
+	M.ShapeshiftTo("Bear Form")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Slots(0), "305 306 307 308 309 310 311 312", "with a ready-made choice Main changes on every page")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	M.MouseClick(M.frames.FreeControlPageNext)
+	M.ShapeshiftTo(nil)
+
+	SlashCmdList.FREECONTROL("stance custom main")
+	M.EnterCombat()
+	M.ShapeshiftTo("Bear Form")
+	eq(Slots(0), "305 306 307 308 309 310 311 312", "on the stance page Bear has its own eight")
+	eq(Binding("PAD1"), "click:FreeControlKey0_8", "and the form's button takes the key")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(ns.Buttons:GetSlot(0, 1), 181 + 28, "on page 2 Main is the caster's page 2, bear or not")
+	eq(Binding("PAD1"), "cmd:JUMP", "with the caster's commands")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Slots(0), "305 306 307 308 309 310 311 312", "and back on page 1 it is Bear's again")
+	M.ShapeshiftTo(nil)
+	eq(Slots(0), caster, "out of the form, the caster's")
+	M.LeaveCombat()
+
+	SlashCmdList.FREECONTROL("stance custom rt")
+	M.ShapeshiftTo("Bear Form")
+	eq(Slots(0), caster, "with Main not picked it never changes")
+	M.ShapeshiftTo(nil)
+end)
+
+test("the stance menu has a tick for each of the four layouts, which starts from what changes now", function()
+	M.class = "DRUID"
+	M.lastGamepadSlot = 360
+	local menus = UseMenus()
+	local makeMenu = MenuUtil.CreateContextMenu
+	MenuUtil.CreateContextMenu = function(owner, generator)
+		makeMenu(owner, function(frame, root)
+			function root:CreateCheckbox(text, isSelected, onToggle)
+				self.items[#self.items + 1] = { text = text, isSelected = isSelected, onSelect = onToggle, check = true }
+			end
+			generator(frame, root)
+		end)
+	end
+	Load()
+	SlashCmdList.FREECONTROL("stance rt")
+	local button = StanceButton()
+	eq(button:GetText(), "Main, RT", "the button names the layouts that change now")
+	button:GetScript("OnClick")(button)
+	local labels, ticked = {}, {}
+	for _, item in ipairs(menus.last.items) do
+		labels[#labels + 1] = item.text
+		if item.check and item.isSelected() then ticked[#ticked + 1] = item.text end
+	end
+	eq(table.concat(labels, " | "), "Main | LT | RT | LT + RT", "the four layouts by name, and nothing that picks for the player")
+	eq(table.concat(ticked, " | "), "Main | RT", "ticked as the choice in force has them")
+
+	Pick(menus.last, "LT")
+	eq(ns.db.stanceSet, "custom", "a tick makes the pick the player's own")
+	eq(ns.db.stanceMain and ns.db.stanceLT and ns.db.stanceRT and not ns.db.stanceBoth, true, "the left set is added to what changed already")
+	eq(button:GetText(), "Main, LT, RT", "the button names the layouts that are ticked")
+	M.printed = {}
+	Pick(menus.last, "LT + RT")
+	truthy(Printed("Untick one of them first"), "a third trigger set is refused")
+	eq(ns.db.stanceBoth, false, "and not ticked")
+	Pick(menus.last, "RT")
+	Pick(menus.last, "LT + RT")
+	eq(ns.db.stanceLT and ns.db.stanceBoth and not ns.db.stanceRT, true, "with one unticked there is room for it")
+	eq(button:GetText(), "Main, LT, LT + RT", "and the button follows")
+	Pick(menus.last, "Main")
+	Pick(menus.last, "LT")
+	Pick(menus.last, "LT + RT")
+	eq(button:GetText(), "Nothing", "with all four unticked nothing changes")
+	eq(#ns.Layout.GetStanceGroups(), 0, "no trigger layout")
+	eq(next(ns.Layout.GetMainFormSlots()), nil, "and not Main")
+end)
+
+test("a saved pick of three trigger sets is cut back to two", function()
+	Load(nil, { stanceSet = "custom", stanceMain = "yes", stanceLT = true, stanceRT = true, stanceBoth = true })
+	eq(ns.db.stanceLT and ns.db.stanceRT and not ns.db.stanceBoth, true, "the last of the three is dropped")
+	eq(ns.db.stanceMain, false, "and a setting that is not yes or no goes back to its default")
+end)
+
+test("out of the box nothing changes with the stance: no layout is ticked for the player", function()
+	startOnAutomatic = false
+	M.class = "DRUID"
+	M.lastGamepadSlot = 360
+	Load()
+	eq(ns.db.stanceSet, "custom", "the choice is the player's own pick")
+	eq(ns.db.stanceMain or ns.db.stanceLT or ns.db.stanceRT or ns.db.stanceBoth, false, "with nothing ticked")
+	local before = {}
+	for set = 0, 3 do before[set] = ns.Buttons:GetSlot(set, 1) end
+	M.ShapeshiftTo("Cat Form")
+	for set = 0, 3 do
+		eq(ns.Buttons:GetSlot(set, 1), before[set], "a Druid's cat form changes no button of layout " .. set)
+	end
+	M.ShapeshiftTo(nil)
+	eq(StanceButton():GetText(), "Nothing", "and the settings page says so")
+	eq(Printed("stance or form"), false, "nothing is said about it")
+end)
+
+test("a setup saved while the addon picked for the player becomes the player's own pick, as it stood", function()
+	startOnAutomatic = false
+	M.class = "DRUID"
+	Load(nil, { stanceSet = "auto" })
+	eq(ns.db.stanceSet, "custom", "the automatic choice is gone")
+	eq(ns.db.stanceLT and ns.db.stanceRT and ns.db.stanceMain and not ns.db.stanceBoth, true, "a Druid keeps the two trigger layouts that changed, and Main")
+	truthy(Printed("The D%-pad no longer changes on its own"), "and is told that the D-pad alone no longer does")
+	eq(StanceButton():GetText():find("D%-pad"), nil, "the settings page names layouts only")
+	M.cvars.GamepadStanceBarOverride = "1"
+	ns.Refresh()
+	eq(ns.db.stanceLT and ns.db.stanceRT, true, "what the game's own option says no longer changes the pick")
+	M.printed = {}
+	ns.Refresh()
+	eq(#M.printed, 0, "it is done once")
+end)
+
+test("a saved choice of one set becomes a tick, and a saved choice of nothing stays nothing", function()
+	startOnAutomatic = false
+	M.class = "WARRIOR"
+	Load(nil, { stanceSet = "rt" })
+	eq(ns.db.stanceSet, "custom", "the choice is the player's own pick now")
+	eq(ns.db.stanceRT and ns.db.stanceMain and not ns.db.stanceLT and not ns.db.stanceBoth, true, "the right set, and Main")
+	eq(Printed("D%-pad no longer"), false, "with no D-pad to speak of, nothing is said")
+	SlashCmdList.FREECONTROL("stance none")
+	ns.db.stancePicked = false
+	ns.Refresh()
+	eq(ns.db.stanceSet, "custom", "nothing, turned into a pick")
+	eq(ns.db.stanceMain or ns.db.stanceLT or ns.db.stanceRT or ns.db.stanceBoth, false, "has nothing ticked")
+end)
+
+test("a job belongs to the page it was given on: the same button is a plain slot on the other pages", function()
+	local menus = UseMenus()
+	Load()
+	local button, widget = ns.Buttons.action[2][1], ns.Buttons.layerRole[2][1]
+	ns.Options:OpenRoleMenu(button, 1, 2)
+	Pick(menus.last, "Target party member 1")
+	eq(ns.Layout.GetRole(2, 1), "cmd:TARGETPARTYMEMBER1", "on page 1 the button has the job")
+	eq(ns.Layout.GetRole(2, 1, nil, 2), "action", "on page 2 it is a slot")
+	eq(ns.Layout.GetRole(2, 1, nil, 3), "action", "and on page 3")
+	eq(widget:IsShown() and not button:IsShown(), true, "page 1 shows the job's picture")
+
+	M.EnterCombat()
+	M.Tap("PADRTRIGGER")
+	eq(Binding("PADDLEFT"), "cmd:TARGETPARTYMEMBER1", "and the key runs it")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Binding("PADDLEFT"), "click:FreeControlKey2_1", "on page 2, in a fight, the key is the slot's again")
+	eq(button:IsShown() and not widget:IsShown(), true, "and the slot shows, not the job")
+	eq(ns.Buttons:GetSlot(2, 1), 181 + 28 + 12, "its page 2 slot")
+	M.used = {}
+	M.Tap("PADDLEFT")
+	eq(Used(), tostring(181 + 28 + 12), "which the key casts")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Binding("PADDLEFT"), "click:FreeControlKey2_1", "page 3 is a slot too")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Binding("PADDLEFT"), "cmd:TARGETPARTYMEMBER1", "back on page 1 the job is there again")
+	eq(widget:IsShown() and not button:IsShown(), true, "with its picture")
+	M.LeaveCombat()
+
+	M.MouseClick(M.frames.FreeControlPageNext)
+	ns.Options:OpenRoleMenu(button, 1, 2)
+	Pick(menus.last, "Target party member 2")
+	eq(ns.Layout.GetRole(2, 1, nil, 2), "cmd:TARGETPARTYMEMBER2", "page 2 can have a job of its own on the same button")
+	eq(ns.Layout.GetRole(2, 1, nil, 1), "cmd:TARGETPARTYMEMBER1", "which leaves page 1's as it was")
+	eq(widget.fc.icon:GetTexture():match("Role%-%w+$"), "Role-Party2", "the picture is the one for this page's job")
+	ns.Options:OpenRoleMenu(widget, 1, 2)
+	Pick(menus.last, "Action slot")
+	eq(ns.Layout.GetRole(2, 1, nil, 2), "action", "and can be made a slot again")
+	eq(ns.Layout.GetRole(2, 1, nil, 1), "cmd:TARGETPARTYMEMBER1", "without touching page 1")
+end)
+
+test("the jobs the bar is found its way around by are on every page", function()
+	local menus = UseMenus()
+	Load()
+	ns.Options:OpenRoleMenu(ns.Buttons.action[2][1], 1, 2)
+	Pick(menus.last, "Next page")
+	ns.Options:OpenRoleMenu(ns.Buttons.action[2][2], 2, 2)
+	Pick(menus.last, "Return to main layer")
+	for page = 1, 3 do
+		eq(ns.Layout.GetRole(2, 1, nil, page), "cmd:FREECONTROL_NEXTPAGE", "turning the page, on page " .. page)
+		eq(ns.Layout.GetRole(2, 2, nil, page), "cmd:FREECONTROL_RELEASELAYER", "returning to the main layer, on page " .. page)
+		eq(ns.Layout.GetRole(0, 6, nil, page), "cmd:FREECONTROL_TOGGLECURSOR", "and the mouse button, on page " .. page)
+	end
+	ns.Options:OpenRoleMenu(ns.Buttons.layerRole[2][1], 1, 2)
+	Pick(menus.last, "Action slot")
+	for page = 1, 3 do
+		eq(ns.Layout.GetRole(2, 1, nil, page), "action", "taken off again, it is off every page: " .. page)
+	end
+end)
+
+test("jobs saved on a trigger layout by an older version are moved to page 1", function()
+	startOnAutomatic = false
+	Load(nil, { layerRoles = { [2] = { [1] = "cmd:TARGETPARTYMEMBER1" } }, roles = { "cmd:TARGETSELF", "cmd:FREECONTROL_NEXTPAGE" } })
+	eq(ns.Layout.GetRole(2, 1, nil, 1), "cmd:TARGETPARTYMEMBER1", "the job is on page 1")
+	eq(ns.Layout.GetRole(2, 1, nil, 2), "action", "and no longer on page 2")
+	eq(ns.Layout.GetRole(2, 1, nil, 3), "action", "or page 3")
+	eq(next(ns.db.layerRoles), nil, "nothing is left for every page")
+	eq(ns.Layout.GetRole(0, 1, nil, 1), "cmd:TARGETSELF", "a Main button's job is on page 1 as well")
+	eq(ns.Layout.GetRole(0, 1, nil, 2), "action", "and not on page 2")
+	eq(ns.Layout.GetRole(0, 8, nil, 1), "cmd:JUMP", "Jump, which the bar starts with, is on page 1")
+	eq(ns.Layout.GetRole(0, 8, nil, 3), "action", "and its button is a slot on page 3")
+	for page = 1, 3 do
+		eq(ns.Layout.GetRole(0, 2, nil, page), "cmd:FREECONTROL_NEXTPAGE", "a button that turns the page stays on page " .. page)
+		eq(ns.Layout.GetRole(0, 6, nil, page), "cmd:FREECONTROL_TOGGLECURSOR", "and so does the mouse button, on page " .. page)
+	end
+	eq(ns.db.rolesPaged and ns.db.mainRolesPaged, true, "and it is done once")
+end)
+
+test("saved page jobs that make no sense are dropped", function()
+	Load(nil, { pageRoles = { [1] = { [2] = { [1] = "cmd:JUMP", [9] = "cmd:JUMP", [2] = 5 }, [7] = {} }, [4] = {}, x = {} } })
+	eq(ns.Layout.GetRole(2, 1, nil, 1), "cmd:JUMP", "a good one is kept")
+	eq(ns.db.pageRoles[1][2][9], nil, "a ninth button is not")
+	eq(ns.db.pageRoles[1][2][2], nil, "nor a job that is not one")
+	eq(ns.db.pageRoles[1][7], nil, "nor a fifth layout")
+	eq(ns.db.pageRoles[4], nil, "nor a fourth page")
+	eq(ns.db.pageRoles.x, nil, "nor a page with a name")
+end)
+
+test("out of the box Main's jobs are on page 1, and on the other pages those buttons are slots", function()
+	startOnAutomatic = false
+	Load()
+	local function Slots()
+		local slots = {}
+		for index = 1, 8 do slots[index] = tostring(ns.Buttons:GetSlot(0, index) or "-") end
+		return table.concat(slots, " ")
+	end
+	eq(Slots(), "181 182 183 184 - - - -", "page 1: the D-pad's slots, and the four face buttons with their jobs")
+	eq(Binding("PAD3"), "cmd:INTERACTTARGET", "Interact")
+	eq(Binding("PAD2"), "cmd:TOGGLEGAMEMENU", "the game menu")
+	eq(Binding("PAD1"), "cmd:JUMP", "Jump")
+	eq(Binding("PAD4"), "click:FreeControlMouse", "and the mouse button")
+
+	M.EnterCombat()
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Slots(), "209 210 211 212 205 - 207 208", "page 2: three face buttons are slots, borrowed from the page before as a face slot is")
+	eq(Binding("PAD1"), "click:FreeControlKey0_8", "the Jump button casts its slot there")
+	eq(Binding("PAD4"), "click:FreeControlMouse", "and the mouse button is the mouse button on every page")
+	M.used = {}
+	M.Tap("PAD1")
+	eq(Used(), "208", "the key casts it")
+	eq(ns.Buttons.role[8]:IsShown(), false, "with no picture of Jump over it")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Slots(), "237 238 239 240 233 - 235 236", "page 3 likewise")
+	M.MouseClick(M.frames.FreeControlPageNext)
+	eq(Slots(), "181 182 183 184 - - - -", "and page 1 has its jobs back")
+	eq(Binding("PAD1"), "cmd:JUMP", "Jump among them")
+	eq(ns.Buttons.role[8]:IsShown(), true, "with its picture")
+	M.LeaveCombat()
+
+	local menus = UseMenus()
+	M.MouseClick(M.frames.FreeControlPageNext)
+	ns.Options:OpenRoleMenu(ns.Buttons.action[0][8], 8)
+	Pick(menus.last, "Jump")
+	eq(Binding("PAD1"), "cmd:JUMP", "a page can be given Jump of its own")
+	eq(ns.Layout.GetRole(0, 8, nil, 3), "action", "which leaves page 3 a slot")
 end)

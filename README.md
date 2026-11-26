@@ -170,7 +170,7 @@ because Blizzard's bar would be bound to the same buttons.
   spell in Cat or Bear form, so for a Druid the right set, the left set and the D-pad all
   change, and the both-triggers set and the face buttons stay the same in every form: that is
   where a mount or a trinket goes. The left set and the D-pad show the slots of the game's own
-  action bar for that form, so a bar you already set up there is waiting for you. *Stance sets*
+  action bar for that form, so a bar you already set up there is waiting for you. *Change with stance*
   on the settings page offers the same to any class.
   They change on one page only, as the game's own bars do: page 1, unless the Gamepad options
   put the stance bar on another. The other pages are the same in every stance or form.
@@ -190,6 +190,11 @@ because Blizzard's bar would be bound to the same buttons.
   one does and offers the common jobs in a menu: turning the page, targeting (a party member,
   the nearest enemy), Ping, the map and more. **Options > Key Bindings** does the rest. The
   stick clicks keep their jobs except while the mouse pointer is out.
+- **A job belongs to its page:** a job you give a button on the bar (click the button, or use
+  *Button assignments* in the settings) is for the page the bar is showing. On the other pages
+  the same button is an ordinary slot, or has a job of its own. The exceptions are the jobs the
+  bar is found its way around by, which are on every page: turning the page, returning to the
+  main layer, the mouse button, and a stance or form's own button.
 - **Stepping through the party:** four of those jobs pick a party member without a button for
   each one: *Target next party member*, *previous*, *first* and *last*. They skip the places
   nobody is in, work in a fight, and can go on the bar's own buttons too, so a trigger layer's
@@ -244,6 +249,7 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc glow off` | Stop buttons glowing when a spell procs (`on` to bring it back). |
 | `/fc ranks` | Move every spell on the bar up to its newest rank now. `/fc ranks off` stops FreeControl doing it by itself when you learn one (`on` to bring it back). |
 | `/fc stance all` | What changes with your stance or form: `auto`, `none`, `lt`, `rt`, `both`, `ltrt` (both trigger sets) or `all` (both and the D-pad). |
+| `/fc stance custom main lt` | Your own pick of the layouts that change, on the stance page only: any of `main`, `lt`, `rt` and `both`, with two trigger sets at most. The same ticks are in the *Change with stance* menu on the settings page. |
 | `/fc mouse` | Bring the mouse pointer out or put it away, like the Y button. |
 | `/fc mouse off` | Switch mouse mode off: its button becomes an action slot (`on` to switch it back on). |
 | `/fc gamepointer off` | Stop the game bringing its mouse pointer out by itself, for playing with a real mouse (`on` to allow it again). |
@@ -256,7 +262,7 @@ because Blizzard's bar would be bound to the same buttons.
 
 Other settings on the page: how much the held set grows, how far the others fade, button labels
 (Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, whether the bar
-has pages and shows its page selector, what changes with your stance or form (*Stance sets*:
+has pages and shows its page selector, what changes with your stance or form (*Change with stance*:
 automatic unless you choose otherwise, and its tooltip says what that comes to on your
 character), *Gamepad UI enemy targeting*, and the switch for mouse mode. Three more pages sit
 under FreeControl: **Mouse mode**, with the two click buttons, the pointer speed and whether the
@@ -322,7 +328,7 @@ when FreeControl is switched off.
   action bar for that stance, so what you drop on them in a form also shows on that bar. The
   rest of your regular action bars is never touched.
 - With `/fc slots bars` there is one page, and Automatic changes nothing with your stance: pick
-  a set under *Stance sets* yourself. One set and the D-pad can change there, not two sets.
+  a set under *Change with stance* yourself. One set and the D-pad can change there, not two sets.
 - Which bar each form of each class brings up is the game's own data. FreeControl follows what
   the game reports; `/fc status`, typed while in a form, shows it.
 - No vehicle or possess bar yet: use the game's own bar for those.

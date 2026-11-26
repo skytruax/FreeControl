@@ -15,8 +15,9 @@ local Bindings = {}
 ns.Bindings = Bindings
 
 -- Restricted snippet, self = header. Points the slot keys at the selected set and highlights it.
---   fc-kind-<set>-<i>    "click" (press that set's key button), "cmd" (run a game command) or nil
---   fc-target-<set>-<i>  the key button's name, or the command
+--   fc-kind-<page>-<set>-<i>    "click" (press that set's key button), "cmd" (run a game command) or nil
+--   fc-target-<page>-<set>-<i>  the key button's name, or the command
+-- A button's job belongs to a page, so these are looked up for the page being shown (fc-page).
 -- A slot with no kind is unbound, which hands the key back to the player's own key binding.
 --
 -- Mouse mode (Mouse.lua) rides on the same snippet. While fc-mouse is set, the two click buttons
@@ -33,10 +34,11 @@ local APPLY = [=[
 	end
 
 	if self:GetAttribute("fc-enabled") then
+		local page = self:GetAttribute("fc-page") or 1
 		for i = 1, 8 do
 			local key = self:GetAttribute("fc-key-" .. i)
-			local kind = self:GetAttribute("fc-kind-" .. set .. "-" .. i)
-			local target = self:GetAttribute("fc-target-" .. set .. "-" .. i)
+			local kind = self:GetAttribute("fc-kind-" .. page .. "-" .. set .. "-" .. i)
+			local target = self:GetAttribute("fc-target-" .. page .. "-" .. set .. "-" .. i)
 			local spell = set == 0 and self:GetAttribute("fc-active-main-spell")
 			if spell then
 				kind = self:GetAttribute("fc-form-kind-" .. spell .. "-" .. i)
@@ -150,6 +152,8 @@ local MOUSE_ONCLICK = [=[
 --   fc-offset-<set>-<i>        how far into a stance's slots of that kind it sits
 --   fc-pad-<stance>            where each stance's slots of the two kinds begin
 --   fc-bar-<stance>
+--   fc-main-stance-page        set when Main changes with the form on the stance page alone (the
+--                              player's own pick of layouts); without it, on every page
 --   fc-keep-<stance>-<set>-<i> the slot the button shows in that stance (0: in none) instead of
 --                              its own there: one that holds a stance or form the player put on
 --                              the button elsewhere, where this stance has nothing of its own
@@ -161,6 +165,9 @@ local ASSIGN = [=[
 	local stance = tonumber(self:GetAttribute("state-fc-stance")) or 0
 	local form = tonumber(self:GetAttribute("state-fc-main-form")) or 0
 	local main = self:GetAttribute("fc-main-form-" .. form)
+	if main and self:GetAttribute("fc-main-stance-page") and page ~= self:GetAttribute("fc-stance-page") then
+		main = nil
+	end
 	local spell = main and self:GetAttribute("fc-main-spell-" .. form)
 	if not spell then main = nil end
 	local previousSpell = self:GetAttribute("fc-active-main-spell")
@@ -192,8 +199,10 @@ local ASSIGN = [=[
 			if key:GetAttribute("action") ~= slot then
 				key:SetAttribute("action", slot)
 			end
-			if set == 0 and self:GetAttribute("fc-main-forms") then
-				local role = self:GetFrameRef("fc-role-0-" .. i)
+			-- A button that is a slot on this page shows its action; one that has a job here, or in
+			-- this form, shows the job's picture instead. Both change with the page and the form.
+			do
+				local role = self:GetFrameRef("fc-role-" .. id)
 				if slot and not button:IsShown() then
 					button:Show(true)
 					key:Show(true)
@@ -237,6 +246,8 @@ local PAGE_ONCLICK = [=[
 	end
 	header:SetAttribute("fc-page", page)
 	header:RunAttribute("fc-assign")
+	-- What each button does belongs to the page too: bind the keys for this one.
+	header:RunAttribute("fc-apply")
 ]=]
 
 -- Restricted snippet, run before the click of one of the four party buttons; self = the button,
@@ -327,9 +338,7 @@ function Bindings:Create()
 			local id = set .. "-" .. index
 			header:SetFrameRef("fc-button-" .. id, ns.Buttons.action[set][index])
 			header:SetFrameRef("fc-key-" .. id, ns.Buttons.proxy[set][index])
-			if set == 0 then
-				header:SetFrameRef("fc-role-" .. id, ns.Buttons.role[index])
-			end
+			header:SetFrameRef("fc-role-" .. id, ns.Buttons.layerRole[set][index])
 		end
 	end
 
@@ -442,9 +451,11 @@ function Bindings:Apply()
 	for index = 1, 8 do
 		header:SetAttribute("fc-key-" .. index, db.keys[index])
 		for _, set in ipairs(Layout.SETS) do
-			local kind, target = self:GetRoleBinding(Layout.GetRole(set, index), set, index)
-			header:SetAttribute(("fc-kind-%d-%d"):format(set, index), kind)
-			header:SetAttribute(("fc-target-%d-%d"):format(set, index), target)
+			for page = 1, Layout.NUM_PAGES do
+				local kind, target = self:GetRoleBinding(Layout.GetRole(set, index, nil, page), set, index)
+				header:SetAttribute(("fc-kind-%d-%d-%d"):format(page, set, index), kind)
+				header:SetAttribute(("fc-target-%d-%d-%d"):format(page, set, index), target)
+			end
 		end
 	end
 

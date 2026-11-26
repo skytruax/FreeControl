@@ -31,7 +31,16 @@ local DEFAULTS = {
 	page = 1,              -- which of Blizzard's three controller-bar pages to show (gamepad source only)
 	pages = true,          -- the page can be turned; off, the bar stays on the one above
 	showPager = true,      -- the page selector under the bottom set (pages can be turned without it, by a bound button)
-	stanceSet = "auto",    -- what changes with your stance or form: one of Layout.STANCE_CHOICES
+	-- What changes with your stance or form: one of Layout.STANCE_CHOICES. Out of the box it is
+	-- "custom", the player's own pick of the four layouts (Layout.STANCE_LAYOUTS) with none of
+	-- them ticked: nothing changes until the player says so. The other choices are older ones
+	-- that picked for the player; /fc stance still takes them.
+	stanceSet = "custom",
+	stancePicked = false,  -- a setup saved by an older version has been turned into the player's own pick (Layout.AdoptStancePick)
+	stanceMain = false,
+	stanceLT = false,
+	stanceRT = false,
+	stanceBoth = false,
 	manageGamepad = true,  -- turn controller input (GamePadEnable) on while FreeControl is active
 	softInteract = true,   -- make the Interact command pick nearby loot, NPCs and objects by itself
 	interactReach = true,  -- use the Gamepad UI's wider interact arc and range
@@ -45,6 +54,11 @@ local DEFAULTS = {
 	-- The top face button (Y) is the mouse button; its role is Layout.CURSOR_ROLE, see Mouse.lua.
 	roles = { "action", "action", "action", "action", "cmd:INTERACTTARGET", "cmd:FREECONTROL_TOGGLECURSOR", "cmd:TOGGLEGAMEMENU", "cmd:JUMP" },
 	layerRoles = {},       -- [trigger set][button]; absent entries are action slots
+	-- What a button does on one page instead of the two above: [page][set 0-3][button]. A job
+	-- given on the bar or in the settings goes here (Layout.SetRole).
+	pageRoles = {},
+	rolesPaged = false,    -- the trigger layouts' jobs of an older version have been moved to their page
+	mainRolesPaged = false, -- and Main's, the ones the bar starts with among them
 	mainFormSlots = {},    -- [form spell ID] = reserved eight-slot block
 	mainFormRoles = {},    -- [form spell ID][button]; absent entries are action slots
 	-- The two buttons that are the mouse buttons while the controller's mouse cursor is out: a
@@ -97,7 +111,10 @@ local function IsRole(value)
 	return type(value) == "string" and (value == "action" or value == "pass" or value == "none" or value:match("^cmd:[%w_]+$") ~= nil)
 end
 
-local BAR_SETTINGS = { page = true, pages = true, showPager = true, slotSource = true, stanceSet = true }
+local BAR_SETTINGS = {
+	page = true, pages = true, showPager = true, slotSource = true, stanceSet = true,
+	stanceMain = true, stanceLT = true, stanceRT = true, stanceBoth = true, stancePicked = true,
+}
 
 local function SanitizeBarSettings(bar)
 	if not IsOneOf(bar.page, 1, 2, 3) then bar.page = DEFAULTS.page end
@@ -105,6 +122,11 @@ local function SanitizeBarSettings(bar)
 	if type(bar.showPager) ~= "boolean" then bar.showPager = DEFAULTS.showPager end
 	if not IsOneOf(bar.slotSource, "gamepad", "bars") then bar.slotSource = DEFAULTS.slotSource end
 	if not IsOneOf(bar.stanceSet, unpack(ns.Layout.STANCE_CHOICES)) then bar.stanceSet = DEFAULTS.stanceSet end
+	for _, entry in ipairs(ns.Layout.STANCE_LAYOUTS) do
+		if type(bar[entry[1]]) ~= "boolean" then bar[entry[1]] = DEFAULTS[entry[1]] end
+	end
+	ns.Layout.LimitStanceSets(bar)
+	if type(bar.stancePicked) ~= "boolean" then bar.stancePicked = DEFAULTS.stancePicked end
 end
 
 local function Sanitize(db)
@@ -139,6 +161,43 @@ local function Sanitize(db)
 					end
 				end
 			end
+		end
+	end
+	for page, sets in pairs(db.pageRoles) do
+		if type(page) ~= "number" or page % 1 ~= 0 or page < 1 or page > ns.Layout.NUM_PAGES or type(sets) ~= "table" then
+			db.pageRoles[page] = nil
+		else
+			for set, roles in pairs(sets) do
+				if type(set) ~= "number" or set % 1 ~= 0 or set < 0 or set > 3 or type(roles) ~= "table" then
+					sets[set] = nil
+				else
+					for index, role in pairs(roles) do
+						if type(index) ~= "number" or index < 1 or index > 8 or index % 1 ~= 0 or not IsRole(role) then
+							roles[index] = nil
+						end
+					end
+				end
+			end
+		end
+	end
+	-- Up to 1.8.0 a job was on its button on every page. Jobs belong to a page now, and the ones
+	-- there were are moved to the page they were most likely given on: the first, or the page the
+	-- bar was kept on with pages switched off. That goes for Main as well, the jobs the bar starts
+	-- with among them (Interact, the game menu, Jump): on the other pages those buttons are slots.
+	-- The jobs that are on every page by their nature stay where they are (Layout.IsEveryPageJob).
+	-- Main's are moved by PageMainRoles, once the mouse button has been seen to.
+	local page = db.pages == false and IsOneOf(db.page, 1, 2, 3) and db.page or 1
+	if not db.rolesPaged then
+		db.rolesPaged = true
+		for set, roles in pairs(db.layerRoles) do
+			for index, role in pairs(roles) do
+				db.pageRoles[page] = db.pageRoles[page] or {}
+				db.pageRoles[page][set] = db.pageRoles[page][set] or {}
+				if db.pageRoles[page][set][index] == nil then
+					db.pageRoles[page][set][index] = role
+				end
+			end
+			db.layerRoles[set] = nil
 		end
 	end
 	for i = 1, 2 do
@@ -463,6 +522,9 @@ function ns.OnPageShown(page)
 	local profile = ns.GetBarProfile()
 	if ns.Layout.GetPageCount() > 1 and profile.page ~= page then
 		profile.page = page
+		-- A button's job belongs to the page: the pictures of the jobs follow it. (Which button
+		-- is a job and which a slot was changed by the secure header already.)
+		ns.Buttons:UpdateRoleWidgets()
 		ns.Options:Sync()
 	end
 end
@@ -527,6 +589,28 @@ local function GiveMouseButton(db)
 	db.roles[MOUSE_INDEX] = ns.Layout.CURSOR_ROLE
 end
 
+-- Once. Moves Main's jobs to their page, as Sanitize does for the trigger layouts: the first
+-- page, or the one the bar was kept on with pages switched off. It runs after GiveMouseButton,
+-- which looks at what Y was doing before; the mouse button itself is on every page and stays.
+local function PageMainRoles(db)
+	if db.mainRolesPaged then
+		return
+	end
+	db.mainRolesPaged = true
+	local page = db.pages == false and IsOneOf(db.page, 1, 2, 3) and db.page or 1
+	for index = 1, 8 do
+		local role = db.roles[index]
+		if role ~= "action" and not ns.Layout.IsEveryPageJob(role) then
+			db.pageRoles[page] = db.pageRoles[page] or {}
+			db.pageRoles[page][0] = db.pageRoles[page][0] or {}
+			if db.pageRoles[page][0][index] == nil then
+				db.pageRoles[page][0][index] = role
+			end
+			db.roles[index] = "action"
+		end
+	end
+end
+
 ns.On("ADDON_LOADED", function(_, name)
 	if name ~= ADDON then
 		return
@@ -540,6 +624,7 @@ ns.On("ADDON_LOADED", function(_, name)
 	ns.activeSpecGroup, ns.barProfile = nil, nil
 	Sanitize(ns.db)
 	GiveMouseButton(ns.db)
+	PageMainRoles(ns.db)
 end)
 
 -- Said at the first login at which FreeControl is in use, which need not be the one that made the change.

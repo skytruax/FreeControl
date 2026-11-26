@@ -942,6 +942,7 @@ end
 -- header moves the buttons by itself whenever the page or the stance changes, fight or no fight.
 function Buttons:Assign()
 	Layout.Prepare()
+	Layout.AdoptStancePick()
 	local header = ns.Bindings.header
 	local groups = Layout.GetStanceGroups()
 	local stored = Layout.GetStoredPages()
@@ -967,10 +968,14 @@ function Buttons:Assign()
 		for index = 1, 8 do
 			local button, proxy = self.action[set][index], self.proxy[set][index]
 			local id = set .. "-" .. index
+			-- A button is a slot or has a job page by page. It changes with the stance if it is
+			-- a slot on the stance page, the one page where anything does.
 			local isSlot = self:IsActionSlot(set, index)
-			local group = isSlot and Layout.FindStanceGroup(groups, set, index) or nil
+			local onStancePage = Layout.GetRole(set, index, nil, Layout.GetStancePage()) == "action"
+			local group = onStancePage and Layout.FindStanceGroup(groups, set, index) or nil
 			for page = 1, Layout.NUM_PAGES do
-				header:SetAttribute(("fc-slot-%d-%s"):format(page, id), isSlot and page <= stored and Layout.GetSlot(set, index, page) or nil)
+				local slotThere = page <= stored and Layout.GetRole(set, index, nil, page) == "action"
+				header:SetAttribute(("fc-slot-%d-%s"):format(page, id), slotThere and Layout.GetSlot(set, index, page) or nil)
 			end
 			header:SetAttribute("fc-store-" .. id, group and group.store or nil)
 			header:SetAttribute("fc-offset-" .. id, group and group.offset + index - 1 or nil)
@@ -988,6 +993,7 @@ function Buttons:Assign()
 	header:SetAttribute("fc-pages", Layout.GetPageCount())
 	header:SetAttribute("fc-page", Layout.GetPage())
 	header:SetAttribute("fc-stance-page", Layout.GetStancePage())
+	header:SetAttribute("fc-main-stance-page", Layout.IsCustomStance() or nil)
 	UpdateKept()
 	-- The driver tells the header which stance bar is up, at once and from then on. With nothing
 	-- set to change there is nothing for it to do: no button has stance slots to go to.

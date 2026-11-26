@@ -301,8 +301,37 @@ function Layout.IsCursorRole(role)
 	return role == Layout.CURSOR_ROLE
 end
 
-function Layout.GetRole(set, index, spell)
+-- What a button does: "action", "pass", "none" or "cmd:<NAME>".
+--
+-- A job belongs to a page. db.roles (Main) and db.layerRoles (the trigger layouts) hold what a
+-- button does on every page; db.pageRoles[page][set][index] holds what it does on that one page
+-- instead, which is where a job given on the bar or in the settings goes (Layout.SetRole). So a
+-- job put on a button on page 1 is not on that button on pages 2 and 3.
+--
+-- `spell` asks for a form's own Main layout, which is the same on every page. `page` is the page
+-- to answer for; the one being shown without it.
+local function BaseRole(set, index)
 	local db = ns.db
+	if set == Layout.SET_NONE then
+		return db.roles[index]
+	end
+	local roles = db.layerRoles[set]
+	return roles and roles[index] or "action"
+end
+
+function Layout.GetRole(set, index, spell, page)
+	local db = ns.db
+	if not spell then
+		local paged = db.pageRoles[page or Layout.GetPage()]
+		local roles = paged and paged[set]
+		local role = roles and roles[index]
+		if role then
+			if not db.mouseMode and Layout.IsCursorRole(role) then
+				return "action"
+			end
+			return role
+		end
+	end
 	if set == Layout.SET_NONE and not spell then
 		return db.roles[index]
 	end
@@ -312,6 +341,50 @@ function Layout.GetRole(set, index, spell)
 		return "action"
 	end
 	return role or "action"
+end
+
+-- The jobs that are on their button on every page, because the bar is found its way around by
+-- them: turning the page (given on page 1 only, there would be no turning back from page 2),
+-- returning to the main layer, the mouse button, and a stance or form's own button.
+function Layout.IsEveryPageJob(role)
+	local kind, command = Layout.ParseRole(role)
+	if kind ~= "cmd" then
+		return false
+	end
+	for _, page in ipairs(Layout.PAGE_ROLES) do
+		if command == page[1] then
+			return true
+		end
+	end
+	return command == Layout.CURSOR_COMMAND or command == Layout.RELEASE_ROLE_COMMAND
+		or Layout.GetCommandForm(command) ~= nil
+end
+
+-- Gives a button its job on the page being shown, and on that page only. A job is for every
+-- page instead where the slots have no pages (the regular action bars), and when it is one of
+-- the jobs above, or takes the place of one.
+function Layout.SetRole(set, index, value)
+	local db = ns.db
+	local base = BaseRole(set, index)
+	local everyPage = Layout.GetStoredPages() == 1 or Layout.IsEveryPageJob(value) or Layout.IsEveryPageJob(base)
+	if everyPage then
+		if set == Layout.SET_NONE then
+			db.roles[index] = value
+		else
+			db.layerRoles[set] = db.layerRoles[set] or {}
+			db.layerRoles[set][index] = value ~= "action" and value or nil
+		end
+		for _, paged in pairs(db.pageRoles) do
+			if paged[set] then
+				paged[set][index] = nil
+			end
+		end
+		return
+	end
+	local page = Layout.GetPage()
+	db.pageRoles[page] = db.pageRoles[page] or {}
+	db.pageRoles[page][set] = db.pageRoles[page][set] or {}
+	db.pageRoles[page][set][index] = value ~= base and value or nil
 end
 
 function Layout.GetFormSpell(index)
@@ -478,9 +551,12 @@ end
 
 -- The extra blocks follow the standard controller pages and Blizzard's stance bars.
 -- Keep assignments keyed by spell ID so learning a form cannot move an existing layout.
-function Layout.GetMainFormSlots()
+-- `choice` is the stance choice to answer for; the one in force without it.
+function Layout.GetMainFormSlots(choice)
 	local slots = {}
-	if ns.GetBarProfile().stanceSet == "none" or not gamepad.stanceValid then
+	local profile = ns.GetBarProfile()
+	choice = choice or profile.stanceSet
+	if choice == "none" or (choice == "custom" and not profile.stanceMain) or not gamepad.stanceValid then
 		return slots
 	end
 	local first = gamepad.first + PAGE_SLOTS * NUM_PAGES + NUM_STANCE_BARS * 8
@@ -631,7 +707,41 @@ local BAR_STANCE_FIRST = 73 -- the first slot of the regular action bar in stanc
 local BAR_STANCE_SLOTS = 12
 Layout.NUM_STANCES = NUM_STANCE_BARS
 
-Layout.STANCE_CHOICES = { "auto", "none", "lt", "rt", "both", "ltrt", "all" }
+Layout.STANCE_CHOICES = { "auto", "none", "lt", "rt", "both", "ltrt", "all", "custom" }
+
+-- "custom" is the player's own pick of the layouts that change on the stance page, one setting
+-- each: { the setting, the word for it in /fc stance custom, the set }. Main changes by the form
+-- (its eight buttons, kept in the spare controller slots: Layout.GetMainFormSlots); a trigger set
+-- changes by the stance bar. There is room for two trigger sets, so two of the three at most.
+-- Picked this way, Main changes on the stance page alone, like the trigger sets: every other
+-- page is the same in every stance.
+Layout.STANCE_LAYOUTS = {
+	{ "stanceMain", "main", 0 },
+	{ "stanceLT", "lt", 1 },
+	{ "stanceRT", "rt", 2 },
+	{ "stanceBoth", "both", 3 },
+}
+Layout.MAX_STANCE_SETS = 2
+
+function Layout.IsCustomStance()
+	return ns.GetBarProfile().stanceSet == "custom"
+end
+
+-- Drops the last of the trigger sets picked beyond the two there is room for. `flags` is a
+-- table of the four settings. Returns true when one was dropped.
+function Layout.LimitStanceSets(flags)
+	local count, dropped = 0, false
+	for index = 2, #Layout.STANCE_LAYOUTS do
+		local key = Layout.STANCE_LAYOUTS[index][1]
+		if flags[key] then
+			count = count + 1
+			if count > Layout.MAX_STANCE_SETS then
+				flags[key], dropped = false, true
+			end
+		end
+	end
+	return dropped
+end
 
 -- Classes whose forms replace everything they can do. In Cat or Bear form a Druid cannot use a
 -- single caster spell, so one changing set of eight would leave the other 24 buttons dead.
@@ -674,13 +784,28 @@ end
 --   { set =, last =, store = "pad" | "bar", offset = }
 -- where the group is buttons 1 to `last` of the set, and `offset` is how far into a stance's
 -- slots of that kind it starts.
-function Layout.GetStanceGroups()
+-- `choice` is the stance choice to answer for; the one in force without it.
+function Layout.GetStanceGroups(choice)
 	local groups = {}
 	local source = Layout.GetSlotSource()
-	local choice = ns.GetBarProfile().stanceSet
+	choice = choice or ns.GetBarProfile().stanceSet
 	-- With the regular action bars as the slots nothing changes unless the player asks for it:
 	-- those bars have never followed the stance, and a Warrior is always in one.
 	if choice == "none" or (choice == "auto" and source ~= "gamepad") then
+		return groups
+	end
+	-- Where the trigger sets keep their actions. Without the controller's stance bars (the regular
+	-- action bars are the slots, or this client has none) there is room for one set only.
+	local stores = (source == "gamepad" and gamepad.stanceValid) and { "pad", "bar" } or { "bar" }
+	if choice == "custom" then
+		local profile = ns.GetBarProfile()
+		for index = 2, #Layout.STANCE_LAYOUTS do
+			local entry = Layout.STANCE_LAYOUTS[index]
+			local store = stores[#groups + 1]
+			if profile[entry[1]] and store then
+				groups[#groups + 1] = { set = entry[3], last = 8, store = store, offset = 0 }
+			end
+		end
 		return groups
 	end
 	local _, optionSet = GetGamepadOption()
@@ -700,9 +825,6 @@ function Layout.GetStanceGroups()
 	if pair and first ~= Layout.SET_LT and first ~= Layout.SET_RT then
 		first = Layout.SET_RT
 	end
-	-- Where the trigger sets keep their actions. Without the controller's stance bars (the regular
-	-- action bars are the slots, or this client has none) there is room for one set only.
-	local stores = (source == "gamepad" and gamepad.stanceValid) and { "pad", "bar" } or { "bar" }
 	if first then
 		groups[#groups + 1] = { set = first, last = 8, store = stores[1], offset = 0 }
 	end
@@ -750,9 +872,71 @@ function Layout.GetStanceCondition()
 	return table.concat(parts, "; ")
 end
 
+-- What changes with the stance as the four settings of "custom", whatever the choice is: the
+-- player's own pick, or what a ready-made choice comes to on this character. Ticking one of the
+-- four on the settings page starts from this.
+function Layout.GetStanceFlags(choice)
+	local profile = ns.GetBarProfile()
+	local flags = {}
+	choice = choice or profile.stanceSet
+	if choice == "custom" then
+		for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+			flags[entry[1]] = profile[entry[1]] and true or false
+		end
+		return flags
+	end
+	local changing = {}
+	for _, group in ipairs(Layout.GetStanceGroups(choice)) do
+		changing[group.set] = group.last == 8
+	end
+	for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+		flags[entry[1]] = changing[entry[3]] or false
+	end
+	flags.stanceMain = next(Layout.GetMainFormSlots(choice)) ~= nil
+	return flags
+end
+
+-- Once for each saved setup. Versions up to 1.8.0 picked what changes for the player (the
+-- "auto" choice, by the game's Gamepad options and the class). Such a setup is turned into the
+-- player's own pick of the four layouts, ticked as it stood, so that nothing changes on the bar
+-- and nothing is picked for the player from then on. The pick is of whole layouts: a D-pad that
+-- changed on its own no longer does, and that is said. Needs Layout.Prepare to have run.
+function Layout.AdoptStancePick()
+	local profile = ns.GetBarProfile()
+	if profile.stancePicked then
+		return
+	end
+	profile.stancePicked = true
+	if profile.stanceSet == "custom" then
+		return
+	end
+	local flags = { stanceMain = profile.stanceSet ~= "none" }
+	local dpad = false
+	for _, group in ipairs(Layout.GetStanceGroups()) do
+		for index = 2, #Layout.STANCE_LAYOUTS do
+			local entry = Layout.STANCE_LAYOUTS[index]
+			if entry[3] == group.set then
+				flags[entry[1]] = true
+			end
+		end
+		dpad = dpad or group.set == Layout.SET_NONE
+	end
+	for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+		profile[entry[1]] = flags[entry[1]] or false
+	end
+	profile.stanceSet = "custom"
+	if dpad then
+		ns.Print("What changes with your stance or form is now ticked by layout (Change with stance, in the settings). The D-pad no longer changes on its own: tick Main to have all eight Main buttons change.")
+	end
+end
+
 -- "RT set, LT set and the D-pad", for the settings page, chat and /fc status; nil for none.
-function Layout.DescribeStanceGroups(groups)
+-- `main` puts Main first: "Main, LT set and RT set".
+function Layout.DescribeStanceGroups(groups, main)
 	local names = {}
+	if main then
+		names[1] = "Main"
+	end
 	for _, group in ipairs(groups) do
 		names[#names + 1] = group.set == Layout.SET_NONE and "the D-pad" or (Layout.GetSetName(group.set) .. " set")
 	end
@@ -767,7 +951,8 @@ end
 -- The same with the page they change on, where there is more than one page:
 -- "RT set, LT set and the D-pad, on page 1". "nothing" for none.
 function Layout.DescribeStance()
-	local described = Layout.DescribeStanceGroups(Layout.GetStanceGroups())
+	local main = Layout.IsCustomStance() and ns.GetBarProfile().stanceMain and gamepad.stanceValid
+	local described = Layout.DescribeStanceGroups(Layout.GetStanceGroups(), main)
 	if not described then
 		return "nothing"
 	elseif Layout.GetPageCount() > 1 then

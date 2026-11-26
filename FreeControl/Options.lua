@@ -20,16 +20,40 @@ local SLOT_SOURCES = {
 	{ "bars", "Regular action bars" },
 }
 local PAGES = { { 1, "Page 1" }, { 2, "Page 2" }, { 3, "Page 3" } }
+-- What changes with the stance, named by the four layouts as the rest of the page names them:
+-- Main, and the three trigger layouts by the controller's own names for them (LT, RT, LT + RT).
 -- The values are Layout.STANCE_CHOICES.
-local STANCE_SETS = {
-	{ "auto", "Automatic" },
-	{ "none", "Nothing" },
-	{ "lt", "Left trigger set" },
-	{ "rt", "Right trigger set" },
-	{ "both", "Both triggers set" },
-	{ "ltrt", "Left and right sets" },
-	{ "all", "Left, right and D-pad" },
-}
+local function LayoutName(set)
+	return set == Layout.SET_NONE and "Main" or Layout.GetSetName(set)
+end
+
+-- What the button shows: the layouts that change now, by name, whatever choice that comes
+-- from. "Main, LT, RT"; "Nothing" for none. A choice typed with /fc stance can change the
+-- D-pad alone, which is named too.
+local function StanceLabel(value)
+	local names = {}
+	local flags = Layout.GetStanceFlags(value)
+	for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+		if flags[entry[1]] then
+			names[#names + 1] = LayoutName(entry[3])
+		end
+	end
+	for _, group in ipairs(Layout.GetStanceGroups(value)) do
+		if group.set == Layout.SET_NONE then
+			names[#names + 1] = "D-pad"
+		end
+	end
+	return #names > 0 and table.concat(names, ", ") or "Nothing"
+end
+
+-- Every choice with its name, for the button that shows the current one.
+local function StanceChoices()
+	local choices = {}
+	for index, value in ipairs(Layout.STANCE_CHOICES) do
+		choices[index] = { value, StanceLabel(value) }
+	end
+	return choices
+end
 local TRIGGER_KEYS = {
 	{ "PADLTRIGGER", "Left trigger" },
 	{ "PADRTRIGGER", "Right trigger" },
@@ -174,13 +198,14 @@ end
 local function SetRole(set, index, value, spell)
 	local openBindings = value == "keybindings"
 	if openBindings then value = "pass" end
-	if set == Layout.SET_NONE and not spell then
-		ns.db.roles[index] = value
+	if spell then
+		-- A form's own Main layout is the same on every page.
+		local roles = ns.db.mainFormRoles
+		roles[spell] = roles[spell] or {}
+		roles[spell][index] = value ~= "action" and value or nil
 	else
-		local roles = spell and ns.db.mainFormRoles or ns.db.layerRoles
-		local id = spell or set
-		roles[id] = roles[id] or {}
-		roles[id][index] = value ~= "action" and value or nil
+		-- Any other job is for the page the bar is showing.
+		Layout.SetRole(set, index, value)
 	end
 	ns.RequestRefresh()
 	if openBindings then Options:OpenKeyBindings() end
@@ -219,11 +244,78 @@ end
 
 -- What the Stance sets choice comes to on this character, said under its explanation.
 local function StanceTooltip()
-	local text = "Each form gets eight action slots on Main when the client provides additional controller storage. This setting also controls which trigger sets follow the game's stance bar. They change on one page only. Choose Nothing to turn stance swapping off."
-	if Layout.GetSlotSource() ~= "gamepad" then
-		text = text .. " With the regular action bars as the slots, Automatic changes nothing on the trigger sets."
+	local text = ("The bar has four layouts: Main (no trigger), %s, %s and %s. Tick the ones that show different buttons in each stance or form, so that a stance has its own abilities there. You can tick Main and two of the other three: that is all the game has room to store. Untick all four and nothing changes with your stance. They change on one page only, and the other pages are the same in every stance."):format(
+		LayoutName(Layout.SET_LT), LayoutName(Layout.SET_RT), LayoutName(Layout.SET_BOTH))
+	if Layout.GetSlotSource() ~= "gamepad" and ns.GetBarProfile().stanceSet == "auto" then
+		text = text .. " With the regular action bars as the slots, nothing changes until you tick a layout."
 	end
 	return ("%s\n\nOn this character: %s."):format(text, Layout.DescribeStance())
+end
+
+-- The player's own pick of the layouts that change with the stance. `flags` is the four settings
+-- of Layout.STANCE_LAYOUTS. More trigger sets than there is room for: the last are dropped, and
+-- that is said.
+local function SetStanceLayouts(flags)
+	local dropped = Layout.LimitStanceSets(flags)
+	local profile = ns.GetBarProfile()
+	for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+		profile[entry[1]] = flags[entry[1]] and true or false
+	end
+	profile.stanceSet = "custom"
+	if dropped then
+		ns.Print(("Only two of %s, %s and %s can change with your stance or form: the game has a place to keep the buttons of two. The third was left as it is."):format(
+			LayoutName(Layout.SET_LT), LayoutName(Layout.SET_RT), LayoutName(Layout.SET_BOTH)))
+	end
+	-- In combat the change waits for the fight to end, and RequestRefresh has said so.
+	if ns.RequestRefresh() then
+		ns.Print(("Changes with your stance or form: %s."):format(Layout.DescribeStance()))
+	end
+end
+
+-- Ticks or unticks one layout, starting from what changes now, whatever choice that came from.
+local function ToggleStanceLayout(key)
+	local flags = Layout.GetStanceFlags()
+	local wanted = not flags[key]
+	if wanted and key ~= "stanceMain" then
+		local count = 0
+		for index = 2, #Layout.STANCE_LAYOUTS do
+			count = count + (flags[Layout.STANCE_LAYOUTS[index][1]] and 1 or 0)
+		end
+		if count >= Layout.MAX_STANCE_SETS then
+			ns.Print(("Only two of %s, %s and %s can change with your stance or form: the game has a place to keep the buttons of two. Untick one of them first."):format(
+				LayoutName(Layout.SET_LT), LayoutName(Layout.SET_RT), LayoutName(Layout.SET_BOTH)))
+			return
+		end
+	end
+	flags[key] = wanted
+	SetStanceLayouts(flags)
+end
+
+-- The menu of what changes with the stance: a tick for each of the four layouts, and nothing
+-- else. Nothing is picked for the player in it: the ticks show what changes now, and ticking or
+-- unticking one makes the four the player's own from then on. Without the menu system the
+-- button steps through the choices /fc stance has names for.
+local function ChooseStance(owner)
+	if not (MenuUtil and MenuUtil.CreateContextMenu) then
+		local profile = ns.GetBarProfile()
+		local values, position = {}, 0
+		for _, value in ipairs(Layout.STANCE_CHOICES) do
+			if value ~= "custom" then
+				values[#values + 1] = value
+				if value == profile.stanceSet then position = #values end
+			end
+		end
+		profile.stanceSet = values[position % #values + 1]
+		ns.RequestRefresh()
+		return
+	end
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		-- A client whose menus have no tick boxes gets entries that toggle all the same.
+		local add = root.CreateCheckbox or root.CreateRadio
+		for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+			add(root, LayoutName(entry[3]), function() return Layout.GetStanceFlags()[entry[1]] end, function() ToggleStanceLayout(entry[1]) end)
+		end
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -398,8 +490,10 @@ local function Build(panel)
 	y = Check(panel, left, y, "Page selector on the bar", PageTip("The small plate under the LT + RT set that shows the page and turns it. Untick it to take it off the bar: the page can still be turned by a button you gave that job."), "showPager")
 	y = Choice(panel, left, y, "Page", PageTip("Which of the three controller-bar pages the bar shows. Each page has its own buttons. With Pages ticked, the selector under the LT + RT set turns the page as well, in a fight too, and so does any button you give that job under Other buttons."), PAGES,
 		function() return ns.GetBarProfile().page end, function(value) Set("page", value) end)
-	y = Choice(panel, left, y, "Stance sets", StanceTooltip, STANCE_SETS,
+	local stanceButton
+	y, stanceButton = Choice(panel, left, y, "Change with stance", StanceTooltip, StanceChoices,
 		function() return ns.GetBarProfile().stanceSet end, function(value) Set("stanceSet", value) end)
+	stanceButton:SetScript("OnClick", ChooseStance)
 
 	y = Heading(panel, "Mouse mode and other buttons", left, y - 8)
 	y = Check(panel, left, y, "Mouse mode", MouseModeTip, "mouseMode", ns.SetMouseMode)
@@ -449,7 +543,7 @@ local function Build(panel)
 	end)
 	for index = 1, 8 do
 		y = Choice(panel, right, y, function() return Layout.GetButtonName((EditingLayer()), index) end,
-			"Choose a special command, an action slot, or your own key binding for this button on the selected layout. Something else opens WoW's Key Bindings and lets that binding take over on this layout.", RoleChoices,
+			"Choose a special command, an action slot, or your own key binding for this button on the selected layout. The job is for the page the bar is showing: the other pages keep their own. Something else opens WoW's Key Bindings and lets that binding take over on this layout.", RoleChoices,
 			function()
 				local set, spell = EditingLayer()
 				return Layout.GetRole(set, index, spell)
@@ -1287,6 +1381,7 @@ local HELP = {
 	"/fc ranks - move every spell on the bar up to its newest rank now (on | off: do it by itself whenever you learn one)",
 	"/fc key <1-8 | lt | rt> <KEY> - use a different key for a slot or trigger (1-4 D-pad left/up/right/down, 5-8 face left/top/right/bottom)",
 	"/fc stance auto | none | lt | rt | both | ltrt | all - what changes with your stance or form (ltrt = both trigger sets, all = those and the D-pad)",
+	"/fc stance custom [main] [lt] [rt] [both] - your own pick of the layouts that change, on the stance page only (two trigger sets at most)",
 	"/fc pages on | off - whether the page can be turned (off: the bar stays on the page of /fc page)",
 	"/fc pager on | off - show or hide the page selector under the LT + RT set",
 	"/fc mouse - bring the controller's mouse pointer out or put it away (on | off: mouse mode itself; off makes its button an action slot)",
@@ -1363,6 +1458,14 @@ SlashCmdList.FREECONTROL = function(message)
 		ns.Ranks:CheckAll()
 	elseif command == "key" and SetKey(first, second) then
 		ns.Print("Keys: " .. table.concat(ns.db.keys, " ") .. " | triggers: " .. table.concat(ns.db.modKeys, " "))
+	elseif command == "stance" and first == "custom" then
+		local flags = {}
+		for word in strtrim(message):lower():gmatch("%S+") do
+			for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+				if word == entry[2] then flags[entry[1]] = true end
+			end
+		end
+		SetStanceLayouts(flags)
 	elseif command == "stance" and ns.IsOneOf(first, unpack(Layout.STANCE_CHOICES)) then
 		-- In combat the change waits for the fight to end, and RequestRefresh has said so.
 		Set("stanceSet", first)
