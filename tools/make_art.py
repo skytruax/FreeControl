@@ -581,6 +581,123 @@ def draw_generic(d):
     d.ellipse(s(28, 28, 36, 36), fill=W)
 
 
+# Stepping through the party, which the game lists from the top down: next is down, previous is
+# up, and the first and the last are the top and the bottom, marked by a bar.
+def draw_party_next(d):
+    line(d, [(17, 25), (32, 41), (47, 25)], 6.6, W)
+
+
+def draw_party_prev(d):
+    line(d, [(17, 39), (32, 23), (47, 39)], 6.6, W)
+
+
+def draw_party_first(d):
+    line(d, [(18, 15), (46, 15)], 5.6, W)
+    line(d, [(18, 46), (32, 31), (46, 46)], 6.2, W)
+
+
+def draw_party_last(d):
+    line(d, [(18, 49), (46, 49)], 5.6, W)
+    line(d, [(18, 18), (32, 33), (46, 18)], 6.2, W)
+
+
+PIPS = {
+    1: [(32, 32)],
+    2: [(23, 32), (41, 32)],
+    3: [(32, 22), (22, 40), (42, 40)],
+    4: [(23, 23), (41, 23), (23, 41), (41, 41)],
+}
+
+
+def draw_pips(count):
+    """A party member by number: that many dots."""
+    def draw(d):
+        for x, y in PIPS[count]:
+            d.ellipse(s(x - 6, y - 6, x + 6, y + 6), fill=W)
+    return draw
+
+
+def draw_page_next(d):
+    line(d, [(18, 30), (32, 17), (46, 30)], 5.6, W)
+    line(d, [(18, 46), (32, 33), (46, 46)], 5.6, faint(205))
+
+
+def draw_page_prev(d):
+    line(d, [(18, 18), (32, 31), (46, 18)], 5.6, faint(205))
+    line(d, [(18, 34), (32, 47), (46, 34)], 5.6, W)
+
+
+# The two jobs for the chat. A speech bubble is a rounded box with a tail at its bottom left.
+def bubble(d, box, tail, fill):
+    d.rounded_rectangle(s(*box), radius=7 * SS, fill=fill)
+    poly(d, tail, fill)
+
+
+def draw_chat(d):
+    # The chat keyboard: a speech bubble holding the three dots of someone typing.
+    bubble(d, (12, 15, 52, 42), [(19, 40), (19, 53), (32, 41)], W)
+    for x in (22.5, 32, 41.5):
+        d.ellipse(s(x - 3.4, 25.1, x + 3.4, 31.9), fill=(34, 86, 132, 255))
+
+
+def draw_phrases(d):
+    # The quick phrases: two bubbles, one behind the other, the front one with its lines written.
+    bubble(d, (22, 11, 54, 32), [(44, 30), (49, 40), (38, 31)], faint(170))
+    bubble(d, (10, 24, 44, 47), [(16, 45), (16, 56), (27, 46)], W)
+    line(d, [(17.5, 32), (36.5, 32)], 3.4, (132, 78, 30, 255))
+    line(d, [(17.5, 39), (30, 39)], 3.4, (132, 78, 30, 255))
+
+
+# The jobs for grouping up. A person is a head and shoulders.
+def person(d, cx, cy, fill, scale=1.0):
+    r = 7.2 * scale
+    d.ellipse(s(cx - r, cy - 13 * scale - r, cx + r, cy - 13 * scale + r), fill=fill)
+    d.pieslice(s(cx - 13 * scale, cy - 4 * scale, cx + 13 * scale, cy + 22 * scale), 180, 360, fill=fill)
+
+
+def draw_invite(d):
+    # A person and a plus: one more for the group.
+    person(d, 25, 36, W)
+    line(d, [(46, 20), (46, 36)], 5, W)
+    line(d, [(38, 28), (54, 28)], 5, W)
+
+
+def draw_request(d):
+    # A person and an arrow going in to them: asking to join theirs.
+    person(d, 41, 36, W)
+    line(d, [(9, 30), (24, 30)], 5, W)
+    line(d, [(18, 23), (25, 30), (18, 37)], 5, W)
+
+
+def draw_invite_or_request(d):
+    # Whichever applies: the plus above, the arrow below.
+    person(d, 24, 37, W)
+    line(d, [(46, 13), (46, 27)], 4.4, W)
+    line(d, [(39, 20), (53, 20)], 4.4, W)
+    line(d, [(54, 43), (40, 43)], 4.4, faint(215))
+    line(d, [(46, 37), (39.5, 43), (46, 49)], 4.4, faint(215))
+
+
+def draw_leave(d):
+    # A doorway and an arrow going out of it.
+    line(d, [(31, 14), (15, 14), (15, 50), (31, 50)], 5, W)
+    line(d, [(27, 32), (50, 32)], 5.4, W)
+    line(d, [(42, 23), (51, 32), (42, 41)], 5.4, W)
+
+
+def draw_accept(d):
+    # A person and a tick: yes to them.
+    person(d, 24, 37, W)
+    line(d, [(37, 27), (43.5, 34), (55, 18)], 5, W)
+
+
+def draw_menu(d):
+    # A menu: three entries, each with its mark.
+    for y in (20, 32, 44):
+        d.ellipse(s(13, y - 3.4, 19.8, y + 3.4), fill=W)
+        line(d, [(27, y), (50, y)], 4.8, W)
+
+
 # name -> (the disc's colour, what is drawn on it, and for some the size it is set at). The first
 # four are the buttons the bar starts with, in the colours the emblem gives X, Y, B and A. The
 # mouse button does not show a pointer: it wears the mascot, which is the addon's calling card.
@@ -596,6 +713,38 @@ ROLES = {
     "Map": ((206, 176, 112), draw_map),
     "Bags": ((178, 124, 76), draw_bags),
     "Generic": ((132, 138, 152), draw_generic),
+    # The jobs that step through the party, the party members by number and the page turns: a
+    # symbol and a colour each, so that a row of them on the bar can be told apart.
+    "PartyNext": ((70, 190, 110), draw_party_next),
+    "PartyPrev": ((64, 164, 222), draw_party_prev),
+    "PartyFirst": ((236, 186, 62), draw_party_first),
+    "PartyLast": ((204, 104, 196), draw_party_last),
+    "Party1": ((92, 150, 240), draw_pips(1)),
+    "Party2": ((104, 196, 96), draw_pips(2)),
+    "Party3": ((238, 176, 60), draw_pips(3)),
+    "Party4": ((230, 106, 88), draw_pips(4)),
+    "PageNext": ((136, 112, 232), draw_page_next),
+    "PagePrev": ((186, 112, 214), draw_page_prev),
+    "Chat": ((84, 168, 228), draw_chat),
+    "Phrases": ((228, 152, 80), draw_phrases),
+    "Invite": ((92, 190, 104), draw_invite),
+    "Request": ((86, 156, 226), draw_request),
+    "InviteOrRequest": ((70, 186, 178), draw_invite_or_request),
+    "Leave": ((222, 96, 84), draw_leave),
+    "Menu": ((156, 132, 214), draw_menu),
+    "Accept": ((120, 200, 84), draw_accept),
+    # The rest of the jobs in the menus have no symbol of their own: the plain one, in a colour
+    # of their own.
+    "Release": ((96, 200, 204), draw_generic),
+    "Assist": ((222, 132, 84), draw_generic),
+    "Ping": ((244, 214, 92), draw_generic),
+    "Character": ((112, 164, 232), draw_generic),
+    "Spellbook": ((164, 116, 228), draw_generic),
+    "Talents": ((120, 204, 132), draw_generic),
+    "Quests": ((232, 196, 108), draw_generic),
+    "Social": ((232, 128, 176), draw_generic),
+    "Dismount": ((176, 136, 92), draw_generic),
+    "Sit": ((88, 184, 168), draw_generic),
 }
 
 

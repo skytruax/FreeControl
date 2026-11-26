@@ -1,0 +1,42 @@
+The chat keyboard's frame, the word prediction, the channel row and the quick
+phrases in this folder are ported from Easy Controller - Forever by moust4ki
+(https://github.com/moust4ki/EasyControllerWowForever), version 1.26.0: the
+Lua files here are modified copies of its files of the same names (Kit.lua is
+part of its ConfigKit.lua, Chat.lua and Core.lua are parts of its files of
+those names, Locale.lua is part of its Locales/enUS.lua, and Keyboard.lua,
+which is FreeControl's own keyboard, takes its key layouts and the look of a
+key from its StickKeyboard.lua), and the pictures in Textures/ are its own.
+They are used under its licence, which follows.
+
+---
+
+MIT License
+
+Copyright (c) 2026 moust4ki
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Dict_frFR.lua, Dict_enUS.lua, Dict_deDE.lua, Dict_esES.lua and Dict_itIT.lua are derived
+from FrequencyWords by Hermit Dave
+(https://github.com/hermitdave/FrequencyWords) and are licensed under
+CC-BY-SA-4.0 (https://creativecommons.org/licenses/by-sa/4.0/). They are as
+Easy Controller ships them, but for their first line, which names the table
+they are loaded into.
