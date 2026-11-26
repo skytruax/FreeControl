@@ -20,16 +20,40 @@ local SLOT_SOURCES = {
 	{ "bars", "Regular action bars" },
 }
 local PAGES = { { 1, "Page 1" }, { 2, "Page 2" }, { 3, "Page 3" } }
+-- What changes with the stance, named by the four layouts as the rest of the page names them:
+-- Main, and the three trigger layouts by the controller's own names for them (LT, RT, LT + RT).
 -- The values are Layout.STANCE_CHOICES.
-local STANCE_SETS = {
-	{ "auto", "Automatic" },
-	{ "none", "Nothing" },
-	{ "lt", "Left trigger set" },
-	{ "rt", "Right trigger set" },
-	{ "both", "Both triggers set" },
-	{ "ltrt", "Left and right sets" },
-	{ "all", "Left, right and D-pad" },
-}
+local function LayoutName(set)
+	return set == Layout.SET_NONE and "Main" or Layout.GetSetName(set)
+end
+
+-- What the button shows: the layouts that change now, by name, whatever choice that comes
+-- from. "Main, LT, RT"; "Nothing" for none. A choice typed with /fc stance can change the
+-- D-pad alone, which is named too.
+local function StanceLabel(value)
+	local names = {}
+	local flags = Layout.GetStanceFlags(value)
+	for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+		if flags[entry[1]] then
+			names[#names + 1] = LayoutName(entry[3])
+		end
+	end
+	for _, group in ipairs(Layout.GetStanceGroups(value)) do
+		if group.set == Layout.SET_NONE then
+			names[#names + 1] = "D-pad"
+		end
+	end
+	return #names > 0 and table.concat(names, ", ") or "Nothing"
+end
+
+-- Every choice with its name, for the button that shows the current one.
+local function StanceChoices()
+	local choices = {}
+	for index, value in ipairs(Layout.STANCE_CHOICES) do
+		choices[index] = { value, StanceLabel(value) }
+	end
+	return choices
+end
 local TRIGGER_KEYS = {
 	{ "PADLTRIGGER", "Left trigger" },
 	{ "PADRTRIGGER", "Right trigger" },
@@ -62,20 +86,37 @@ local function FormJobs()
 	return jobs
 end
 
-local function RoleChoices()
-	local choices = {
-		{ "action", "Action slot" },
-		{ "pass", "My own key binding" },
-	}
+local function AddJobChoices(choices, asRole)
 	for _, command in ipairs(Layout.COMMANDS) do
-		-- The mouse pointer is not a job to offer on a client without one, or with mouse mode off.
 		if command[1] ~= Layout.CURSOR_COMMAND or ns.Mouse:IsEnabled() then
-			choices[#choices + 1] = { "cmd:" .. command[1], command[2] }
+			local binding = command[1]
+			if asRole then
+				binding = "cmd:" .. binding
+			elseif binding == Layout.CURSOR_COMMAND then
+				binding = ns.Bindings.MOUSE_COMMAND
+			end
+			choices[#choices + 1] = { binding, command[2] }
 		end
 	end
 	for _, job in ipairs(FormJobs()) do
-		choices[#choices + 1] = { "cmd:" .. job[1], job[2] }
+		choices[#choices + 1] = { asRole and "cmd:" .. job[1] or job[1], job[2] }
 	end
+	for _, job in ipairs(Layout.MORE_JOBS) do
+		-- One of FreeControl's own party buttons is bound as a click on it, not as a game command.
+		local binding = asRole and "cmd:" .. job[1] or ns.Bindings.PARTY_COMMANDS[job[1]] or job[1]
+		choices[#choices + 1] = { binding, job[2] }
+	end
+end
+
+local function RoleChoices()
+	local choices = { { "action", "Action slot" }, { "pass", "My own key binding" } }
+	AddJobChoices(choices, true)
+	for _, command in ipairs(Layout.PAGE_ROLES) do
+		choices[#choices + 1] = { "cmd:" .. command[1], command[2] }
+	end
+	choices[#choices + 1] = { "cmd:" .. Layout.RELEASE_ROLE_COMMAND, "Return to main layer" }
+	choices[#choices + 1] = { "none", "Nothing" }
+	choices[#choices + 1] = { "keybindings", "Something else...", true }
 	return choices
 end
 
@@ -99,7 +140,7 @@ end
 -- Changing a setting
 ---------------------------------------------------------------------------
 local function Set(key, value)
-	ns.db[key] = value
+	ns.GetSettingStore(key)[key] = value
 	ns.RequestRefresh()
 end
 
@@ -154,13 +195,30 @@ local function SetClick(side, value)
 	return true
 end
 
-function Options:OpenRoleMenu(owner, index)
+local function SetRole(set, index, value, spell)
+	local openBindings = value == "keybindings"
+	if openBindings then value = "pass" end
+	if spell then
+		-- A form's own Main layout is the same on every page.
+		local roles = ns.db.mainFormRoles
+		roles[spell] = roles[spell] or {}
+		roles[spell][index] = value ~= "action" and value or nil
+	else
+		-- Any other job is for the page the bar is showing.
+		Layout.SetRole(set, index, value)
+	end
+	ns.RequestRefresh()
+	if openBindings then Options:OpenKeyBindings() end
+end
+
+function Options:OpenRoleMenu(owner, index, set, spell)
 	if InCombatLockdown() then
 		ns.Print("Buttons cannot be changed in combat.")
 		return
 	end
-	Choose(owner, RoleChoices(), function() return ns.db.roles[index] end, function(value)
-		SetIndexed("roles", index, value)
+	set = set or Layout.SET_NONE
+	Choose(owner, RoleChoices(), function() return Layout.GetRole(set, index, spell) end, function(value)
+		SetRole(set, index, value, spell)
 	end)
 end
 
@@ -186,11 +244,78 @@ end
 
 -- What the Stance sets choice comes to on this character, said under its explanation.
 local function StanceTooltip()
-	local text = "What changes to different slots in each stance or form. Automatic is the left and right trigger sets and the D-pad for a Druid, and for every other class the one set picked in Options > Gamepad > Stance bar. A second set and the D-pad use the slots of the game's own action bar for that stance, so they are shared with it. They change on one page only, as the game's own bars do; the other pages, the both-triggers set and the face buttons are the same in every stance."
-	if Layout.GetSlotSource() ~= "gamepad" then
-		text = text .. " With the regular action bars as the slots, Automatic changes nothing: pick a set yourself, and the D-pad can join it."
+	local text = ("The bar has four layouts: Main (no trigger), %s, %s and %s. Tick the ones that show different buttons in each stance or form, so that a stance has its own abilities there. You can tick Main and two of the other three: that is all the game has room to store. Untick all four and nothing changes with your stance. They change on one page only, and the other pages are the same in every stance."):format(
+		LayoutName(Layout.SET_LT), LayoutName(Layout.SET_RT), LayoutName(Layout.SET_BOTH))
+	if Layout.GetSlotSource() ~= "gamepad" and ns.GetBarProfile().stanceSet == "auto" then
+		text = text .. " With the regular action bars as the slots, nothing changes until you tick a layout."
 	end
 	return ("%s\n\nOn this character: %s."):format(text, Layout.DescribeStance())
+end
+
+-- The player's own pick of the layouts that change with the stance. `flags` is the four settings
+-- of Layout.STANCE_LAYOUTS. More trigger sets than there is room for: the last are dropped, and
+-- that is said.
+local function SetStanceLayouts(flags)
+	local dropped = Layout.LimitStanceSets(flags)
+	local profile = ns.GetBarProfile()
+	for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+		profile[entry[1]] = flags[entry[1]] and true or false
+	end
+	profile.stanceSet = "custom"
+	if dropped then
+		ns.Print(("Only two of %s, %s and %s can change with your stance or form: the game has a place to keep the buttons of two. The third was left as it is."):format(
+			LayoutName(Layout.SET_LT), LayoutName(Layout.SET_RT), LayoutName(Layout.SET_BOTH)))
+	end
+	-- In combat the change waits for the fight to end, and RequestRefresh has said so.
+	if ns.RequestRefresh() then
+		ns.Print(("Changes with your stance or form: %s."):format(Layout.DescribeStance()))
+	end
+end
+
+-- Ticks or unticks one layout, starting from what changes now, whatever choice that came from.
+local function ToggleStanceLayout(key)
+	local flags = Layout.GetStanceFlags()
+	local wanted = not flags[key]
+	if wanted and key ~= "stanceMain" then
+		local count = 0
+		for index = 2, #Layout.STANCE_LAYOUTS do
+			count = count + (flags[Layout.STANCE_LAYOUTS[index][1]] and 1 or 0)
+		end
+		if count >= Layout.MAX_STANCE_SETS then
+			ns.Print(("Only two of %s, %s and %s can change with your stance or form: the game has a place to keep the buttons of two. Untick one of them first."):format(
+				LayoutName(Layout.SET_LT), LayoutName(Layout.SET_RT), LayoutName(Layout.SET_BOTH)))
+			return
+		end
+	end
+	flags[key] = wanted
+	SetStanceLayouts(flags)
+end
+
+-- The menu of what changes with the stance: a tick for each of the four layouts, and nothing
+-- else. Nothing is picked for the player in it: the ticks show what changes now, and ticking or
+-- unticking one makes the four the player's own from then on. Without the menu system the
+-- button steps through the choices /fc stance has names for.
+local function ChooseStance(owner)
+	if not (MenuUtil and MenuUtil.CreateContextMenu) then
+		local profile = ns.GetBarProfile()
+		local values, position = {}, 0
+		for _, value in ipairs(Layout.STANCE_CHOICES) do
+			if value ~= "custom" then
+				values[#values + 1] = value
+				if value == profile.stanceSet then position = #values end
+			end
+		end
+		profile.stanceSet = values[position % #values + 1]
+		ns.RequestRefresh()
+		return
+	end
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		-- A client whose menus have no tick boxes gets entries that toggle all the same.
+		local add = root.CreateCheckbox or root.CreateRadio
+		for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+			add(root, LayoutName(entry[3]), function() return Layout.GetStanceFlags()[entry[1]] end, function() ToggleStanceLayout(entry[1]) end)
+		end
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -248,7 +373,7 @@ local function Check(panel, x, y, label, tooltip, key, store)
 		end
 	end)
 	check.Sync = function(self)
-		self:SetChecked(ns.db[key])
+		self:SetChecked(ns.GetSettingStore(key)[key])
 	end
 	controls[#controls + 1] = check
 	return y - ROW
@@ -339,7 +464,7 @@ local function Build(panel)
 	note:SetPoint("TOPLEFT", 18, -40)
 	note:SetPoint("RIGHT", -20, 0)
 	note:SetJustifyH("LEFT")
-	note:SetText("A controller cross hotbar for the normal interface. Hold a trigger to switch sets; drop spells, items and macros onto any slot. The bumpers, stick clicks, Start, Back and paddles stay ordinary buttons: give them jobs under Other buttons.")
+	note:SetText("Press a trigger to toggle its set, or press both together to toggle the combined set. Assign Return to main layer under Other buttons or Key Bindings. Unassigned bumpers, stick clicks, Start, Back and paddles keep their usual jobs.")
 
 	local left, right = 16, 340
 	local y = -78
@@ -360,13 +485,15 @@ local function Build(panel)
 
 	y = Heading(panel, "Slots", left, y - 8)
 	y = Choice(panel, left, y, "Stored in", "Controller-bar slots are the ones Blizzard's Gamepad UI uses, separate from your action bars, so anything you set up there shows up here. Regular action bars uses the Left, Bottom Left, Bottom Right and Right bars instead.", SLOT_SOURCES,
-		function() return ns.db.slotSource end, function(value) Set("slotSource", value) end)
+		function() return ns.GetBarProfile().slotSource end, function(value) Set("slotSource", value) end)
 	y = Check(panel, left, y, "Pages", PageTip("The bar has three pages, each with its own buttons, and the page can be turned: by the selector under the LT + RT set, or by any button you give that job under Other buttons. Untick it to keep the bar on one page, the one picked under Page below. Nothing turns it then."), "pages")
 	y = Check(panel, left, y, "Page selector on the bar", PageTip("The small plate under the LT + RT set that shows the page and turns it. Untick it to take it off the bar: the page can still be turned by a button you gave that job."), "showPager")
 	y = Choice(panel, left, y, "Page", PageTip("Which of the three controller-bar pages the bar shows. Each page has its own buttons. With Pages ticked, the selector under the LT + RT set turns the page as well, in a fight too, and so does any button you give that job under Other buttons."), PAGES,
-		function() return ns.db.page end, function(value) Set("page", value) end)
-	y = Choice(panel, left, y, "Stance sets", StanceTooltip, STANCE_SETS,
-		function() return ns.db.stanceSet end, function(value) Set("stanceSet", value) end)
+		function() return ns.GetBarProfile().page end, function(value) Set("page", value) end)
+	local stanceButton
+	y, stanceButton = Choice(panel, left, y, "Change with stance", StanceTooltip, StanceChoices,
+		function() return ns.GetBarProfile().stanceSet end, function(value) Set("stanceSet", value) end)
+	stanceButton:SetScript("OnClick", ChooseStance)
 
 	y = Heading(panel, "Mouse mode and other buttons", left, y - 8)
 	y = Check(panel, left, y, "Mouse mode", MouseModeTip, "mouseMode", ns.SetMouseMode)
@@ -383,16 +510,47 @@ local function Build(panel)
 	y = Check(panel, right, y, "Interact finds things by itself", "The Interact command picks the nearest corpse to loot, person to talk to or object to use, as in Gamepad UI mode (Options > Controls > Enable Interact Key).", "softInteract")
 	y = Check(panel, right, y, "Gamepad UI interact reach", "Uses the wider arc and 20 yard range that Gamepad UI mode uses for Interact.", "interactReach")
 	y = Check(panel, right, y, "Gamepad UI enemy targeting", "The game picks an enemy for you by where you face, and out of the box it can be one anywhere around you. Gamepad UI mode narrows that to the enemies in front of you. Tick this to do the same (console variable SoftTargetEnemyArc 1; your own value is put back when FreeControl is switched off). What Gamepad UI mode also does and an addon is not allowed to: make that enemy your target the moment you attack.", "frontTargeting")
-	y = Choice(panel, right, y, "Left trigger", "The button that selects the left set.", TRIGGER_KEYS,
+	y = Choice(panel, right, y, "Left trigger", "Press to lock or unlock the left set. Press both triggers together to toggle the combined set.", TRIGGER_KEYS,
 		function() return ns.db.modKeys[1] end, function(value) SetIndexed("modKeys", 1, value) end)
-	y = Choice(panel, right, y, "Right trigger", "The button that selects the right set.", TRIGGER_KEYS,
+	y = Choice(panel, right, y, "Right trigger", "Press to lock or unlock the right set. Press both triggers together to toggle the combined set.", TRIGGER_KEYS,
 		function() return ns.db.modKeys[2] end, function(value) SetIndexed("modKeys", 2, value) end)
+	y = Check(panel, right, y, "Toggle layers", "Checked: press a trigger to lock its layer and press it again to unlock. Unchecked: hold triggers to shift layers and release them to return to Main.", "toggleLayers")
 
-	y = Heading(panel, "With no trigger held", right, y - 8)
+	y = Heading(panel, "Button assignments", right, y - 8)
+	local editingSet = Layout.SET_NONE
+	local function EditingLayer()
+		if editingSet <= 3 then return editingSet end
+		return Layout.SET_NONE, editingSet
+	end
+	y = Choice(panel, right, y, "Layout", "Choose a layer or a stance's Main layout to edit all eight buttons.", function()
+		local choices = { { Layout.SET_NONE, "Main" } }
+		for set = 1, 3 do
+			choices[#choices + 1] = { set, Layout.GetSetName(set) }
+		end
+		local header = ns.Bindings.header
+		if header then
+			for form = 1, Layout.NUM_FORM_COMMANDS do
+				local spell = header:GetAttribute("fc-main-spell-" .. form)
+				if spell then
+					choices[#choices + 1] = { spell, "Main: " .. Layout.GetFormInfo(form) }
+				end
+			end
+		end
+		return choices
+	end, function() return editingSet end, function(set)
+		editingSet = set
+		Options:Sync()
+	end)
 	for index = 1, 8 do
-		y = Choice(panel, right, y, function() return Layout.GetButtonName(Layout.SET_NONE, index) end,
-			"What this button does while no trigger is held. Action slot makes it a slot you can drop things into; My own key binding leaves it to the Key Bindings screen.", RoleChoices,
-			function() return ns.db.roles[index] end, function(value) SetIndexed("roles", index, value) end)
+		y = Choice(panel, right, y, function() return Layout.GetButtonName((EditingLayer()), index) end,
+			"Choose a special command, an action slot, or your own key binding for this button on the selected layout. The job is for the page the bar is showing: the other pages keep their own. Something else opens WoW's Key Bindings and lets that binding take over on this layout.", RoleChoices,
+			function()
+				local set, spell = EditingLayer()
+				return Layout.GetRole(set, index, spell)
+			end, function(value)
+				local set, spell = EditingLayer()
+				SetRole(set, index, value, spell)
+			end)
 	end
 
 	y = Heading(panel, "Spells", right, y - 8)
@@ -461,22 +619,9 @@ local function JobChoices(key)
 		{ "", modifier and ("Stand in for the %s key"):format(modifier) or "Nothing" },
 		{ ns.Bindings.PAGE_COMMANDS.next, "FreeControl: next page" },
 		{ ns.Bindings.PAGE_COMMANDS.prev, "FreeControl: previous page" },
+		{ ns.Bindings.RELEASE_COMMAND, "Return to main layer" },
 	}
-	for _, command in ipairs(Layout.COMMANDS) do
-		if command[1] == Layout.CURSOR_COMMAND then
-			if ns.Mouse:IsEnabled() then
-				choices[#choices + 1] = { ns.Bindings.MOUSE_COMMAND, command[2] }
-			end
-		else
-			choices[#choices + 1] = { command[1], command[2] }
-		end
-	end
-	for _, job in ipairs(FormJobs()) do
-		choices[#choices + 1] = job
-	end
-	for _, job in ipairs(Layout.MORE_JOBS) do
-		choices[#choices + 1] = job
-	end
+	AddJobChoices(choices, false)
 	-- A binding made somewhere else is listed too, so the menu always shows what the button does.
 	local current = GetBindingAction(key)
 	local listed = false
@@ -501,7 +646,13 @@ function Options:OpenKeyBindings()
 	Settings.OpenToCategory(Settings.KEYBINDINGS_CATEGORY_ID)
 end
 
--- Gives a button a job, as one of the player's own key bindings. Returns true when it was done.
+-- Saves the active key map for this character. On the first edit it inherits the account map.
+-- Saving changes to the account map from here would also change other characters' controllers.
+local function SaveCharacterBindings()
+	SaveBindings(Enum.BindingSet and Enum.BindingSet.Character or 2)
+end
+
+-- Gives a button a job, as one of the player's character bindings. Returns true when it was done.
 local function Bind(key, command)
 	if command == "keybindings" then
 		Options:OpenKeyBindings()
@@ -520,7 +671,7 @@ local function Bind(key, command)
 		ns.Print(("The game would not bind %s to that."):format(name))
 		return false
 	end
-	SaveBindings(GetCurrentBindingSet())
+	SaveCharacterBindings()
 	-- A button with a job is a plain button; one without is whatever the game makes of it.
 	if not isChord then
 		ns.db.plainKeys[key] = command ~= "" or nil
@@ -544,7 +695,7 @@ Options.Bind = Bind
 
 -- A row for one button: its name, and a button showing its job that opens the menu of jobs.
 -- getKey() names the button; a row without one (nothing caught yet) hides itself.
-local function KeyRow(panel, x, y, getKey)
+local function KeyRow(panel, x, y, getKey, width)
 	local function Job()
 		return GetBindingAction(getKey())
 	end
@@ -568,7 +719,7 @@ local function KeyRow(panel, x, y, getKey)
 		return key and KeyName(key) or ""
 	end
 	local nextY, button, label = Choice(panel, x, y, Name, Tooltip, function() return JobChoices(getKey()) end, Job,
-		function(command) Bind(getKey(), command) end, 230)
+		function(command) Bind(getKey(), command) end, width or 230)
 	local showJob = button.Sync
 	button:SetScript("OnClick", function(self)
 		local own = OwnUse(getKey())
@@ -635,6 +786,8 @@ local function CreateCatcher(panel, onKey)
 	return catcher
 end
 
+local EXTRA_KEY_ROWS = 12
+
 local function BuildButtons(panel)
 	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalHuge")
 	title:SetPoint("TOPLEFT", 16, -14)
@@ -646,33 +799,79 @@ local function BuildButtons(panel)
 	note:SetJustifyH("LEFT")
 	note:SetText("FreeControl uses the D-pad, the four face buttons and the two triggers. Every other button on your controller is an ordinary button: it does whatever it is bound to, like a key on the keyboard. Give each one a job here. A job picked here is a normal key binding, so it shows in the game's Key Bindings screen as well and stays when FreeControl is switched off.")
 
-	local left = 16
+	local left, right = 16, 340
 	local y = -90
 	y = Heading(panel, "On most controllers", left, y)
 	for _, key in ipairs(Layout.OTHER_KEYS) do
-		y = KeyRow(panel, left, y, function() return key end)
+		y = KeyRow(panel, left, y, function() return key end, 180)
 	end
 
-	y = Heading(panel, "Any other button or key", left, y - 8)
+	local page = 1
+	local function PageCount()
+		return math.max(1, math.ceil(#ns.db.extraKeys / EXTRA_KEY_ROWS))
+	end
+	local extraY = Heading(panel, "Any other button or key", right, -90)
 	local catcher = CreateCatcher(panel, function(key)
-		Options.caughtKey = key
+		for _, ordinary in ipairs(Layout.OTHER_KEYS) do
+			if ordinary == key then
+				ns.Print(Layout.GetKeyName(key) .. " is already listed under On most controllers.")
+				return
+			end
+		end
+		local keys = ns.db.extraKeys
+		local index = #keys + 1
+		for i, known in ipairs(keys) do
+			if known == key then
+				index = i
+				break
+			end
+		end
+		keys[index] = key
+		page = math.ceil(index / EXTRA_KEY_ROWS)
 		Options:Sync()
 	end)
 	Options.catcher = catcher
-	y = Action(panel, left, y, "Press it...", "For a button that is not in the list above, or a key on the keyboard: click this, then press it. It appears below with its job.", function()
+	extraY = Action(panel, right, extraY, "Press it...", "Press a controller button or keyboard key to add it to this character's list. Use the list to assign or change its job.", function()
 		if InCombatLockdown() then
 			ns.Print("Key bindings cannot be changed in combat.")
 			return
 		end
 		catcher:Show()
-	end, "Find a button")
-	y = KeyRow(panel, left, y, function() return Options.caughtKey end)
+	end, "Add a button")
+
+	local _, previous, nextPage
+	local pageLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	pageLabel:SetPoint("TOPLEFT", right + 4, extraY - EXTRA_KEY_ROWS * ROW - 6)
+	pageLabel.Sync = function(self)
+		local count = PageCount()
+		page = math.min(page, count)
+		self:SetText(("%d / %d"):format(page, count))
+		self:SetShown(count > 1)
+		previous:SetShown(count > 1)
+		nextPage:SetShown(count > 1)
+		previous:SetEnabled(page > 1)
+		nextPage:SetEnabled(page < count)
+	end
+	controls[#controls + 1] = pageLabel
+	for row = 1, EXTRA_KEY_ROWS do
+		extraY = KeyRow(panel, right, extraY, function()
+			return ns.db.extraKeys[(page - 1) * EXTRA_KEY_ROWS + row]
+		end, 170)
+	end
+	local function ChangePage(step)
+		page = math.max(1, math.min(PageCount(), page + step))
+		Options:Sync()
+	end
+	_, previous = Action(panel, right - 48, extraY, "Previous", "Show the previous extra buttons.", function() ChangePage(-1) end)
+	previous:SetSize(90, 22)
+	_, nextPage = Action(panel, right + 52, extraY, "Next", "Show the next extra buttons.", function() ChangePage(1) end)
+	nextPage:SetSize(90, 22)
 
 	y = Heading(panel, "Everything else", left, y - 8)
 	y = Action(panel, left, y, "Combinations...", "Two or three buttons pressed together can have a job of their own: LB + D-pad Up, or LB + RB + D-pad Right. This opens the page where you pick the buttons to hold and give combinations their jobs.", function()
 		Options:OpenCombos()
 	end, "Buttons together")
-	Action(panel, left, y, "Open Key Bindings", "The game's own Key Bindings screen. Anything can be bound there, to any button: FreeControl's two page buttons are listed under FreeControl.", function()
+	Action(panel, left, y, "Open Key Bindings", "The game's Key Bindings screen lists FreeControl's page buttons and Return to main layer.", function()
 		Options:OpenKeyBindings()
 	end, "Key Bindings")
 end
@@ -734,7 +933,7 @@ local function SetHold(modifier, key)
 		if job ~= "" then
 			local label = LabelFor(JobChoices(key), job)
 			SetBinding(key, nil)
-			SaveBindings(GetCurrentBindingSet())
+			SaveCharacterBindings()
 			ns.Print(("%s no longer does this: %s. A button that is held for combinations has no job of its own."):format(name, label))
 		end
 		db.plainKeys[key] = nil
@@ -1042,11 +1241,15 @@ local function PrintStatus()
 	Layout.Prepare()
 	local source = Layout.GetSlotSource()
 	local first = Layout.GetFirstGamepadSlot()
+	local profile = ns.GetBarProfile()
 	ns.Print(("Slots: %s (asked for %s). Controller-bar slots start at %s, usable: %s, stance slots usable: %s"):format(
-		source, db.slotSource, tostring(first), YesNo(Layout.HasGamepadSlots()), YesNo(Layout.HasStanceSlots())))
+		source, profile.slotSource, tostring(first), YesNo(Layout.HasGamepadSlots()), YesNo(Layout.HasStanceSlots())))
 	local _, class = UnitClass("player")
 	ns.Print(("Page %d of %d (pages: %s, page selector: %s). Class: %s. Changes with your stance or form (setting: %s): %s"):format(Layout.GetPage(), Layout.GetStoredPages(),
-		db.pages and "on" or "off", db.showPager and "shown" or "hidden", tostring(class), db.stanceSet, Layout.DescribeStance()))
+		profile.pages and "on" or "off", profile.showPager and "shown" or "hidden", tostring(class), profile.stanceSet, Layout.DescribeStance()))
+	if ns.activeSpecGroup then
+		ns.Print("Bar settings profile: talent group " .. ns.activeSpecGroup)
+	end
 	ns.Print(("Page buttons: next page is on %s, previous page on %s."):format(
 		GetBindingKey(ns.Bindings.PAGE_COMMANDS.next) or "no button", GetBindingKey(ns.Bindings.PAGE_COMMANDS.prev) or "no button"))
 	local held = {}
@@ -1104,7 +1307,18 @@ local function PrintStatus()
 			ns.Print(("  %s: %s"):format(Layout.GetSetName(set), table.concat(slots, " ")))
 		end
 		ns.Print("Secure click handler present: " .. YesNo(not ns.Buttons:IsSecureClickMissing()))
-		ns.Print("Set held right now: " .. Layout.GetSetName(ns.Bindings:GetActiveSet()))
+		ns.Print("Active layer: " .. Layout.GetSetName(ns.Bindings:GetActiveSet()))
+		local header = ns.Bindings.header
+		local form = tonumber(header:GetAttribute("state-fc-main-form")) or 0
+		local formStart = header:GetAttribute("fc-active-main-form")
+		if formStart then
+			ns.Print(("Main layer form %d uses slots %d–%d."):format(form, formStart, formStart + 7))
+		elseif GetShapeshiftForm and profile.stanceSet ~= "none" then
+			local current = GetShapeshiftForm()
+			if not ns.IsSealed(current) and type(current) == "number" and current > 0 then
+				ns.Print("No dedicated eight-slot Main layout is available for this form.")
+			end
+		end
 	end
 	ns.Print(("Cooldown numbers: %s. The game seals combat values from addons: %s"):format(
 		YesNo(db.cooldownNumbers), ns.DescribeSealing()))
@@ -1113,16 +1327,10 @@ local function PrintStatus()
 	ns.Print(ns.Ranks:Describe())
 
 	if ns.Mouse:IsAvailable() then
-		local index, key
-		for i = 1, 8 do
-			if Layout.IsCursorRole(db.roles[i]) then
-				index, key = i, db.keys[i]
-				break
-			end
-		end
+		local name, key = ns.Mouse:GetBarButtonName()
 		local bound = key and GetBindingAction(key, true) or ""
 		ns.Print(("Mouse pointer: %s. Mouse button: %s (%s), bound right now to: %s. Pointer speed: %d%%"):format(ns.Mouse:IsOut() and "out" or "away",
-			index and Layout.GetButtonName(Layout.SET_NONE, index) or "none", key or "-", bound ~= "" and bound or "nothing", db.cursorSpeed * 100 + 0.5))
+			name or "none", key or "-", bound ~= "" and bound or "nothing", db.cursorSpeed * 100 + 0.5))
 		for side, setting in ipairs({ "clickLeft", "clickRight" }) do
 			local click = GetCVar(side == 1 and "GamePadCursorLeftClick" or "GamePadCursorRightClick") or ""
 			local clickBound = click ~= "" and GetBindingAction(click, true) or ""
@@ -1137,6 +1345,7 @@ local function PrintStatus()
 	end
 
 	ns.Print("Keys: " .. table.concat(db.keys, " ") .. " | triggers: " .. table.concat(db.modKeys, " "))
+	ns.Print("Return to main layer: " .. (GetBindingKey(ns.Bindings.RELEASE_COMMAND) or "unbound"))
 	for _, problem in ipairs(ns.Bindings:FindProblems()) do
 		ns.Print("|cffffd100Note:|r " .. problem)
 	end
@@ -1172,6 +1381,7 @@ local HELP = {
 	"/fc ranks - move every spell on the bar up to its newest rank now (on | off: do it by itself whenever you learn one)",
 	"/fc key <1-8 | lt | rt> <KEY> - use a different key for a slot or trigger (1-4 D-pad left/up/right/down, 5-8 face left/top/right/bottom)",
 	"/fc stance auto | none | lt | rt | both | ltrt | all - what changes with your stance or form (ltrt = both trigger sets, all = those and the D-pad)",
+	"/fc stance custom [main] [lt] [rt] [both] - your own pick of the layouts that change, on the stance page only (two trigger sets at most)",
 	"/fc pages on | off - whether the page can be turned (off: the bar stays on the page of /fc page)",
 	"/fc pager on | off - show or hide the page selector under the LT + RT set",
 	"/fc mouse - bring the controller's mouse pointer out or put it away (on | off: mouse mode itself; off makes its button an action slot)",
@@ -1248,6 +1458,14 @@ SlashCmdList.FREECONTROL = function(message)
 		ns.Ranks:CheckAll()
 	elseif command == "key" and SetKey(first, second) then
 		ns.Print("Keys: " .. table.concat(ns.db.keys, " ") .. " | triggers: " .. table.concat(ns.db.modKeys, " "))
+	elseif command == "stance" and first == "custom" then
+		local flags = {}
+		for word in strtrim(message):lower():gmatch("%S+") do
+			for _, entry in ipairs(Layout.STANCE_LAYOUTS) do
+				if word == entry[2] then flags[entry[1]] = true end
+			end
+		end
+		SetStanceLayouts(flags)
 	elseif command == "stance" and ns.IsOneOf(first, unpack(Layout.STANCE_CHOICES)) then
 		-- In combat the change waits for the fight to end, and RequestRefresh has said so.
 		Set("stanceSet", first)

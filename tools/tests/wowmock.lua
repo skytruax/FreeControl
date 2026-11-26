@@ -53,6 +53,8 @@ local M = {
 	actions = {},          -- [slot] = { texture, usable, noMana, cooldown, count, current, equipped, text }
 	used = {},             -- UseAction calls: { slot, unit, button }
 	commands = {},         -- binding commands run: { name, "down" | "up" }
+	units = {},            -- [unit] = true for the units there are besides the player: "party2"
+	targeted = {},         -- the units secure "target" buttons targeted, in order
 	bindings = {},         -- override bindings: [key] = { owner, kind = "click" | "cmd", target, button }
 	userBindings = {},     -- the player's own key bindings: [key] = command, as the Key Bindings screen sets them
 	savedBindings = {},    -- SaveBindings calls: the binding set each one saved
@@ -415,6 +417,8 @@ end
 local RESTRICTED = {
 	math = math, string = string, select = select, tonumber = tonumber, tostring = tostring, type = type,
 	format = string.format, strsub = string.sub, strlen = string.len, floor = math.floor, max = math.max, min = math.min,
+	-- Blizzard_RestrictedAddOnEnvironment/RestrictedEnvironment.lua lets snippets ask this.
+	UnitExists = function(unit) return unit == "player" or M.units[unit] == true end,
 }
 
 function Handle(frame)
@@ -441,6 +445,7 @@ function Handle(frame)
 	function h:SetAlpha(alpha) target():SetAlpha(tonumber(alpha)) end
 	function h:Show() target():Show() end
 	function h:Hide() target():Hide() end
+	function h:IsShown() return target():IsShown() end
 	function h:ClearBindings() ClearOverrideBindings(target()) end
 	function h:ClearBinding(key) SetOverrideBinding(target(), true, key, nil) end
 	function h:SetBindingClick(priority, key, name, button)
@@ -489,6 +494,21 @@ local function addHandlerMethods(frame)
 		if M.combat then error("Cannot use SetFrameRef in combat", 2) end
 		self.__attrs["frameref-" .. label] = Handle(ref)
 	end
+	-- Port of SecureHandlerWrapScript for a body that runs before the script it wraps: the body
+	-- gets the wrapped frame as self and this frame as control, runs as secure code, and the
+	-- frame's own script follows. (A body that returns false to stop the script is not modelled.)
+	function frame:WrapScript(wrapped, name, body)
+		if M.combat then error("Cannot call WrapScript in combat", 2) end
+		assert(wrapped.__protected, "only an explicitly protected frame can be wrapped")
+		assert(name == "OnClick", "mock only wraps OnClick")
+		local original = assert(wrapped.__scripts[name], "nothing to wrap")
+		local control = Handle(self)
+		wrapped.__scripts[name] = function(button, inputButton, down, ...)
+			RunSnippet(button, "self,control,button,down", body, Handle(button), control, inputButton, down)
+			return original(button, inputButton, down, ...)
+		end
+		wrapped.__secureClick = true
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -536,7 +556,13 @@ function SecureActionButton_OnClick(self, inputButton, down, isKeyPress, isSecur
 	useOnKeyDown = not isSecureMousePress and (useOnKeyDown or pressAndHoldAction)
 	local clickAction = (down and useOnKeyDown) or (not down and not useOnKeyDown)
 	if clickAction then
-		assert(self:GetAttribute("type") == "action", "mock only models type=action")
+		if self:GetAttribute("type") == "target" then
+			-- SECURE_ACTIONS.target: a button with no unit targets nothing.
+			local unit = self:GetAttribute("unit")
+			if unit then M.targeted[#M.targeted + 1] = unit end
+			return true
+		end
+		assert(self:GetAttribute("type") == "action", "mock only models type=action and type=target")
 		-- Fields the real click path reads; a tainted value here blocks the action in combat.
 		assert(rawget(self, "popup") == nil and rawget(self, "isExtra") == nil and rawget(self, "buttonType") == nil,
 			"a field read by the secure click path was written by the addon")
@@ -1410,7 +1436,11 @@ local function tooltipText(method, text)
 end
 function GameTooltip:SetText(text) self.lines = { tooltipText("SetText", text) } end
 function GameTooltip:AddLine(text) self.lines[#self.lines + 1] = tooltipText("AddLine", text) end
-function GameTooltip:SetAction(slot) self.lines = { "action " .. slot }; return M.actions[slot] ~= nil end
+function GameTooltip:SetAction(slot)
+	local action = M.actions[slot]
+	self.lines = { action and action.tooltip or "action " .. slot }
+	return action and action.refreshTooltip or false
+end
 function GameTooltip:Show() self.shown = true end
 function GameTooltip:Hide() self.shown = false; self.owner = nil end
 function GameTooltip_SetDefaultAnchor(tooltip, owner) tooltip:SetOwner(owner) end

@@ -128,14 +128,29 @@ function Mouse:DescribeClicks()
 	return "no button is set to click"
 end
 
--- The no-trigger button on the bar that brings the pointer out, as a name, or nil.
+-- Prefer the pointer button on the active layer when more than one is configured.
 function Mouse:GetBarButtonName()
-	for index = 1, 8 do
-		if Layout.IsCursorRole(ns.db.roles[index]) then
-			return Layout.GetButtonName(Layout.SET_NONE, index)
+	local active = ns.Bindings:GetActiveSet()
+	local spell = Layout.GetActiveMainFormSpell()
+	local fallback, fallbackKey
+	if spell and active == Layout.SET_NONE then
+		for index = 1, 8 do
+			if Layout.IsCursorRole(Layout.GetRole(active, index, spell)) then
+				return Layout.GetButtonName(active, index), ns.db.keys[index]
+			end
 		end
 	end
-	return nil
+	for _, set in ipairs(Layout.SETS) do
+		for index = 1, 8 do
+			if Layout.IsCursorRole(Layout.GetRole(set, index)) then
+				local name = Layout.GetButtonName(set, index)
+				local key = ns.db.keys[index]
+				if set == active and not (set == Layout.SET_NONE and spell) then return name, key end
+				if not fallback then fallback, fallbackKey = name, key end
+			end
+		end
+	end
+	return fallback, fallbackKey
 end
 
 -- Asks the game for the pointer, and notes it down for the watcher to follow up.
