@@ -210,6 +210,11 @@ because Blizzard's bar would be bound to the same buttons.
   so you can pick from it. *Accept group invite or request* presses Accept on the game's
   dialog when you are invited to a group, or when someone asks to join yours; it answers no
   other dialog. All six work in a fight.
+- **Rolling for loot:** three jobs, *Loot roll: Need*, *Greed* and *Pass*. A press answers the
+  item the group is rolling for; with several items up, each press answers the next one, and
+  chat says which item it was. For an item that binds when picked up the game asks first:
+  press the same job again to confirm, or another of the three to change your answer. They
+  work in a fight.
 - **Buttons together:** two or three buttons pressed together can have a job of their own, such
   as LB + D-pad Up for a party member or LB + RB + D-pad Right for the next page. On the
   *Combinations* page (`/fc combos`) click *Press one...*, hold the first button, press the
@@ -287,6 +292,7 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc front on` | Have the game pick only enemies in front of you, as Gamepad UI mode does (`off` for the game's own setting). |
 | `/fc click left PADLSHOULDER` | Use another button as the left (`left`) or right (`right`) mouse click while the pointer is out. `game` leaves that click to the game's own setting. |
 | `/fc pointer 150` | How fast the stick moves the mouse pointer, in percent (50 to 300). |
+| `/fc scroll off` | Keep the triggers as triggers while the mouse pointer is out. On (the default), LT is the mouse wheel up and RT the wheel down while it is out, to zoom the map or the camera and go through lists. |
 | `/fc key lt PADLSHOULDER` | Use another button as a trigger (`lt`, `rt`) or for a slot (`1`-`8`). Keyboard keys work too, for Steam Input layouts that send keys. |
 | `/fc chat` | Open the Chat page: the chat keyboard and the quick phrases. |
 | `/fc keyboard` | Open the chat with the keyboard, or close it. `off` switches the keyboard off (`on` to bring it back). |

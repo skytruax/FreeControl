@@ -105,7 +105,7 @@ local function AddJobChoices(choices, asRole)
 		-- One of FreeControl's own buttons (the party's, the chat's) is bound as a click on it, not
 		-- as a game command.
 		local binding = asRole and "cmd:" .. job[1] or ns.Bindings.PARTY_COMMANDS[job[1]] or ns.Bindings.CHAT_COMMANDS[job[1]]
-			or ns.Bindings.GROUP_COMMANDS[job[1]] or job[1]
+			or ns.Bindings.GROUP_COMMANDS[job[1]] or ns.Bindings.LOOT_COMMANDS[job[1]] or job[1]
 		choices[#choices + 1] = { binding, job[2] }
 	end
 end
@@ -250,6 +250,9 @@ local function StanceTooltip()
 		LayoutName(Layout.SET_LT), LayoutName(Layout.SET_RT), LayoutName(Layout.SET_BOTH))
 	if Layout.GetSlotSource() ~= "gamepad" and ns.GetBarProfile().stanceSet == "auto" then
 		text = text .. " With the regular action bars as the slots, nothing changes until you tick a layout."
+	end
+	if not Layout.HasStances() then
+		return text .. "\n\nOn this character: nothing. This class has no stance or form that changes what it can cast (a Paladin's auras and a Priest's Shadowform do not), so every layout stays as it is."
 	end
 	return ("%s\n\nOn this character: %s."):format(text, Layout.DescribeStance())
 end
@@ -690,6 +693,7 @@ local function Bind(key, command)
 	if ns.IsActive() then
 		ns.CVars:Apply() -- the stand-in follows the job
 	end
+	Options:RecordKeys()
 	Options:Sync()
 	return true
 end
@@ -799,7 +803,7 @@ local function BuildButtons(panel)
 	note:SetPoint("TOPLEFT", 18, -40)
 	note:SetPoint("RIGHT", -20, 0)
 	note:SetJustifyH("LEFT")
-	note:SetText("FreeControl uses the D-pad, the four face buttons and the two triggers. Every other button on your controller is an ordinary button: it does whatever it is bound to, like a key on the keyboard. Give each one a job here. A job picked here is a normal key binding, so it shows in the game's Key Bindings screen as well and stays when FreeControl is switched off.")
+	note:SetText("FreeControl uses the D-pad, the four face buttons and the two triggers. Every other button on your controller is an ordinary button: it does whatever it is bound to, like a key on the keyboard. Give each one a job here. A job picked here is a normal key binding, so it shows in the game's Key Bindings screen as well and stays when FreeControl is switched off. This page is the same for all your characters: FreeControl gives each of them these jobs when it enters the world.")
 
 	local left, right = 16, 340
 	local y = -90
@@ -833,7 +837,7 @@ local function BuildButtons(panel)
 		Options:Sync()
 	end)
 	Options.catcher = catcher
-	extraY = Action(panel, right, extraY, "Press it...", "Press a controller button or keyboard key to add it to this character's list. Use the list to assign or change its job.", function()
+	extraY = Action(panel, right, extraY, "Press it...", "Press a controller button or keyboard key to add it to the list. Use the list to assign or change its job.", function()
 		if InCombatLockdown() then
 			ns.Print("Key bindings cannot be changed in combat.")
 			return
@@ -952,6 +956,7 @@ local function SetHold(modifier, key)
 	if ns.IsActive() then
 		ns.CVars:Apply()
 	end
+	Options:RecordKeys()
 	Options:Sync()
 	return true
 end
@@ -978,6 +983,115 @@ local function BoundCombos()
 	table.sort(list)
 	return list
 end
+
+---------------------------------------------------------------------------
+-- The other buttons and the combinations belong to the account
+---------------------------------------------------------------------------
+-- Their jobs are key bindings, and the game keeps a character's bindings apart from every other
+-- character's and lets none read another's. So what these two pages set is written down in a
+-- file the whole account shares (FreeControlKeysDB), and every character is given it when it
+-- enters the world: the jobs of the other buttons and of the combinations, the extra buttons
+-- that were added to the list, and the buttons to hold.
+--   { jobs = { [key or combination] = binding command }, extraKeys =, plainKeys =, standIns = }
+-- (the last three as in ns.db). The first character played with this in place is the one the
+-- account starts from. The buttons FreeControl uses itself on a character are left alone there.
+Options.keysApplied = false -- this character has been given the account's; until then nothing is written down
+
+-- This character's other buttons and combinations, as they are now.
+local function CurrentKeys()
+	local db = ns.db
+	local keys = { jobs = {}, extraKeys = {}, plainKeys = {}, standIns = {} }
+	local function Add(key)
+		local job = not OwnUse(key) and GetBindingAction(key) or ""
+		if job ~= "" then
+			keys.jobs[key] = job
+		end
+	end
+	for _, key in ipairs(Layout.OTHER_KEYS) do Add(key) end
+	for index, key in ipairs(db.extraKeys) do
+		keys.extraKeys[index] = key
+		Add(key)
+	end
+	for _, key in ipairs(BoundCombos()) do Add(key) end
+	for key in pairs(db.plainKeys) do keys.plainKeys[key] = true end
+	for modifier, button in pairs(db.standIns) do keys.standIns[modifier] = button end
+	return keys
+end
+
+local function AccountKeys()
+	local saved = FreeControlKeysDB
+	return type(saved) == "table" and type(saved.jobs) == "table" and saved or nil
+end
+
+-- Writes this character's down as the account's. A button FreeControl uses itself on this
+-- character keeps the job the account has for it: it is another character's to use.
+function Options:RecordKeys()
+	if not (ns.db and Options.keysApplied) then
+		return
+	end
+	local keys, before = CurrentKeys(), AccountKeys()
+	for key, job in pairs(before and before.jobs or {}) do
+		if type(key) == "string" and OwnUse(key) then
+			keys.jobs[key] = job
+		end
+	end
+	FreeControlKeysDB = keys
+end
+
+-- Out of combat. Makes this character's other buttons and combinations the account's: every
+-- job the account has is given, and a job this character has where the account has none is
+-- taken away. With nothing written down yet, this character's become the account's.
+local function ApplyAccountKeys()
+	local keys = AccountKeys()
+	Options.keysApplied = true
+	if not keys then
+		Options:RecordKeys()
+		return
+	end
+	local db = ns.db
+	local mine = CurrentKeys()
+	local touched, changed = {}, false
+	for key in pairs(mine.jobs) do touched[key] = true end
+	for key, job in pairs(keys.jobs) do
+		if type(key) == "string" and type(job) == "string" and job ~= "" then touched[key] = true end
+	end
+	for key in pairs(touched) do
+		local job = keys.jobs[key]
+		if type(job) ~= "string" or job == "" then job = nil end
+		if not OwnUse(key) and mine.jobs[key] ~= job then
+			SetBinding(key, job)
+			changed = true
+		end
+	end
+	if changed then
+		SaveCharacterBindings()
+	end
+	db.extraKeys, db.plainKeys, db.standIns = {}, {}, {}
+	for _, key in ipairs(type(keys.extraKeys) == "table" and keys.extraKeys or {}) do
+		if type(key) == "string" then db.extraKeys[#db.extraKeys + 1] = key end
+	end
+	for key in pairs(type(keys.plainKeys) == "table" and keys.plainKeys or {}) do
+		if type(key) == "string" then db.plainKeys[key] = true end
+	end
+	for _, modifier in ipairs(HOLD_MODIFIERS) do
+		local button = type(keys.standIns) == "table" and keys.standIns[modifier]
+		if type(button) == "string" and (button == "none" or not OwnUse(button)) then
+			db.standIns[modifier] = button
+		end
+	end
+	if ns.IsActive() then
+		ns.CVars:Apply()
+	end
+	Options:Sync()
+end
+
+ns.On("PLAYER_ENTERING_WORLD", function()
+	if not Options.keysApplied then
+		ns.RunOutOfCombat("account keys", ApplyAccountKeys)
+	end
+end)
+-- A job given in the game's own Key Bindings screen is written down on the way out.
+ns.On("PLAYER_LOGOUT", function() Options:RecordKeys() end)
 
 -- The combinations the page lists: those, and before them the one that was just pressed here,
 -- with or without a job yet. Worked out once for each time the page is brought up to date.
@@ -1023,7 +1137,7 @@ local function BuildCombos(panel)
 	note:SetPoint("TOPLEFT", 18, -40)
 	note:SetPoint("RIGHT", -20, 0)
 	note:SetJustifyH("LEFT")
-	note:SetText("Buttons pressed together can be a button of their own, with a job of its own: LB + D-pad Up, or LB + RB + D-pad Right. One button is held and the other pressed. The game does this by letting a button stand in for the Ctrl, Alt or Shift key of a keyboard, so a combination is an ordinary key binding and shows in the game's Key Bindings screen, spelled CTRL-, ALT- or SHIFT- and the button.")
+	note:SetText("Buttons pressed together can be a button of their own, with a job of its own: LB + D-pad Up, or LB + RB + D-pad Right. One button is held and the other pressed. The game does this by letting a button stand in for the Ctrl, Alt or Shift key of a keyboard, so a combination is an ordinary key binding and shows in the game's Key Bindings screen, spelled CTRL-, ALT- or SHIFT- and the button. This page is the same for all your characters.")
 
 	local left = 16
 	local y = -90
@@ -1128,6 +1242,7 @@ local function BuildMouse(panel)
 	y = Check(panel, left, y, "The game may bring the pointer out", "Whatever FreeControl does, the game brings its stick pointer out by itself: when a window opens, and to aim a spell that is cast on the ground. Untick this to stop that while FreeControl is active (console variables GamePadCursorAutoEnable and GamePadCursorForTargeting are set to 0, and your own values put back afterwards). With Mouse mode unticked as well, nothing on the controller takes the mouse pointer: for playing with a real mouse beside the controller.", "gamePointer")
 
 	y = Heading(panel, "While the pointer is out", left, y - 8)
+	y = Check(panel, left, y, "The triggers are the mouse wheel", "While the mouse pointer is out, the left trigger turns the mouse wheel up and the right one down: to zoom the map, go through a list, or zoom the camera. Hold one to keep turning. Put the pointer away and they are triggers again. Unticked, they stay triggers while the pointer is out.", "mouseScroll")
 	y = Choice(panel, left, y, "Left click", "The left mouse button while the mouse pointer is out. Pick a button you can hold while your right thumb steers, such as a stick click or a bumper, so you can drag spells and items. The rest of the time the button does whatever you bound it to.", ClickChoices,
 		function() return ns.db.clickLeft end, function(value) SetClick(1, value) end)
 	y = Choice(panel, left, y, "Right click", "The right mouse button while the mouse pointer is out. The rest of the time the button does whatever you bound it to.", ClickChoices,
@@ -1494,6 +1609,7 @@ local HELP = {
 	"/fc buttons - give the bumpers, stick clicks, Start, Back and paddles their jobs",
 	"/fc combos - give buttons pressed together a job",
 	"/fc hold ctrl | alt | shift <BUTTON | none> - the button that is held for combinations, as that key",
+	"/fc specs on | off - whether each talent group has its own layout: its own buttons and jobs, put back when you switch",
 	"/fc slots gamepad | bars - where the slots are stored",
 	"/fc numbers on | off - count down the seconds on slots that are on cooldown",
 	"/fc glow on | off - glow a button whose spell has procced or come free for a moment",
@@ -1508,6 +1624,7 @@ local HELP = {
 	"/fc front on | off - have the game pick only enemies in front of you, as Gamepad UI mode does",
 	"/fc click left | right <BUTTON> - the button that clicks while the mouse pointer is out (game = leave it to the game)",
 	"/fc pointer <50-300> - how fast the stick moves the mouse pointer, in percent",
+	"/fc scroll on | off - while the mouse pointer is out, the triggers are the mouse wheel: left up, right down",
 	"/fc chat - the settings of the chat keyboard and the quick phrases",
 	"/fc keyboard - open the chat with the keyboard, or close it (on | off: the keyboard itself)",
 	"/fc keyboard unlock | lock | reset | scale <0.4-2> - move the keyboard, put it back, or change its size (forget: empty the words it learned)",
@@ -1601,6 +1718,11 @@ SlashCmdList.FREECONTROL = function(message)
 		Options:OpenButtons()
 	elseif command == "combos" then
 		Options:OpenCombos()
+	elseif command == "specs" and ns.IsOneOf(first, "on", "off") then
+		ns.db.specLayouts = first == "on"
+		ns.Print(first == "on" and "Each talent group has its own layout: what is on the bar now is the active one's, and the other starts as a copy of it the first time you switch."
+			or "The talent groups share one layout again: what is on the bar stays when you switch.")
+		if first == "on" then ns.Specs:Record() end
 	elseif command == "hold" and HOLD_NAMES[first] and second and second ~= "" then
 		SetHold(HOLD_NAMES[first], second == "none" and "none" or second:upper())
 	elseif command == "gamepointer" and ns.IsOneOf(first, "on", "off") then
@@ -1649,6 +1771,8 @@ SlashCmdList.FREECONTROL = function(message)
 		if SetClick(first == "left" and 1 or 2, second == "game" and "game" or second:upper()) and not InCombatLockdown() then
 			ns.Print(("Mouse clicks: %s."):format(ns.Mouse:DescribeClicks()))
 		end
+	elseif command == "scroll" and ns.IsOneOf(first, "on", "off") then
+		Set("mouseScroll", first == "on")
 	elseif command == "chat" then
 		Options:OpenChat()
 	elseif command == "keyboard" then

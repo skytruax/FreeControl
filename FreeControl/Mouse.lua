@@ -216,6 +216,79 @@ function Mouse:OnButtonPressed()
 	end
 end
 
+---------------------------------------------------------------------------
+-- The mouse wheel
+---------------------------------------------------------------------------
+-- While the pointer is out the two triggers are the wheel: the left one turns it up, the right
+-- one down (the secure header binds them, Bindings.lua; the mouseScroll setting). A map is zoomed
+-- with the wheel and so are the game's lists, and a controller has none.
+--
+-- An addon cannot turn the real wheel. What the wheel does is one of two things, and both can be
+-- done directly: over a window that listens to it (the map, a list, the chat), the window's own
+-- wheel handler is run, with the frame the pointer is on found the way the game finds it, going
+-- up from what is under the pointer to the first frame that has such a handler; over the world,
+-- the camera is zoomed, which is what the wheel is bound to out of the box.
+local REPEAT_DELAY, REPEAT_RATE = 0.35, 0.09
+
+-- The frame under the pointer that takes the wheel, or nil.
+local function WheelFrame()
+	local frame
+	if GetMouseFoci then
+		local foci = GetMouseFoci()
+		frame = type(foci) == "table" and foci[1] or nil
+	elseif GetMouseFocus then
+		frame = GetMouseFocus()
+	end
+	while frame and frame ~= WorldFrame do
+		if frame.IsForbidden and frame:IsForbidden() then
+			return nil
+		end
+		if frame.HasScript and frame:HasScript("OnMouseWheel") and frame:GetScript("OnMouseWheel") then
+			return frame
+		end
+		frame = frame.GetParent and frame:GetParent() or nil
+	end
+	return nil
+end
+
+-- One notch of the wheel: up for a direction above zero, down for one below.
+function Mouse:Scroll(direction)
+	local frame = WheelFrame()
+	if frame then
+		frame:GetScript("OnMouseWheel")(frame, direction)
+	elseif direction > 0 then
+		if CameraZoomIn then CameraZoomIn(1) end
+	elseif CameraZoomOut then
+		CameraZoomOut(1)
+	end
+end
+
+local scroller = CreateFrame("Frame")
+scroller:Hide()
+local scrolling, scrollAt
+
+scroller:SetScript("OnUpdate", function(self)
+	-- The pointer was put away with the trigger still held: the trigger is a trigger again.
+	if not scrolling or not Mouse:IsOut() then
+		Mouse:StopScroll()
+	elseif GetTime() >= scrollAt then
+		scrollAt = GetTime() + REPEAT_RATE
+		ns.Try(Mouse.Scroll, Mouse, scrolling)
+	end
+end)
+
+-- A trigger pressed while the pointer is out: one notch now, and more while it is held.
+function Mouse:StartScroll(direction)
+	scrolling, scrollAt = direction, GetTime() + REPEAT_DELAY
+	scroller:Show()
+	self:Scroll(direction)
+end
+
+function Mouse:StopScroll()
+	scrolling = nil
+	scroller:Hide()
+end
+
 -- Keeps the world-click bindings in step with the pointer. Bindings can only be changed from here
 -- outside combat; in a fight the mouse button on the bar changes them itself (it is secure), and
 -- whatever is left over is put right when the fight ends.

@@ -125,6 +125,81 @@ test("each character inherits an independent copy of the legacy settings", funct
 	eq(ns.GetBarProfile().page, 2, "the first character gets their own page back")
 end)
 
+test("each talent group has a layout of its own: its slots and its jobs come back when it is active again", function()
+	local group = 1
+	C_SpecializationInfo = { GetActiveSpecGroup = function() return group end }
+	C_EventUtils = { IsEventValid = function(event) return event == "ACTIVE_TALENT_GROUP_CHANGED" end }
+	M.lastGamepadSlot = 360
+	M.pickupRemoves = true
+	Load()
+	local function Switch(to)
+		group = to
+		M.Fire("ACTIVE_TALENT_GROUP_CHANGED")
+		M.Advance(0.6)
+	end
+	local function Put(slot, spell)
+		M.actions[slot] = spell and { texture = "spell " .. spell, spell = spell } or nil
+		M.Fire("ACTIONBAR_SLOT_CHANGED", slot)
+	end
+	local function Spell(slot)
+		return M.actions[slot] and M.actions[slot].spell or nil
+	end
+	local lt, rt, both = ns.Layout.GetSlot(1, 1, 1), ns.Layout.GetSlot(2, 3, 2), ns.Layout.GetSlot(3, 8, 3)
+	Put(lt, 9001)
+	Put(rt, 9002)
+	Put(both, nil)
+	M.Advance(1.1)
+	ns.Layout.SetRole(1, 2, "cmd:JUMP")
+	eq(ns.Layout.GetRole(1, 2), "cmd:JUMP", "a job is given in the first talent group")
+
+	M.printed = {}
+	Switch(2)
+	truthy(Printed("Talent group 2 has its own layout from now on%. It starts as a copy"), "the second talent group starts as a copy, and chat says so")
+	eq(Spell(lt), 9001, "so nothing moves the first time")
+	eq(ns.Layout.GetRole(1, 2), "cmd:JUMP", "and the jobs are the same")
+	Put(lt, 9003)
+	Put(rt, nil)
+	Put(both, 9004)
+	M.Advance(1.1)
+	ns.Layout.SetRole(1, 2, "action")
+	ns.Layout.SetRole(2, 4, "cmd:TOGGLEAUTORUN")
+
+	Switch(1)
+	eq(Spell(lt), 9001, "back in the first, a slot on the left set holds what it held there")
+	eq(Spell(rt), 9002, "a slot that was emptied in the second is filled again, on another page too")
+	eq(Spell(both), nil, "and one that was filled in the second is empty")
+	eq(ns.Layout.GetRole(1, 2), "cmd:JUMP", "the first talent group's job is back")
+	eq(ns.Layout.GetRole(2, 4), "action", "and the second's is not here")
+
+	Switch(2)
+	eq(Spell(lt), 9003, "the second talent group has its own again")
+	eq(Spell(rt), nil, "its empty slot")
+	eq(Spell(both), 9004, "and its filled one")
+	eq(ns.Layout.GetRole(1, 2), "action", "with its jobs")
+	eq(ns.Layout.GetRole(2, 4), "cmd:TOGGLEAUTORUN", "both of them")
+
+	-- A spell the other talent group does not have cannot be put back there.
+	M.unknownSpells = { [9001] = true }
+	M.printed = {}
+	Switch(1)
+	eq(Spell(lt), nil, "a spell this talent group no longer has leaves its slot empty")
+	eq(Spell(rt), 9002, "the rest is as it was")
+	truthy(Printed("Talent group 1: 1 of its buttons could not be filled again"), "and chat says how many")
+	M.unknownSpells = nil
+
+	-- In a fight nothing can be moved: it waits.
+	M.EnterCombat()
+	Switch(2)
+	eq(Spell(rt), 9002, "a switch in a fight moves nothing yet")
+	M.LeaveCombat()
+	M.Advance(0.6)
+	eq(Spell(lt), 9003, "and is done when the fight ends")
+
+	SlashCmdList.FREECONTROL("specs off")
+	Switch(1)
+	eq(Spell(lt), 9003, "/fc specs off: the bar stays as it is on a switch")
+end)
+
 test("Forever talent groups select independent bar settings and share character bindings", function()
 	local group = 1
 	C_SpecializationInfo = { GetActiveSpecGroup = function() return group end }
@@ -1271,7 +1346,7 @@ test("the Key Bindings screen lists the page and release bindings", function()
 		truthy(_G["BINDING_NAME_" .. name], "with a name to show: " .. name)
 	end
 	table.sort(names)
-	eq(table.concat(names, " | "), "CLICK FreeControlChatToggle:LeftButton | CLICK FreeControlGroupAccept:LeftButton | CLICK FreeControlGroupInvite:LeftButton | CLICK FreeControlGroupInviteOrRequest:LeftButton | CLICK FreeControlGroupLeave:LeftButton | CLICK FreeControlGroupMenu:LeftButton | CLICK FreeControlGroupRequest:LeftButton | CLICK FreeControlLayerRelease:LeftButton | CLICK FreeControlPageNext:LeftButton | CLICK FreeControlPagePrev:LeftButton | CLICK FreeControlPartyFirst:LeftButton | CLICK FreeControlPartyLast:LeftButton | CLICK FreeControlPartyNext:LeftButton | CLICK FreeControlPartyPrev:LeftButton | CLICK FreeControlPhrasesToggle:LeftButton", "page buttons, layer release, the four party buttons and the two for the chat")
+	eq(table.concat(names, " | "), "CLICK FreeControlChatToggle:LeftButton | CLICK FreeControlGroupAccept:LeftButton | CLICK FreeControlGroupInvite:LeftButton | CLICK FreeControlGroupInviteOrRequest:LeftButton | CLICK FreeControlGroupLeave:LeftButton | CLICK FreeControlGroupMenu:LeftButton | CLICK FreeControlGroupRequest:LeftButton | CLICK FreeControlLayerRelease:LeftButton | CLICK FreeControlLootGreed:LeftButton | CLICK FreeControlLootNeed:LeftButton | CLICK FreeControlLootPass:LeftButton | CLICK FreeControlPageNext:LeftButton | CLICK FreeControlPagePrev:LeftButton | CLICK FreeControlPartyFirst:LeftButton | CLICK FreeControlPartyLast:LeftButton | CLICK FreeControlPartyNext:LeftButton | CLICK FreeControlPartyPrev:LeftButton | CLICK FreeControlPhrasesToggle:LeftButton", "page buttons, layer release, the four party buttons and the two for the chat")
 	eq(GetBindingName(ns.Bindings.PAGE_COMMANDS.next), "FreeControl: next page", "named")
 	eq(GetBindingName(ns.Bindings.PAGE_COMMANDS.prev), "FreeControl: previous page", "both of them")
 end)
@@ -1526,6 +1601,7 @@ end)
 
 test("in a fight the mouse button still brings the pointer out and rebinds the clicks", function()
 	Load()
+	SlashCmdList.FREECONTROL("scroll off") -- the triggers stay triggers with the pointer out: this is about the clicks
 	ns.Options.Bind("PADPADDLE1", ns.Bindings.RELEASE_COMMAND)
 	M.EnterCombat()
 	M.Tap("PADDUP")
@@ -1669,7 +1745,7 @@ test("a button made a trigger later stops being a click button, and status says 
 	eq(M.cvars.GamePadCursorLeftClick, "PADRTRIGGER", "so the left click goes back to the game")
 	truthy(Problem("PADLSTICK is a trigger, so it cannot also be the left mouse click"), "and status explains")
 	M.Tap("PAD4")
-	eq(Binding("PADLSTICK"), "click:FreeControlTrigger1", "still the trigger with the pointer out")
+	eq(Binding("PADLSTICK"), "click:FreeControlScroll1", "with the pointer out it is the wheel, as the left trigger is, and still no click button")
 	eq(Binding("PADRSTICK"), "cmd:TURNORACTION", "while the right click works as before")
 end)
 
@@ -3585,7 +3661,7 @@ test("the list of jobs: the pages, the mouse pointer, the game's common commands
 	rows["Paddle 2"]:GetScript("OnClick")(rows["Paddle 2"])
 	local labels = {}
 	for index, item in ipairs(menus.last.items) do labels[index] = item.text end
-	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Return to main layer | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Target party member 1 | Target party member 2 | Target party member 3 | Target party member 4 | Target next party member | Target previous party member | Target first party member | Target last party member | Ping (hold for the wheel) | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Chat keyboard | Quick phrases | Invite target | Ask to join target's group | Invite target, or ask to join | Leave party | Target's menu (inspect, mark, ...) | Accept group invite or request | Something else...", "in this order, with the character's own stances among them")
+	eq(table.concat(labels, " | "), "Nothing | FreeControl: next page | FreeControl: previous page | Return to main layer | Interact (loot, talk, use) | Jump | Cancel / game menu | Target nearest enemy | Target previous enemy | Target nearest friend | Target yourself | Start attacking | Auto-run | Mouse pointer on / off | World map | Bags | Stance or form: Stealth | Target your target's target | Target party member 1 | Target party member 2 | Target party member 3 | Target party member 4 | Target next party member | Target previous party member | Target first party member | Target last party member | Ping (hold for the wheel) | Character | Spellbook | Talents | Quest log | Friends and guild | Dismount | Sit or stand | Chat keyboard | Quick phrases | Invite target | Ask to join target's group | Invite target, or ask to join | Leave party | Target's menu (inspect, mark, ...) | Accept group invite or request | Loot roll: Need | Loot roll: Greed | Loot roll: Pass | Something else...", "in this order, with the character's own stances among them")
 	eq(menus.last.items[#menus.last.items].plain, true, "the last is something to do, not a job to have")
 	Pick(menus.last, "Mouse pointer on / off")
 	eq(M.userBindings.PADPADDLE2, "CLICK FreeControlMouse:LeftButton", "the mouse button can go on any button")
@@ -4940,7 +5016,7 @@ test("every control on the Mouse mode page has a tooltip", function()
 		eq(type(GameTooltip.lines[2]), "string", "control " .. index .. ": an explanation")
 		count = count + 1
 	end
-	eq(count, 6, "the switch, the game's own pointer, the two clicks and the two ends of the speed")
+	eq(count, 7, "the switch, the game's own pointer, the wheel, the two clicks and the two ends of the speed")
 end)
 
 test("a setup saved with mouse mode off has no mouse button, is told nothing about one, and keeps what it had", function()
@@ -5671,6 +5747,43 @@ test("every control on the Combinations page has a tooltip, with and without com
 	eq(#M.luaErrors, 0, "hovering raises nothing")
 end)
 
+test("the other buttons and the combinations are the account's: every character has the same", function()
+	FreeControlKeysDB = nil
+	M.userBindings = { PADLSTICK = "TOGGLEAUTORUN" }
+	Load()
+	eq(FreeControlKeysDB.jobs.PADLSTICK, "TOGGLEAUTORUN", "the first character played is what the account starts from")
+	ns.Options.Bind("PADRSHOULDER", "CLICK FreeControlPageNext:LeftButton")
+	ns.Options.Bind("CTRL-PADDRIGHT", "CLICK FreeControlPageNext:LeftButton")
+	ns.Options.SetHold("Alt", "PADPADDLE1")
+	eq(FreeControlKeysDB.jobs.PADRSHOULDER, "CLICK FreeControlPageNext:LeftButton", "a job given on the Other buttons page is the account's at once")
+	eq(FreeControlKeysDB.jobs["CTRL-PADDRIGHT"], "CLICK FreeControlPageNext:LeftButton", "a combination's too")
+	eq(FreeControlKeysDB.standIns.Alt, "PADPADDLE1", "and the buttons to hold")
+	M.userBindings.PADBACK = "TOGGLEWORLDMAP" -- given in the game's Key Bindings screen
+	M.Fire("PLAYER_LOGOUT")
+	eq(FreeControlKeysDB.jobs.PADBACK, "TOGGLEWORLDMAP", "one given in the game's own screen is written down on the way out")
+
+	-- A second character, with keys of its own from before.
+	local account = FreeControlKeysDB
+	M.playerName, M.class = "Second", "MAGE"
+	M.userBindings = { PADRSHOULDER = "TARGETNEARESTENEMY", PADRSTICK = "JUMP" }
+	M.savedBindings = {}
+	ns.Options.keysApplied = false -- a login starts the addon afresh
+	OtherCharacter({})
+	M.Fire("PLAYER_ENTERING_WORLD")
+	eq(FreeControlKeysDB, account, "the account's are not replaced by a character that comes later")
+	eq(M.userBindings.PADRSHOULDER, "CLICK FreeControlPageNext:LeftButton", "it has the account's job on a button")
+	eq(M.userBindings["CTRL-PADDRIGHT"], "CLICK FreeControlPageNext:LeftButton", "the account's combinations")
+	eq(M.userBindings.PADLSTICK, "TOGGLEAUTORUN", "every other button's job")
+	eq(M.userBindings.PADRSTICK, nil, "and none the account does not have")
+	eq(ns.db.standIns.Alt, "PADPADDLE1", "the same buttons to hold")
+	eq(M.cvars.GamePadEmulateAlt, "PADPADDLE1", "in force at once")
+	eq(M.savedBindings[#M.savedBindings], 2, "saved with this character's bindings")
+
+	ns.Options.Bind("PADLSTICK", "")
+	eq(FreeControlKeysDB.jobs.PADLSTICK, nil, "a job taken away on one character is taken away for the account")
+	M.playerName = nil
+end)
+
 test("a button held as Shift makes combinations as well", function()
 	local menus = UseMenus()
 	Load()
@@ -5870,6 +5983,32 @@ test("the stance menu has a tick for each of the four layouts, which starts from
 	eq(button:GetText(), "Nothing", "with all four unticked nothing changes")
 	eq(#ns.Layout.GetStanceGroups(), 0, "no trigger layout")
 	eq(next(ns.Layout.GetMainFormSlots()), nil, "and not Main")
+end)
+
+test("a Paladin's auras are on the stance bar and are no stances: nothing changes with them", function()
+	local auras = { { "Devotion Aura", 465, 0 }, { "Retribution Aura", 7294, 0 }, { "Concentration Aura", 19746, 0 } }
+	local picked = { stanceSet = "custom", stanceMain = true, stanceLT = true, stanceRT = true }
+	M.class, M.forms = "PALADIN", auras
+	M.lastGamepadSlot = 360
+	Load(nil, picked)
+	eq(ns.Layout.HasStances(), false, "the class has none")
+	eq(next(ns.Layout.GetMainFormSlots()), nil, "Main has no layout for an aura, ticked or not")
+	eq(#ns.Layout.GetStanceGroups(), 0, "and no trigger layout changes")
+	eq(ns.Layout.DescribeStance(), "nothing", "which is what the settings say")
+	local header = ns.Bindings.header
+	local before = ns.Buttons:GetSlot(0, 5)
+	for index = 1, #auras do
+		M.Shapeshift(index)
+		eq(header:GetAttribute("fc-active-main-form"), nil, "aura " .. index .. " brings up no layout of its own")
+		eq(ns.Buttons:GetSlot(0, 5), before, "and Main shows the same slots")
+	end
+	eq(ns.Layout.GetFormInfo(1), "Devotion Aura", "an aura can still be given a button of its own")
+
+	for class, has in pairs({ WARRIOR = true, DRUID = true, ROGUE = true,
+		PRIEST = false, PALADIN = false, HUNTER = false, SHAMAN = false, MAGE = false, WARLOCK = false }) do
+		M.class = class
+		eq(ns.Layout.HasStances(), has, class)
+	end
 end)
 
 test("a saved pick of three trigger sets is cut back to two", function()
@@ -6817,4 +6956,128 @@ test("every page has thirty-two slots of its own: eight for Main and eight for e
 		end
 	end
 	eq(count, 96, "three pages of thirty-two")
+end)
+test("Need, Greed and Pass answer the items being rolled for, one at a press", function()
+	Load()
+	ns.Layout.SetRole(0, 1, "cmd:FREECONTROL_ROLLNEED")
+	ns.Layout.SetRole(0, 2, "cmd:FREECONTROL_ROLLGREED")
+	ns.Layout.SetRole(0, 3, "cmd:FREECONTROL_ROLLPASS")
+	ns.RequestRefresh()
+	eq(Binding("PADDLEFT"), "click:FreeControlLootNeed", "Need on a button of the bar")
+	local function Made()
+		local out = {}
+		for index, made in ipairs(M.rollsMade) do out[index] = made.id .. ":" .. made.kind end
+		return table.concat(out, " ")
+	end
+	M.Tap("PADDLEFT")
+	eq(Made(), "", "with nothing being rolled for there is nothing to answer")
+	truthy(Printed("No item is being rolled for"), "and it says so")
+
+	M.rolls = { { id = 11, name = "Sword" }, { id = 12, name = "Ring" }, { id = 13, name = "Cloth", canNeed = false } }
+	M.Tap("PADDLEFT")
+	eq(Made(), "11:1", "Need: the first item, once for a press and its release")
+	truthy(Printed("Need: %[Sword%]"), "named in chat, so it is clear which item that was")
+	M.Tap("PADDUP")
+	eq(Made(), "11:1 12:2", "Greed: the next one, not the one already answered")
+	M.Tap("PADDLEFT")
+	eq(Made(), "11:1 12:2", "an item that cannot be needed is not")
+	truthy(Printed("You cannot roll Need on %[Cloth%]"), "and it says why nothing happened")
+	M.EnterCombat()
+	M.Tap("PADDRIGHT")
+	eq(Made(), "11:1 12:2 13:0", "Pass, in a fight too")
+	M.LeaveCombat()
+	M.Tap("PADDRIGHT")
+	eq(Made(), "11:1 12:2 13:0", "every item answered: nothing more to do")
+
+	ns.Options.Bind("PADPADDLE1", ns.Bindings.LOOT_COMMANDS.FREECONTROL_ROLLPASS)
+	eq(M.userBindings.PADPADDLE1, "CLICK FreeControlLootPass:LeftButton", "the jobs go on any other button too")
+	for _, job in ipairs(ns.Layout.LOOT_JOBS) do
+		truthy(FileExists("FreeControl/Art/" .. job[3] .. ".tga"), "a picture for " .. job[2])
+	end
+end)
+
+test("an item that binds when picked up is confirmed by pressing the same roll again", function()
+	Load()
+	ns.Layout.SetRole(0, 1, "cmd:FREECONTROL_ROLLNEED")
+	ns.Layout.SetRole(0, 2, "cmd:FREECONTROL_ROLLGREED")
+	ns.Layout.SetRole(0, 3, "cmd:FREECONTROL_ROLLPASS")
+	ns.RequestRefresh()
+	M.rolls = { { id = 21, name = "Helm", bop = true }, { id = 22, name = "Boots", bop = true }, { id = 23, name = "Gem" } }
+	M.Tap("PADDLEFT")
+	truthy(M.popups.CONFIRM_LOOT_ROLL, "Need on it: the game asks first")
+	eq(#M.popupAnswers, 0, "and nothing is confirmed by one press")
+	M.Tap("PADDLEFT")
+	eq(#M.popupAnswers, 1, "Need again says yes to that question")
+	eq(M.popupAnswers[1].which, "CONFIRM_LOOT_ROLL", "that one")
+	eq(#M.rollsMade, 1, "without answering another item")
+
+	M.Tap("PADDLEFT")
+	eq(M.rollsMade[2].id, 22, "the next item: Need")
+	truthy(M.popups.CONFIRM_LOOT_ROLL, "asked again")
+	M.Tap("PADDRIGHT")
+	eq(M.popups.CONFIRM_LOOT_ROLL, nil, "Pass instead takes the question back")
+	eq(M.rollsMade[3].id .. ":" .. M.rollsMade[3].kind, "22:0", "and passes on that same item")
+	eq(#M.popupAnswers, 1, "nothing more was confirmed")
+	truthy(Printed("Pass instead: %[Boots%]"), "and chat says so")
+	M.Tap("PADDUP")
+	eq(M.rollsMade[4].id .. ":" .. M.rollsMade[4].kind, "23:2", "the third item: Greed, with no question")
+end)
+test("while the mouse pointer is out the triggers are the mouse wheel, and triggers again when it is put away", function()
+	Load()
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "a trigger is a trigger")
+	M.Tap("PAD4")
+	M.Advance(0.02)
+	eq(M.PointerVisible(), true, "Y brings the pointer out")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlScroll1", "the left trigger is the wheel turned up")
+	eq(Binding("PADRTRIGGER"), "click:FreeControlScroll2", "the right one the wheel turned down")
+
+	-- Over a window that listens to the wheel: its own handler is run, as the wheel would run it.
+	local map = CreateFrame("Frame", "TestMap", UIParent)
+	local canvas = CreateFrame("Frame", nil, map)
+	local turned = {}
+	map:SetScript("OnMouseWheel", function(_, delta) turned[#turned + 1] = delta end)
+	M.mouseOver = canvas
+	M.Tap("PADLTRIGGER")
+	eq(table.concat(turned, " "), "1", "LT over the map: one notch up, to the window the pointer is in")
+	M.Tap("PADRTRIGGER")
+	eq(table.concat(turned, " "), "1 -1", "RT: one notch down")
+	M.KeyDown("PADLTRIGGER")
+	M.Advance(0.4)
+	M.Advance(0.1)
+	eq(#turned, 5, "held, it goes on turning")
+	M.KeyUp("PADLTRIGGER")
+	M.Advance(0.4)
+	eq(#turned, 5, "and stops when it is let go")
+	eq(ns.Bindings:GetActiveSet(), 0, "no layer was picked by any of that")
+	eq(M.zoomed, 0, "and the camera stayed where it was")
+
+	-- Over the world: the camera, which is what the wheel does there.
+	M.mouseOver = nil
+	M.Tap("PADLTRIGGER")
+	eq(M.zoomed, 1, "LT over the world zooms in")
+	Taps("PADRTRIGGER", "PADRTRIGGER")
+	eq(M.zoomed, -1, "RT zooms out")
+
+	M.Tap("PAD4")
+	M.Advance(0.02)
+	eq(M.PointerVisible(), false, "the pointer put away")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "the triggers are triggers again")
+	M.Tap("PADRTRIGGER")
+	eq(ns.Bindings:GetActiveSet(), 2, "and pick their layer")
+	M.Tap("PADRTRIGGER")
+
+	-- In a fight the bindings follow the pointer too: the mouse button changes them itself.
+	M.EnterCombat()
+	M.Tap("PAD4")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlScroll1", "out in a fight: the wheel")
+	M.Tap("PADLTRIGGER")
+	eq(M.zoomed, 0, "which turns")
+	M.Tap("PAD4")
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "away in a fight: a trigger")
+	M.LeaveCombat()
+
+	SlashCmdList.FREECONTROL("scroll off")
+	M.Tap("PAD4")
+	M.Advance(0.02)
+	eq(Binding("PADLTRIGGER"), "click:FreeControlTrigger1", "/fc scroll off: the triggers stay triggers with the pointer out")
 end)

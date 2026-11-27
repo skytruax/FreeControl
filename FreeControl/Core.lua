@@ -65,6 +65,8 @@ local DEFAULTS = {
 	mouseMode = true,      -- a button on the bar brings the mouse pointer out; off, that button is an action slot
 	mouseIndex = 6,        -- the no-trigger button that was the mouse button when mouse mode was switched off
 	gamePointer = true,    -- the game may bring its own mouse pointer out (a window opens, a spell is aimed); off, it is told not to
+	specLayouts = true,    -- each talent group has its own jobs and its own slots (Specs.lua)
+	mouseScroll = true,    -- while the pointer is out the two triggers are the mouse wheel, up and down (Mouse.lua)
 	clickLeft = "PADLSTICK",
 	clickRight = "PADRSTICK",
 	cursorSpeed = 1,       -- how fast the stick moves the mouse cursor, as a multiple of the player's own setting
@@ -233,7 +235,7 @@ local function Sanitize(db)
 	end
 	if type(db.mouseStep) ~= "number" then Reset("mouseStep") end
 	if db.mouseNews ~= nil and not IsRole(db.mouseNews) then db.mouseNews = nil end
-	for _, key in ipairs({ "mouseMode", "gamePointer", "frontTargeting", "toggleLayers" }) do
+	for _, key in ipairs({ "mouseMode", "gamePointer", "frontTargeting", "toggleLayers", "mouseScroll", "specLayouts" }) do
 		if type(db[key]) ~= "boolean" then Reset(key) end
 	end
 	for modifier, button in pairs(db.standIns) do
@@ -465,6 +467,34 @@ function ns.GetSettingStore(key)
 	return BAR_SETTINGS[key] and ns.GetBarProfile() or ns.db
 end
 
+-- Which button is a slot and which has a job is kept apart for each talent group as well: these
+-- tables of ns.db are the active group's own, kept under db.specLayouts[group] and put in their
+-- places in ns.db when the group becomes active, so that everything that reads ns.db.pageRoles
+-- reads the active group's. The first group seen takes the tables as they are; one that comes
+-- after it starts with a copy.
+local LAYOUT_TABLES = { "roles", "layerRoles", "pageRoles", "mainFormRoles" }
+
+local function SelectSpecLayout(db, group)
+	if not db.specLayouts then
+		return
+	end
+	if type(db.specJobs) ~= "table" then db.specJobs = {} end
+	local layout = db.specJobs[group]
+	if type(layout) ~= "table" then
+		local copy = next(db.specJobs) ~= nil
+		layout = {}
+		for _, key in ipairs(LAYOUT_TABLES) do
+			layout[key] = copy and CopyTable(db[key]) or db[key]
+		end
+		db.specJobs[group] = layout
+	end
+	for _, key in ipairs(LAYOUT_TABLES) do
+		if type(layout[key]) ~= "table" then layout[key] = CopyTable(db[key]) end
+		db[key] = layout[key]
+	end
+	Sanitize(db)
+end
+
 -- Forever's primary and secondary talent groups can have the same class specialization.
 local function SelectBarProfile()
 	local getGroup = C_SpecializationInfo and C_SpecializationInfo.GetActiveSpecGroup
@@ -481,7 +511,12 @@ local function SelectBarProfile()
 		db.barProfiles[group] = profile
 	end
 	SanitizeBarSettings(profile)
+	local first = ns.activeSpecGroup == nil
 	ns.activeSpecGroup, ns.barProfile = group, profile
+	SelectSpecLayout(db, group)
+	if ns.Specs then
+		ns.Specs:OnGroupChanged(first)
+	end
 	return true
 end
 

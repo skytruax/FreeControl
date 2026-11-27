@@ -664,6 +664,11 @@ local TEMPLATES = {
 	end,
 	CooldownFrameTemplate = noop,
 	UIPanelButtonTemplate = noop,
+	-- A tooltip of the addon's own. What it was asked to show is kept for the scenarios.
+	GameTooltipTemplate = function(f)
+		f.__shown = false
+		function f:SetOwner(owner, anchor) self.owner, self.anchor = owner, anchor end
+	end,
 	UICheckButtonTemplate = function(f) f.Text = NewRegion("FontString") end,
 }
 
@@ -1257,6 +1262,17 @@ M.SetCursor = setCursor
 function PickupAction(slot)
 	if M.combat and insecure() then error("BLOCKED: PickupAction in combat", 2) end
 	M.picked[#M.picked + 1] = slot
+	-- The real client takes the action out of the slot. Most scenarios only ask what was picked
+	-- up, so that part is modelled where a scenario asks for it (M.pickupRemoves).
+	if M.pickupRemoves and M.actions[slot] then
+		M.actions[slot] = nil
+		setCursor("action")
+		local depth = M.secure
+		M.secure = 0
+		M.Fire("ACTIONBAR_SLOT_CHANGED", slot)
+		M.secure = depth
+		return
+	end
 	setCursor("action")
 end
 -- Dropping a spell on a slot puts it there and leaves what was in the slot on the cursor.
@@ -1323,6 +1339,13 @@ function M.Learn(spell, name)
 end
 
 C_Spell = C_Spell or {}
+-- Picks a spell up by its number: nothing for one the character does not have right now
+-- (M.unknownSpells, for a spell of the other talent group).
+function C_Spell.PickupSpell(spell)
+	if M.combat and insecure() then error("BLOCKED: PickupSpell in combat", 2) end
+	if M.unknownSpells and M.unknownSpells[spell] then return end
+	setCursor({ kind = "spell", spell = spell })
+end
 function C_Spell.GetSpellName(spell)
 	for _, item in ipairs(M.book) do
 		if item.spell == spell then return item.name end
@@ -1365,7 +1388,8 @@ M.FORMS = {
 	},
 	WARRIOR = { { "Battle Stance", 2457, 1 }, { "Defensive Stance", 71, 2 }, { "Berserker Stance", 2458, 3 } },
 	ROGUE = { { "Stealth", 1784, 1 } },
-	PRIEST = { { "Shadowform", 15473, 1 } },
+	PRIEST = { { "Shadowform", 15473, 0 } }, -- in Forever it turns no bar
+	PALADIN = { { "Devotion Aura", 465, 0 }, { "Retribution Aura", 7294, 0 } },
 }
 local function forms() return M.forms or M.FORMS[M.class] or {} end
 M.GetForms = forms
@@ -1593,7 +1617,8 @@ function IsInGroup() return M.inGroup or M.inRaid end
 function IsInRaid() return M.inRaid end
 function IsInGuild() return M.inGuild end
 function GetNumGroupMembers() return 0 end
-function UnitName(unit) return unit == "player" and "Tester" or nil end
+function UnitName(unit) return unit == "player" and (M.playerName or "Tester") or nil end
+function GetRealmName() return "Testrealm" end
 function GetChannelName(id)
 	local name = M.channels[tonumber(id) or 0]
 	if name then return tonumber(id), name end
@@ -1707,3 +1732,38 @@ function StaticPopup_OnClick(dialog, index)
 end
 -- The game asks: an invitation ("PARTY_INVITE"), someone asking to join ("GROUP_INVITE_CONFIRMATION").
 function M.Ask(which) M.popups[which] = { which = which } end
+-- Items the group is rolling for: M.rolls is the list still going, each { id =, name =, bop =,
+-- canNeed =, canGreed = }; M.rollsMade is what was answered: { id, kind } (0 pass, 1 need,
+-- 2 greed). An item that binds when picked up is not rolled for at once: the game asks first.
+M.rolls = {}
+M.rollsMade = {}
+local function findRoll(id)
+	for _, roll in ipairs(M.rolls) do
+		if roll.id == id then return roll end
+	end
+	error("no such loot roll: " .. tostring(id), 3)
+end
+function GetActiveLootRollIDs()
+	local ids = {}
+	for index, roll in ipairs(M.rolls) do ids[index] = roll.id end
+	return ids
+end
+function GetLootRollItemInfo(id)
+	local roll = findRoll(id)
+	return "icon", roll.name, 1, 3, roll.bop or false, roll.canNeed ~= false, roll.canGreed ~= false, false
+end
+function GetLootRollItemLink(id) return "[" .. findRoll(id).name .. "]" end
+function RollOnLoot(id, kind)
+	local roll = findRoll(id)
+	M.rollsMade[#M.rollsMade + 1] = { id = id, kind = kind }
+	if roll.bop and kind ~= 0 then M.Ask("CONFIRM_LOOT_ROLL") end
+end
+function StaticPopup_Hide(which) M.popups[which] = nil end
+-- What the mouse pointer is on (M.mouseOver, a frame or nil for the world), as the client tells
+-- an addon that asks; whether a frame has a handler of a kind; and the camera's zoom, which is
+-- what the wheel turns over the world: M.zoomed counts the notches in (+) and out (-).
+function GetMouseFoci() return { M.mouseOver } end
+function Frame:HasScript(name) return name == "OnMouseWheel" or self.__scripts[name] ~= nil end
+M.zoomed = 0
+function CameraZoomIn(amount) M.zoomed = M.zoomed + amount end
+function CameraZoomOut(amount) M.zoomed = M.zoomed - amount end

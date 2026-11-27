@@ -23,4 +23,8 @@
 	<Binding name="CLICK FreeControlGroupLeave:LeftButton" category="FreeControl"/>
 	<Binding name="CLICK FreeControlGroupMenu:LeftButton" category="FreeControl"/>
 	<Binding name="CLICK FreeControlGroupAccept:LeftButton" category="FreeControl"/>
+	<!-- An item the group is rolling for: Need, Greed and Pass (Layout.LOOT_JOBS). -->
+	<Binding name="CLICK FreeControlLootNeed:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlLootGreed:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlLootPass:LeftButton" category="FreeControl"/>
 </Bindings>

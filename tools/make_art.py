@@ -691,6 +691,26 @@ def draw_accept(d):
     line(d, [(37, 27), (43.5, 34), (55, 18)], 5, W)
 
 
+def draw_need(d):
+    # A die showing five: rolling because you need it.
+    d.rounded_rectangle(s(13, 13, 51, 51), radius=8 * SS, fill=W)
+    for x, y in ((22, 22), (42, 22), (32, 32), (22, 42), (42, 42)):
+        d.ellipse(s(x - 3.6, y - 3.6, x + 3.6, y + 3.6), fill=(150, 46, 40, 255))
+
+
+def draw_greed(d):
+    # A coin: rolling for what it is worth.
+    d.ellipse(s(12, 12, 52, 52), fill=W)
+    d.ellipse(s(18.5, 18.5, 45.5, 45.5), outline=(150, 108, 24, 255), width=int(3.4 * SS))
+    line(d, [(32, 25.5), (32, 38.5)], 4.2, (150, 108, 24, 255))
+
+
+def draw_pass(d):
+    # A ring struck through: not for me.
+    d.ellipse(s(13, 13, 51, 51), outline=W, width=int(5.4 * SS))
+    line(d, [(19.5, 44.5), (44.5, 19.5)], 5.4, W)
+
+
 def draw_menu(d):
     # A menu: three entries, each with its mark.
     for y in (20, 32, 44):
@@ -733,6 +753,9 @@ ROLES = {
     "Leave": ((222, 96, 84), draw_leave),
     "Menu": ((156, 132, 214), draw_menu),
     "Accept": ((120, 200, 84), draw_accept),
+    "Need": ((214, 78, 66), draw_need),
+    "Greed": ((226, 176, 56), draw_greed),
+    "Pass": ((128, 136, 150), draw_pass),
     # The rest of the jobs in the menus have no symbol of their own: the plain one, in a colour
     # of their own.
     "Release": ((96, 200, 204), draw_generic),

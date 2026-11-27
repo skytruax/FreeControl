@@ -7,7 +7,7 @@
 ## X-Website: https://github.com/skytruax/FreeControl
 ## X-Curse-Project-ID: 1800965
 ## IconTexture: Interface\AddOns\FreeControl\Art\Logo
-## SavedVariables: FreeControlDB, FreeControlChatDB
+## SavedVariables: FreeControlDB, FreeControlChatDB, FreeControlKeysDB
 ## SavedVariablesPerCharacter: FreeControlCharacterDB
 
 Core.lua
@@ -19,6 +19,7 @@ Bars.lua
 Bindings.lua
 Mouse.lua
 Ranks.lua
+Specs.lua
 Chat/Core.lua
 Chat/Locale.lua
 Chat/Dict_frFR.lua

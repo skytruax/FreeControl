@@ -217,6 +217,17 @@ Layout.GROUP_JOBS = {
 	{ "FREECONTROL_ACCEPTGROUP", "Accept group invite or request", "Role-Accept", "Accept" },
 }
 
+-- Three for an item the group is rolling for: Need, Greed and Pass. Not game commands either:
+-- Bindings.lua makes an ordinary button for each, which answers the roll the way a click on the
+-- roll's own button does (Bindings:RollOnLoot):
+-- { the name a role is saved under, label, art file, the button's name after "FreeControlLoot",
+--   the kind of roll as the game numbers it }.
+Layout.LOOT_JOBS = {
+	{ "FREECONTROL_ROLLNEED", "Loot roll: Need", "Role-Need", "Need", 1 },
+	{ "FREECONTROL_ROLLGREED", "Loot roll: Greed", "Role-Greed", "Greed", 2 },
+	{ "FREECONTROL_ROLLPASS", "Loot roll: Pass", "Role-Pass", "Pass", 0 },
+}
+
 Layout.MORE_JOBS = {
 	{ "ASSISTTARGET", "Target your target's target", "Role-Assist" },
 	{ "TARGETPARTYMEMBER1", "Target party member 1", "Role-Party1" },
@@ -237,6 +248,7 @@ Layout.MORE_JOBS = {
 	Layout.CHAT_JOBS[1], Layout.CHAT_JOBS[2],
 	Layout.GROUP_JOBS[1], Layout.GROUP_JOBS[2], Layout.GROUP_JOBS[3], Layout.GROUP_JOBS[4], Layout.GROUP_JOBS[5],
 	Layout.GROUP_JOBS[6],
+	Layout.LOOT_JOBS[1], Layout.LOOT_JOBS[2], Layout.LOOT_JOBS[3],
 }
 
 ---------------------------------------------------------------------------
@@ -426,6 +438,24 @@ function Layout.SetRole(set, index, value)
 	db.pageRoles[page][set][index] = value ~= base and value or nil
 end
 
+-- The classes whose stances or forms change what they can cast, so that a stance is worth
+-- buttons of its own: the ones the game itself turns the action bar for.
+--   Warrior  Battle, Defensive and Berserker Stance: most abilities need one of them
+--   Druid    Bear, Cat and the other forms: no caster spell can be used in one
+--   Rogue    Stealth: the openers work from it alone
+-- The game's stance bar holds more than that. A Paladin's auras are on it, and on some clients
+-- a Hunter's aspects and a Shaman's Ghost Wolf: they are buffs, every spell stays as it was, and
+-- the game turns no bar for them. A Priest's Shadowform is left out as well: in Forever it turns
+-- no bar, and the Priest goes on casting the same Shadow spells, without the healing ones. Those get no layout of their own; a Mage and a Warlock have
+-- nothing on the stance bar at all. Every class can still give a button to an entry on the
+-- stance bar ("A button of its own for a stance or form", below).
+local STANCE_CLASSES = { WARRIOR = true, DRUID = true, ROGUE = true }
+
+function Layout.HasStances()
+	local _, class = UnitClass("player")
+	return STANCE_CLASSES[class] or false
+end
+
 function Layout.GetFormSpell(index)
 	local _, _, _, spell = GetShapeshiftFormInfo(index)
 	if not ns.IsSealed(spell) and type(spell) == "number" then return spell end
@@ -595,7 +625,8 @@ function Layout.GetMainFormSlots(choice)
 	local slots = {}
 	local profile = ns.GetBarProfile()
 	choice = choice or profile.stanceSet
-	if choice == "none" or (choice == "custom" and not profile.stanceMain) or not gamepad.stanceValid then
+	if choice == "none" or (choice == "custom" and not profile.stanceMain) or not gamepad.stanceValid
+		or not Layout.HasStances() then
 		return slots
 	end
 	local first = gamepad.first + PAGE_SLOTS * NUM_PAGES + NUM_STANCE_BARS * 8
@@ -854,7 +885,9 @@ function Layout.GetStanceGroups(choice)
 	choice = choice or ns.GetBarProfile().stanceSet
 	-- With the regular action bars as the slots nothing changes unless the player asks for it:
 	-- those bars have never followed the stance, and a Warrior is always in one.
-	if choice == "none" or (choice == "auto" and source ~= "gamepad") then
+	-- And nothing changes for a class that has no stances: what a Paladin has on the stance bar
+	-- are auras.
+	if choice == "none" or (choice == "auto" and source ~= "gamepad") or not Layout.HasStances() then
 		return groups
 	end
 	-- Where the trigger sets keep their actions. Without the controller's stance bars (the regular
@@ -922,6 +955,28 @@ end
 -- Slot shown by button `index` of a group while stance number `stance` is active.
 function Layout.GetStanceSlot(group, stance, index)
 	return Layout.GetStanceFirst(group.store, stance) + group.offset + index - 1
+end
+
+-- Every slot the bar keeps an action in, whatever the page, the stance or the form: the ones a
+-- talent group has a copy of its own of (Specs.lua). The controller's slots, the blocks Main has
+-- for each form, and the regular action bar's stance slots, which a trigger set can be kept in.
+function Layout.GetSpecSlots()
+	local slots = Layout.GetGamepadSlots()
+	if #slots == 0 then
+		return slots
+	end
+	if gamepad.stanceValid then
+		local first = gamepad.first + PAGE_SLOTS * NUM_PAGES + NUM_STANCE_BARS * 8
+		for slot = first, first + MAIN_FORM_BLOCKS * 8 - 1 do
+			if C_GamepadUI.IsValidGamepadActionStorageSlotIndex(slot) then
+				slots[#slots + 1] = slot
+			end
+		end
+	end
+	for slot = BAR_STANCE_FIRST, BAR_STANCE_FIRST + NUM_STANCE_BARS * BAR_STANCE_SLOTS - 1 do
+		slots[#slots + 1] = slot
+	end
+	return slots
 end
 
 -- Macro conditions for the secure header's stance state (Bindings.lua): the number of the stance
@@ -1014,7 +1069,7 @@ end
 -- The same with the page they change on, where there is more than one page:
 -- "RT set, LT set and the D-pad, on page 1". "nothing" for none.
 function Layout.DescribeStance()
-	local main = Layout.IsCustomStance() and ns.GetBarProfile().stanceMain and gamepad.stanceValid
+	local main = Layout.IsCustomStance() and ns.GetBarProfile().stanceMain and gamepad.stanceValid and Layout.HasStances()
 	local described = Layout.DescribeStanceGroups(Layout.GetStanceGroups(), main)
 	if not described then
 		return "nothing"

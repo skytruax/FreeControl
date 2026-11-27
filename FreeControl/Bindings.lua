@@ -54,6 +54,16 @@ local APPLY = [=[
 		end
 
 		local mouse = self:GetAttribute("fc-mouse")
+		-- While the pointer is out the two triggers are the mouse wheel, up and down (fc-scroll says
+		-- the player wants that; Mouse.lua). Put away, they are triggers again.
+		if self:GetAttribute("fc-scroll") then
+			for side = 1, 2 do
+				local key = self:GetAttribute(side == 1 and "fc-left-key" or "fc-right-key")
+				if key then
+					self:SetBindingClick(true, key, (mouse and "FreeControlScroll" or "FreeControlTrigger") .. side, "LeftButton")
+				end
+			end
+		end
 		for side = 1, 2 do
 			local key = self:GetAttribute("fc-click-" .. side)
 			if key then
@@ -396,12 +406,128 @@ function Bindings:AcceptGroup()
 	return false
 end
 
+-- Need, Greed and Pass (Layout.LOOT_JOBS) as bindings: [the role's name] = the click.
+Bindings.LOOT_COMMANDS = {}
+local IS_LOOT_COMMAND = {}
+for _, job in ipairs(Layout.LOOT_JOBS) do
+	local command = ("CLICK FreeControlLoot%s:LeftButton"):format(job[4])
+	Bindings.LOOT_COMMANDS[job[1]] = command
+	IS_LOOT_COMMAND[command] = true
+	_G["BINDING_NAME_" .. command] = "FreeControl: " .. job[2]:lower()
+end
+
+-- Answers a roll for loot: `kind` is 1 for Need, 2 for Greed, 0 for Pass, as the game numbers
+-- them. With several items being rolled for it answers them one at a press, in the order the
+-- game lists them, and says in chat which item each answer was for.
+--
+-- An item that binds when picked up is not rolled for at once: the game asks first, in a dialog
+-- (CONFIRM_LOOT_ROLL). That dialog is worked with a pointer, so the same job pressed again is
+-- its Accept; another of the three pressed instead takes the question back and gives that
+-- answer. Nothing is confirmed that the player did not press for twice.
+local ROLL_NAMES = { [0] = "Pass", [1] = "Need", [2] = "Greed" }
+local rolled = {}  -- [roll] = true for the rolls answered here that are still going
+local asked        -- the roll the game may be asking about: { id =, kind = }
+
+-- What the game calls the item, for the chat line. In a fight it may not say.
+local function RollItem(roll)
+	local link = GetLootRollItemLink and GetLootRollItemLink(roll)
+	if link and not ns.IsSealed(link) then
+		return link
+	end
+	return "the item"
+end
+
+-- The game's own windows for the rolls, by roll, for the ones on screen: nil when none is found
+-- (another interface's windows, or none up yet).
+local function RollWindows()
+	local found
+	for index = 1, NUM_GROUP_LOOT_FRAMES or 4 do
+		local frame = _G["GroupLootFrame" .. index]
+		local roll = frame and frame:IsShown() and frame.rollID
+		if roll and not ns.IsSealed(roll) then
+			found = found or {}
+			found[roll] = frame
+		end
+	end
+	return found
+end
+
+-- The roll the next press answers, and the game's window for it where there is one: the first
+-- still going that was not answered here. The game takes a roll's window away once it has been
+-- answered, by a click as well, so where its windows can be seen a roll without one is passed
+-- over. The rolls that have ended are forgotten.
+function Bindings:NextRoll()
+	if not GetActiveLootRollIDs then
+		return nil
+	end
+	local windows = RollWindows()
+	local going, roll = {}, nil
+	for _, id in ipairs(GetActiveLootRollIDs() or {}) do
+		going[id] = true
+		if not roll and not rolled[id] and (not windows or windows[id]) then
+			roll = id
+		end
+	end
+	for id in pairs(rolled) do
+		if not going[id] then rolled[id] = nil end
+	end
+	return roll, windows and roll and windows[roll] or nil
+end
+
+-- The roll the game is asking about right now (its question is on screen), or nil.
+function Bindings:AskedRoll()
+	if asked and StaticPopup_FindVisible and StaticPopup_FindVisible("CONFIRM_LOOT_ROLL") then
+		return asked.id
+	end
+	return nil
+end
+
+function Bindings:RollOnLoot(kind)
+	if not (GetActiveLootRollIDs and GetLootRollItemInfo and RollOnLoot) then
+		return false
+	end
+	local dialog = StaticPopup_FindVisible and StaticPopup_FindVisible("CONFIRM_LOOT_ROLL")
+	if dialog and asked then
+		if asked.kind == kind then
+			StaticPopup_OnClick(dialog, 1)
+			asked = nil
+		else
+			StaticPopup_Hide("CONFIRM_LOOT_ROLL")
+			asked.kind = kind
+			RollOnLoot(asked.id, kind)
+			ns.Print(("%s instead: %s"):format(ROLL_NAMES[kind], RollItem(asked.id)))
+		end
+		return true
+	end
+	local roll = self:NextRoll()
+	if not roll then
+		ns.Print("No item is being rolled for.")
+		return false
+	end
+	-- Need and Greed are not open to everyone for every item. What the game seals in a fight is
+	-- taken as allowed: it refuses the roll itself if it is not.
+	local _, _, _, _, _, canNeed, canGreed = GetLootRollItemInfo(roll)
+	local can = kind == 0 or (kind == 1 and canNeed) or (kind == 2 and canGreed)
+	if kind ~= 0 and ns.IsSealed(kind == 1 and canNeed or canGreed) then
+		can = true
+	end
+	if not can then
+		ns.Print(("You cannot roll %s on %s."):format(ROLL_NAMES[kind], RollItem(roll)))
+		return false
+	end
+	RollOnLoot(roll, kind)
+	rolled[roll] = true
+	asked = { id = roll, kind = kind }
+	ns.Print(("%s: %s"):format(ROLL_NAMES[kind], RollItem(roll)))
+	return true
+end
+
 -- True for a command that clicks one of FreeControl's own buttons.
 function Bindings:IsOwnCommand(command)
 	return command == self.PAGE_COMMANDS.next or command == self.PAGE_COMMANDS.prev
 		or command == self.MOUSE_COMMAND or command == self.RELEASE_COMMAND
 		or IS_PARTY_COMMAND[command] == true or IS_CHAT_COMMAND[command] == true
-		or IS_GROUP_COMMAND[command] == true
+		or IS_GROUP_COMMAND[command] == true or IS_LOOT_COMMAND[command] == true
 end
 
 -- Out of combat. Needs the set frames and the buttons to exist.
@@ -519,6 +645,31 @@ function Bindings:Create()
 		end
 		self.groupButtons[job[1]] = button
 	end
+	-- The mouse wheel, up (1) and down (2): what the triggers click while the pointer is out. The
+	-- press turns the wheel one notch and, held, goes on turning it (Mouse:StartScroll).
+	for side = 1, 2 do
+		local scroll = CreateFrame("Button", "FreeControlScroll" .. side, header)
+		scroll:RegisterForClicks("AnyDown", "AnyUp")
+		scroll:SetScript("OnClick", function(_, _, down)
+			if down then
+				ns.Try(ns.Mouse.StartScroll, ns.Mouse, side == 1 and 1 or -1)
+			else
+				ns.Mouse:StopScroll()
+			end
+		end)
+	end
+	-- Need, Greed and Pass: ordinary buttons, each answering a roll for loot on its press.
+	self.lootButtons = {}
+	for _, job in ipairs(Layout.LOOT_JOBS) do
+		local button = CreateFrame("Button", "FreeControlLoot" .. job[4], header)
+		button:RegisterForClicks("AnyDown", "AnyUp")
+		button:SetScript("OnClick", function(_, _, down)
+			if down then
+				ns.Try(self.RollOnLoot, self, job[5])
+			end
+		end)
+		self.lootButtons[job[1]] = button
+	end
 	-- An explicit empty role consumes the key on this layer without changing its WoW binding.
 	self.noAction = CreateFrame("Button", "FreeControlNoAction", header, "SecureHandlerClickTemplate")
 
@@ -564,6 +715,7 @@ function Bindings:GetRoleBinding(role, set, index)
 		if self.partyButtons[command] then return "click", self.partyButtons[command]:GetName() end
 		if self.CHAT_BUTTONS[command] then return "click", self.CHAT_BUTTONS[command] end
 		if self.groupButtons[command] then return "click", self.groupButtons[command]:GetName() end
+		if self.lootButtons[command] then return "click", self.lootButtons[command]:GetName() end
 		for _, page in ipairs(Layout.PAGE_ROLES) do
 			if command == page[1] then return "click", self.pageButtons[page[3]]:GetName() end
 		end
@@ -603,6 +755,7 @@ function Bindings:Apply()
 		header:SetAttribute("fc-clickslot-" .. side, isSlotKey or nil)
 	end
 	header:SetAttribute("fc-mouse", ns.Mouse:IsOut() and 1 or nil)
+	header:SetAttribute("fc-scroll", (db.mouseScroll and ns.Mouse:IsAvailable()) or nil)
 	TellMouseMode(header)
 
 	header:SetAttribute("fc-scale-active", db.activeScale)
