@@ -301,7 +301,7 @@ function Bars:Apply()
 	-- but the arrows stay where a button bound to one finds them: only what can be seen of them
 	-- and their answering the mouse is taken away.
 	local paging = Layout.GetPageCount() > 1
-	local shown = paging and ns.db.showPager
+	local shown = paging and ns.GetBarProfile().showPager
 	PlacePager(self)
 	self.pager:SetShown(shown)
 	for _, button in pairs(self.pageButtons) do

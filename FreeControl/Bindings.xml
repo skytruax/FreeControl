@@ -5,4 +5,26 @@
 	     addon needs it binds itself. -->
 	<Binding name="CLICK FreeControlPageNext:LeftButton" category="FreeControl"/>
 	<Binding name="CLICK FreeControlPagePrev:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlLayerRelease:LeftButton" category="FreeControl"/>
+	<!-- Stepping through the party: next, previous, first and last (Layout.PARTY_JOBS). -->
+	<Binding name="CLICK FreeControlPartyNext:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPartyPrev:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPartyFirst:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPartyLast:LeftButton" category="FreeControl"/>
+	<!-- The chat keyboard and the quick phrases window (Layout.CHAT_JOBS; the Chat folder). Neither
+	     works in a fight, so their buttons are ordinary ones. -->
+	<Binding name="CLICK FreeControlChatToggle:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlPhrasesToggle:LeftButton" category="FreeControl"/>
+	<!-- Grouping up with the target: invite, ask to join, whichever of the two applies, leave the
+	     party, and the game's own menu for the target (Layout.GROUP_JOBS). Secure buttons. -->
+	<Binding name="CLICK FreeControlGroupInvite:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupRequest:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupInviteOrRequest:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupLeave:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupMenu:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlGroupAccept:LeftButton" category="FreeControl"/>
+	<!-- An item the group is rolling for: Need, Greed and Pass (Layout.LOOT_JOBS). -->
+	<Binding name="CLICK FreeControlLootNeed:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlLootGreed:LeftButton" category="FreeControl"/>
+	<Binding name="CLICK FreeControlLootPass:LeftButton" category="FreeControl"/>
 </Bindings>

@@ -56,7 +56,7 @@ Change stance or form and the bar changes with you, in the middle of a fight too
 
 Your stances stay put: a form, Stealth or a stance you put on a button shows there in every stance that has nothing of its own on it, so the way back is never lost. Or give a stance a button of its own: any no-trigger button, bumper or paddle can be *Bear Form* or *Battle Stance* for good, wearing the stance's icon and lit while you are in it. The D-pad makes a fine stance switcher.
 
-Already have Cat and Bear bars set up in the normal interface? They are on the left set and the D-pad the moment you shift. Any class can pick how much changes under *Stance sets* on the settings page.
+Already have Cat and Bear bars set up in the normal interface? They are on the left set and the D-pad the moment you shift. Any class can pick how much changes under *Change with stance* on the settings page.
 
 ### Speaks your controller
 
@@ -125,7 +125,7 @@ It binds the D-pad, the face buttons and the triggers with override bindings. Th
 - Spell flyouts (one slot holding a group of spells) open below the button and need the mouse pointer to choose from. Put the individual spells on the bar instead.
 - A Druid's left set and D-pad keep their form actions in the slots of the game's own action bar for that form, so what you drop on them in a form shows on that bar as well.
 - Stances and forms change the buttons on one page: page 1, unless the Gamepad options put the stance bar on another.
-- The game's controller slots have no place for the face buttons with no trigger held. One you turn into an action slot (which is what Y becomes with mouse mode off) shares its action with LT + RT + the same button on the page before.
+- The game's controller slots have no place for the face buttons with no trigger held. One you turn into an action slot (which is what Y becomes with mouse mode off) keeps its action, one for each page, on the second page of the game's main action bar.
 - A button you hold for combinations has no job of its own, and the buttons FreeControl uses itself (D-pad, face buttons, triggers, the two click buttons) cannot be the ones held. They can be the button a combination ends in.
 - Targeting is the game's own. *Gamepad UI enemy targeting* in the settings narrows the enemy the game picks for you to those in front of you, as that mode does; making it your target when you attack is something the game keeps for its own interface.
 - There is no vehicle or possess bar yet. Use the game's own bar for those.

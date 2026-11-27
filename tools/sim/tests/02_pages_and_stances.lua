@@ -198,6 +198,7 @@ async_test("a stance bar coming up in a fight moves the changing groups, on the 
 		SimInput.KeyDown("PADLTRIGGER")
 		SimInput.PressKey("PAD1")
 		SimInput.KeyUp("PADLTRIGGER")
+		SimInput.PressKey("F8") -- the release binding installed by 01_freecontrol.lua
 		SimInput.PressKey("PADDUP")
 		seen.used = table.concat(used, " ")
 		Turn(FreeControlPageNext)

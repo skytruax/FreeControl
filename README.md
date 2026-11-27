@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>The controller cross hotbar for World of Warcraft: Forever, in the normal interface.</b><br>
-  Hold LT, RT or both for 32 buttons. Gamepad UI mode stays off, and your targeting, menus and layout stay yours.
+  Press LT, RT or both to toggle a layer. Assign Return to main layer under Other buttons or Key Bindings.
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ controller and play.
     <td width="50%" valign="top">
       <img src="curseforge/gallery/02-sets.png" alt="The four sets: no trigger, LT, RT, and LT with RT">
       <b>32 buttons under your thumbs.</b> Four sets of eight on the D-pad and face buttons: no
-      trigger, LT, RT, and both. The set you are holding grows, and the others step back.
+      trigger, LT, RT, and both. The active set grows, and the others step back.
     </td>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/03-drop.png" alt="A spell being dragged onto an empty slot of the bar">
@@ -86,8 +86,9 @@ controller and play.
     </td>
     <td width="50%" valign="top">
       <img src="curseforge/gallery/08-controls.png" alt="The empty bar with each set labelled">
-      <b>Yours to rearrange.</b> Every no-trigger button can be an action slot, a command or your
-      own key binding, and the settings page covers the rest.
+      <b>Yours to rearrange.</b> All eight buttons on each layer can be action slots, commands or
+      your own key bindings. Open <code>/fc</code> and select a layer or a form's Main layout under
+      <i>Button assignments</i>.
     </td>
   </tr>
 </table>
@@ -145,7 +146,7 @@ because Blizzard's bar would be bound to the same buttons.
   button on the bar is lit while it is out. FreeControl binds Y itself, the way it binds
   Interact: there is nothing to set up in the Key Bindings screen. Both click buttons and the
   pointer's speed can be changed on the *Mouse mode* page of the settings. To have Y do something
-  else, click it on the bar; any other no-trigger button can be the mouse button instead (choose
+  else, use *Button assignments* to put it on any button of any layer (choose
   *Mouse pointer on / off*).
 - **No mouse mode:** untick *Mouse mode* on the settings page (`/fc mouse off`) and the mouse
   button is an ordinary action slot instead: drop a spell, an item or a macro on it, a different
@@ -169,7 +170,7 @@ because Blizzard's bar would be bound to the same buttons.
   spell in Cat or Bear form, so for a Druid the right set, the left set and the D-pad all
   change, and the both-triggers set and the face buttons stay the same in every form: that is
   where a mount or a trinket goes. The left set and the D-pad show the slots of the game's own
-  action bar for that form, so a bar you already set up there is waiting for you. *Stance sets*
+  action bar for that form, so a bar you already set up there is waiting for you. *Change with stance*
   on the settings page offers the same to any class.
   They change on one page only, as the game's own bars do: page 1, unless the Gamepad options
   put the stance bar on another. The other pages are the same in every stance or form.
@@ -189,6 +190,31 @@ because Blizzard's bar would be bound to the same buttons.
   one does and offers the common jobs in a menu: turning the page, targeting (a party member,
   the nearest enemy), Ping, the map and more. **Options > Key Bindings** does the rest. The
   stick clicks keep their jobs except while the mouse pointer is out.
+- **A job belongs to its page:** a job you give a button on the bar (click the button, or use
+  *Button assignments* in the settings) is for the page the bar is showing. On the other pages
+  the same button is an ordinary slot, or has a job of its own. That goes for every job: the
+  mouse button, turning the page and returning to the main layer too. A job you want on every
+  page is given on each of them.
+- **Stepping through the party:** four of those jobs pick a party member without a button for
+  each one: *Target next party member*, *previous*, *first* and *last*. They skip the places
+  nobody is in, work in a fight, and can go on the bar's own buttons too, so a trigger layer's
+  D-pad can be the party. Next and previous go on from the member picked last. *Target yourself*
+  is its own job.
+- **Grouping up:** six jobs in place of the macros you would write.
+  *Invite target*, *Ask to join target's group* and *Leave party* each do just that. *Invite
+  target, or ask to join* picks for you: it invites a target who is alone and asks to join one
+  who is in a group already, the way the game's own menu for a player offers one or the other.
+  In a fight it cannot look, so there it tries both and the game refuses the one that does not
+  apply, with a line of red text. *Target's menu* opens the game's own menu for your target
+  (inspect, mark, whisper, trade, ...) where the mouse pointer is, and brings the pointer out
+  so you can pick from it. *Accept group invite or request* presses Accept on the game's
+  dialog when you are invited to a group, or when someone asks to join yours; it answers no
+  other dialog. All six work in a fight.
+- **Rolling for loot:** three jobs, *Loot roll: Need*, *Greed* and *Pass*. A press answers the
+  item the group is rolling for; with several items up, each press answers the next one, and
+  chat says which item it was. For an item that binds when picked up the game asks first:
+  press the same job again to confirm, or another of the three to change your answer. They
+  work in a fight.
 - **Buttons together:** two or three buttons pressed together can have a job of their own, such
   as LB + D-pad Up for a party member or LB + RB + D-pad Right for the next page. On the
   *Combinations* page (`/fc combos`) click *Press one...*, hold the first button, press the
@@ -198,6 +224,27 @@ because Blizzard's bar would be bound to the same buttons.
 - **Changing the no-trigger buttons:** click one on the bar, or use the settings page. Each can be
   an action slot, a command (Jump, Interact, Cancel, Target nearest enemy or friend, Auto-run,
   World map, Bags, one of your stances or forms, ...) or left to your own key binding.
+- **Typing in the chat:** give a button the job *Chat keyboard* and it opens the chat with an
+  on-screen keyboard. It also comes up whenever the chat is opened another way (a name clicked
+  to whisper, a link). The **D-pad or the left stick** moves a highlight over the keys, **A**
+  types the key it is on, **X** deletes (hold it to go on deleting), **Y** sends, and **B**
+  empties the message, then closes the chat. Space, Shift and 123 (numbers, accents, symbols)
+  are keys like the rest. Move up from the top row and the highlight is on the words the
+  keyboard suggests, in English, French, German, Spanish or Italian; A takes one, and it
+  learns the words you use. **LB and RB** go through the channels shown under the keys
+  (`/s /y /p /ra /g /1 /w /r`); the channel you wrote on last is the one the keyboard opens on
+  next time, on that character, after logging in again too.
+- **Quick phrases:** the job *Quick phrases* opens a window of ready-made phrases in rows of
+  five (social, status, combat, moving, emotes, your own). The D-pad or the left stick picks
+  one, LB and RB pick the channel, A sends it and closes. X rewrites a phrase or a row's name
+  with the keyboard (Y confirms), Y opens the keyboard with the phrase to add to it, B closes.
+  A phrase that starts with `/` is run as a command (`/wave`, `/roll`). The bubble at the end
+  of the keyboard's suggestions opens the same window. The phrases are shared by all your
+  characters.
+- **While either is open the controller is its own:** the bar lets go of every button,
+  triggers included, and has them back, on its main layer, when the window closes. Neither
+  works in a fight: an open one closes when a fight starts, and the keyboard comes back after
+  if the chat is still being typed in.
 
 <details>
 <summary><b>Three game defaults worth knowing when you set up the rest of your buttons</b></summary>
@@ -238,23 +285,32 @@ because Blizzard's bar would be bound to the same buttons.
 | `/fc glow off` | Stop buttons glowing when a spell procs (`on` to bring it back). |
 | `/fc ranks` | Move every spell on the bar up to its newest rank now. `/fc ranks off` stops FreeControl doing it by itself when you learn one (`on` to bring it back). |
 | `/fc stance all` | What changes with your stance or form: `auto`, `none`, `lt`, `rt`, `both`, `ltrt` (both trigger sets) or `all` (both and the D-pad). |
+| `/fc stance custom main lt` | Your own pick of the layouts that change, on the stance page only: any of `main`, `lt`, `rt` and `both`, with two trigger sets at most. The same ticks are in the *Change with stance* menu on the settings page. |
 | `/fc mouse` | Bring the mouse pointer out or put it away, like the Y button. |
 | `/fc mouse off` | Switch mouse mode off: its button becomes an action slot (`on` to switch it back on). |
 | `/fc gamepointer off` | Stop the game bringing its mouse pointer out by itself, for playing with a real mouse (`on` to allow it again). |
 | `/fc front on` | Have the game pick only enemies in front of you, as Gamepad UI mode does (`off` for the game's own setting). |
 | `/fc click left PADLSHOULDER` | Use another button as the left (`left`) or right (`right`) mouse click while the pointer is out. `game` leaves that click to the game's own setting. |
 | `/fc pointer 150` | How fast the stick moves the mouse pointer, in percent (50 to 300). |
+| `/fc scroll off` | Keep the triggers as triggers while the mouse pointer is out. On (the default), LT is the mouse wheel up and RT the wheel down while it is out, to zoom the map or the camera and go through lists. |
 | `/fc key lt PADLSHOULDER` | Use another button as a trigger (`lt`, `rt`) or for a slot (`1`-`8`). Keyboard keys work too, for Steam Input layouts that send keys. |
+| `/fc chat` | Open the Chat page: the chat keyboard and the quick phrases. |
+| `/fc keyboard` | Open the chat with the keyboard, or close it. `off` switches the keyboard off (`on` to bring it back). |
+| `/fc keyboard unlock` | Show the keyboard with a grip to drag it by (`lock` to keep it there, `reset` to put it back beside the chat, `scale 1.2` for its size, 0.4 to 2). |
+| `/fc keyboard forget` | Empty the words the keyboard learned from you. |
+| `/fc phrases` | Open the quick phrases window, or close it. |
 | `/fc status` | What FreeControl sees: controller, slots, keys, anything that would get in the way, and any error it ran into. Include this in bug reports. |
 | `/fc trace` | Records what the game reports about the next abilities you use, for twenty seconds. Type it again to see the result in a box you can copy from. For reports about cooldowns. |
 
 Other settings on the page: how much the held set grows, how far the others fade, button labels
 (Xbox, PlayStation, Nintendo, or matched to your controller), cooldown numbers, whether the bar
-has pages and shows its page selector, what changes with your stance or form (*Stance sets*:
+has pages and shows its page selector, what changes with your stance or form (*Change with stance*:
 automatic unless you choose otherwise, and its tooltip says what that comes to on your
-character), *Gamepad UI enemy targeting*, and the switch for mouse mode. Three more pages sit
+character), *Gamepad UI enemy targeting*, and the switch for mouse mode. Four more pages sit
 under FreeControl: **Mouse mode**, with the two click buttons, the pointer speed and whether the
-game may bring the pointer out by itself; **Other buttons**; and **Combinations**.
+game may bring the pointer out by itself; **Other buttons**; **Combinations**; and **Chat**, with
+the chat keyboard (on or off, whether it opens with the chat, key layout, the language of its
+words, whether it learns yours and comes back to the last channel) and the quick phrases.
 
 ## What it changes, and puts back
 
@@ -309,14 +365,14 @@ when FreeControl is switched off.
   to the enemies in front of you.
 - The game's controller slots have no place for the four face buttons with no trigger held. A
   face button you make an action slot (which is what the mouse button becomes with mouse mode
-  off) borrows the LT + RT slot of the same button on the page before: Y on page 1 and LT + RT +
-  Y on page 3 are one slot, and so on round. It has its own action on each page, but that action
-  also shows on the other button.
+  off) keeps its action in a slot of its own for each page, on the second page of the game's
+  main action bar (slots 13 to 24). No other button of FreeControl's shows those, but the
+  game's main bar does if you turn it to its second page.
 - A second changing set and the D-pad keep their stance actions in the slots of the game's own
   action bar for that stance, so what you drop on them in a form also shows on that bar. The
   rest of your regular action bars is never touched.
 - With `/fc slots bars` there is one page, and Automatic changes nothing with your stance: pick
-  a set under *Stance sets* yourself. One set and the D-pad can change there, not two sets.
+  a set under *Change with stance* yourself. One set and the D-pad can change there, not two sets.
 - Which bar each form of each class brings up is the game's own data. FreeControl follows what
   the game reports; `/fc status`, typed while in a form, shows it.
 - No vehicle or possess bar yet: use the game's own bar for those.
@@ -515,7 +571,19 @@ FreeControl is released under the [MIT licence](LICENSE). One file is the except
 and stays under the GPL 3.0, whose text sits next to it. It is test tooling and is not part of the
 addon you install.
 
-The addon's artwork is drawn by the scripts in `tools/`, and the addon ships no Blizzard art. The
+The chat keyboard's frame, its word prediction, its channel row and the quick phrases
+(`FreeControl/Chat/`) are ported from
+[Easy Controller - Forever](https://github.com/moust4ki/EasyControllerWowForever) by moust4ki,
+under its MIT licence; the pictures in `FreeControl/Chat/Textures/` are that addon's. The keys
+themselves and their buttons (`Keyboard.lua`, `Input.lua`) are FreeControl's own, on that addon's
+key layouts. The five
+word lists (`Dict_*.lua`) come with it from
+[FrequencyWords](https://github.com/hermitdave/FrequencyWords) by Hermit Dave and are under
+CC-BY-SA-4.0. Both notices are in
+[FreeControl/Chat/LICENSE-EasyController.txt](FreeControl/Chat/LICENSE-EasyController.txt), which
+ships in the addon's zip.
+
+The rest of the addon's artwork is drawn by the scripts in `tools/`, and the addon ships no Blizzard art. The
 spell icons that appear in the pictures are Blizzard Entertainment's, shown the way any screenshot
 of the game shows them; they are not part of the addon and are not covered by the MIT licence.
 World of Warcraft is a trademark of Blizzard Entertainment. FreeControl is a fan-made addon and is

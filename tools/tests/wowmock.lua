@@ -53,6 +53,8 @@ local M = {
 	actions = {},          -- [slot] = { texture, usable, noMana, cooldown, count, current, equipped, text }
 	used = {},             -- UseAction calls: { slot, unit, button }
 	commands = {},         -- binding commands run: { name, "down" | "up" }
+	units = {},            -- [unit] = true for the units there are besides the player: "party2"
+	targeted = {},         -- the units secure "target" buttons targeted, in order
 	bindings = {},         -- override bindings: [key] = { owner, kind = "click" | "cmd", target, button }
 	userBindings = {},     -- the player's own key bindings: [key] = command, as the Key Bindings screen sets them
 	savedBindings = {},    -- SaveBindings calls: the binding set each one saved
@@ -154,7 +156,10 @@ local Region = {}
 Region.__index = Region
 for _, name in ipairs({ "SetPoint", "ClearAllPoints", "SetAllPoints", "SetSize", "SetWidth", "SetHeight",
 	"SetTexCoord", "SetVertexColor", "SetBlendMode", "AddMaskTexture", "SetColorTexture", "SetDrawLayer",
-	"SetWordWrap", "SetJustifyH", "SetFontObject" }) do
+	"SetWordWrap", "SetJustifyH", "SetFontObject",
+	-- What the chat keyboard and the quick phrases window draw with (the Chat folder).
+	"SetFont", "SetShadowOffset", "SetShadowColor", "SetTextColor", "SetJustifyV", "SetMaxLines", "SetRotation",
+	"SetGradient", "SetHorizTile", "SetVertTile", "SetThickness", "SetStartPoint", "SetEndPoint" }) do
 	Region[name] = function(self, ...) self.calls[name] = { ... } end
 end
 -- Every picture the addon asks for is noted, so a test can check that the file is there: a
@@ -166,6 +171,13 @@ local function noteTexture(texture)
 end
 function Region:SetTexture(texture, ...) self.texture = noteTexture(texture) end
 function Region:GetTexture() return self.texture end
+-- One of the game's own pictures, by name. Only the ones in M.atlases exist (C_Texture.GetAtlasInfo).
+function Region:SetAtlas(name)
+	assert(M.atlases[name], "no such atlas: " .. tostring(name))
+	self.atlas = name
+end
+-- How wide a text is drawn: this model's letters are all 7 wide.
+function Region:GetStringWidth() return #(self.text or "") * 7 end
 function Region:SetAlpha(alpha) self.alpha = alpha end
 function Region:GetAlpha() return self.alpha end
 function Region:Show() self.shown = true end
@@ -359,9 +371,52 @@ function Frame:GetText()
 end
 
 -- Edit boxes
-for _, name in ipairs({ "SetMultiLine", "SetAutoFocus", "SetFontObject", "SetFocus", "ClearFocus", "HighlightText" }) do
+for _, name in ipairs({ "SetMultiLine", "SetAutoFocus", "SetFontObject", "HighlightText", "SetFont", "SetTextColor",
+	"SetTextInsets", "SetMaxLetters" }) do
 	Frame[name] = function(self, ...) self.__calls[name] = { ... } end
 end
+-- One edit box at a time is being typed in (M.focus), and a box is told when it becomes that one
+-- and when it stops being it, as the client tells it.
+function Frame:SetFocus()
+	self.__calls.SetFocus = {}
+	if M.focus == self then return end
+	if M.focus then M.focus:ClearFocus() end
+	M.focus = self
+	local fn = self.__scripts.OnEditFocusGained
+	if fn then fn(self) end
+end
+function Frame:ClearFocus()
+	self.__calls.ClearFocus = {}
+	if M.focus ~= self then return end
+	M.focus = nil
+	local fn = self.__scripts.OnEditFocusLost
+	if fn then fn(self) end
+end
+function Frame:HasFocus() return M.focus == self end
+
+-- What the chat keyboard's frames ask of the client (the Chat folder). A frame made without a
+-- parent and given one afterwards is that parent's child from then on. Nothing here is laid out:
+-- a frame has no place on the screen to report (GetLeft answers nothing), as one that has not
+-- been drawn yet has none in the client.
+function Frame:SetParent(parent)
+	guard(self, "SetParent")
+	self.__parent = parent
+	if parent then self.__level = parent.__level + 1 end
+	if self.__protected then markAncestors(self) end
+end
+function Frame:GetHeight() return self.__height or 0 end
+function Frame:GetLeft() return nil end
+function Frame:GetBottom() return nil end
+function Frame:GetEffectiveScale() return self.__scale end
+function Frame:GetPoint()
+	local call = self.__calls.SetPoint
+	if call then return unpack(call, 1, 5) end
+end
+function Frame:Raise() self.__raised = (self.__raised or 0) + 1 end
+function Frame:IsMouseOver() return M.mouseOver == self end
+-- A frame that asked for the sticks is told where they are (the scenario runs its OnGamePadStick).
+function Frame:EnableGamePadStick(enable) guard(self, "EnableGamePadStick"); self.__sticks = enable and true or false end
+function Frame:CreateLine() return NewRegion("Line") end
 
 -- A frame that asked for the keyboard or the controller's buttons gets every press while it is
 -- on screen, before any binding (M.KeyDown). Both calls are protected on a protected frame.
@@ -415,6 +470,8 @@ end
 local RESTRICTED = {
 	math = math, string = string, select = select, tonumber = tonumber, tostring = tostring, type = type,
 	format = string.format, strsub = string.sub, strlen = string.len, floor = math.floor, max = math.max, min = math.min,
+	-- Blizzard_RestrictedAddOnEnvironment/RestrictedEnvironment.lua lets snippets ask this.
+	UnitExists = function(unit) return unit == "player" or M.units[unit] == true end,
 }
 
 function Handle(frame)
@@ -441,6 +498,7 @@ function Handle(frame)
 	function h:SetAlpha(alpha) target():SetAlpha(tonumber(alpha)) end
 	function h:Show() target():Show() end
 	function h:Hide() target():Hide() end
+	function h:IsShown() return target():IsShown() end
 	function h:ClearBindings() ClearOverrideBindings(target()) end
 	function h:ClearBinding(key) SetOverrideBinding(target(), true, key, nil) end
 	function h:SetBindingClick(priority, key, name, button)
@@ -489,6 +547,21 @@ local function addHandlerMethods(frame)
 		if M.combat then error("Cannot use SetFrameRef in combat", 2) end
 		self.__attrs["frameref-" .. label] = Handle(ref)
 	end
+	-- Port of SecureHandlerWrapScript for a body that runs before the script it wraps: the body
+	-- gets the wrapped frame as self and this frame as control, runs as secure code, and the
+	-- frame's own script follows. (A body that returns false to stop the script is not modelled.)
+	function frame:WrapScript(wrapped, name, body)
+		if M.combat then error("Cannot call WrapScript in combat", 2) end
+		assert(wrapped.__protected, "only an explicitly protected frame can be wrapped")
+		assert(name == "OnClick", "mock only wraps OnClick")
+		local original = assert(wrapped.__scripts[name], "nothing to wrap")
+		local control = Handle(self)
+		wrapped.__scripts[name] = function(button, inputButton, down, ...)
+			RunSnippet(button, "self,control,button,down", body, Handle(button), control, inputButton, down)
+			return original(button, inputButton, down, ...)
+		end
+		wrapped.__secureClick = true
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -536,7 +609,25 @@ function SecureActionButton_OnClick(self, inputButton, down, isKeyPress, isSecur
 	useOnKeyDown = not isSecureMousePress and (useOnKeyDown or pressAndHoldAction)
 	local clickAction = (down and useOnKeyDown) or (not down and not useOnKeyDown)
 	if clickAction then
-		assert(self:GetAttribute("type") == "action", "mock only models type=action")
+		if self:GetAttribute("type") == "target" then
+			-- SECURE_ACTIONS.target: a button with no unit targets nothing.
+			local unit = self:GetAttribute("unit")
+			if unit then M.targeted[#M.targeted + 1] = unit end
+			return true
+		end
+		if self:GetAttribute("type") == "togglemenu" then
+			-- SECURE_ACTIONS.togglemenu: the game's own menu for the button's unit, at the pointer.
+			M.menusOpened = M.menusOpened or {}
+			M.menusOpened[#M.menusOpened + 1] = self:GetAttribute("unit")
+			return true
+		end
+		if self:GetAttribute("type") == "macro" then
+			-- SECURE_ACTIONS.macro: the button's own text is run, line by line, as a macro's is.
+			local text = self:GetAttribute("macrotext")
+			if text and text ~= "" then M.RunMacroText(text) end
+			return true
+		end
+		assert(self:GetAttribute("type") == "action", "mock only models type=action, type=target and type=macro")
 		-- Fields the real click path reads; a tainted value here blocks the action in combat.
 		assert(rawget(self, "popup") == nil and rawget(self, "isExtra") == nil and rawget(self, "buttonType") == nil,
 			"a field read by the secure click path was written by the addon")
@@ -573,6 +664,11 @@ local TEMPLATES = {
 	end,
 	CooldownFrameTemplate = noop,
 	UIPanelButtonTemplate = noop,
+	-- A tooltip of the addon's own. What it was asked to show is kept for the scenarios.
+	GameTooltipTemplate = function(f)
+		f.__shown = false
+		function f:SetOwner(owner, anchor) self.owner, self.anchor = owner, anchor end
+	end,
 	UICheckButtonTemplate = function(f) f.Text = NewRegion("FontString") end,
 }
 
@@ -855,22 +951,39 @@ local function bindGuard(what)
 	if M.combat and insecure() then error("BLOCKED: " .. what .. " in combat", 3) end
 end
 
+-- An override binding belongs to the frame that made it, and a key can have one from each of
+-- several frames at once: the one made last is the one in force (M.bindings), and when its frame
+-- takes it back the one before it is in force again. That is how the chat keyboard borrows the
+-- bar's keys while it is open and hands them back by clearing its own (Chat/Input.lua). The order
+-- among owners is this model's reading of the client, not something seen in its code.
+M.overrides = {}           -- [key] = every frame's override on it, oldest first
+
+local function setOverride(owner, key, binding)
+	local list = M.overrides[key] or {}
+	M.overrides[key] = list
+	for i = #list, 1, -1 do
+		if list[i].owner == owner then table.remove(list, i) end
+	end
+	if binding then list[#list + 1] = binding end
+	M.bindings[key] = list[#list]
+end
+
 function SetOverrideBindingClick(owner, priority, key, name, button)
 	bindGuard("SetOverrideBindingClick")
 	assert(type(key) == "string" and key ~= "", "bad key")
-	M.bindings[key] = { owner = owner, kind = "click", target = name, button = button }
+	setOverride(owner, key, { owner = owner, kind = "click", target = name, button = button })
 end
 
 function SetOverrideBinding(owner, priority, key, command)
 	bindGuard("SetOverrideBinding")
 	assert(type(key) == "string" and key ~= "", "bad key")
-	M.bindings[key] = command and { owner = owner, kind = "cmd", target = command } or nil
+	setOverride(owner, key, command and { owner = owner, kind = "cmd", target = command } or nil)
 end
 
 function ClearOverrideBindings(owner)
 	bindGuard("ClearOverrideBindings")
-	for key, binding in pairs(M.bindings) do
-		if binding.owner == owner then M.bindings[key] = nil end
+	for key in pairs(M.overrides) do
+		setOverride(owner, key, nil)
 	end
 end
 
@@ -1149,6 +1262,17 @@ M.SetCursor = setCursor
 function PickupAction(slot)
 	if M.combat and insecure() then error("BLOCKED: PickupAction in combat", 2) end
 	M.picked[#M.picked + 1] = slot
+	-- The real client takes the action out of the slot. Most scenarios only ask what was picked
+	-- up, so that part is modelled where a scenario asks for it (M.pickupRemoves).
+	if M.pickupRemoves and M.actions[slot] then
+		M.actions[slot] = nil
+		setCursor("action")
+		local depth = M.secure
+		M.secure = 0
+		M.Fire("ACTIONBAR_SLOT_CHANGED", slot)
+		M.secure = depth
+		return
+	end
 	setCursor("action")
 end
 -- Dropping a spell on a slot puts it there and leaves what was in the slot on the cursor.
@@ -1215,6 +1339,13 @@ function M.Learn(spell, name)
 end
 
 C_Spell = C_Spell or {}
+-- Picks a spell up by its number: nothing for one the character does not have right now
+-- (M.unknownSpells, for a spell of the other talent group).
+function C_Spell.PickupSpell(spell)
+	if M.combat and insecure() then error("BLOCKED: PickupSpell in combat", 2) end
+	if M.unknownSpells and M.unknownSpells[spell] then return end
+	setCursor({ kind = "spell", spell = spell })
+end
 function C_Spell.GetSpellName(spell)
 	for _, item in ipairs(M.book) do
 		if item.spell == spell then return item.name end
@@ -1257,7 +1388,8 @@ M.FORMS = {
 	},
 	WARRIOR = { { "Battle Stance", 2457, 1 }, { "Defensive Stance", 71, 2 }, { "Berserker Stance", 2458, 3 } },
 	ROGUE = { { "Stealth", 1784, 1 } },
-	PRIEST = { { "Shadowform", 15473, 1 } },
+	PRIEST = { { "Shadowform", 15473, 0 } }, -- in Forever it turns no bar
+	PALADIN = { { "Devotion Aura", 465, 0 }, { "Retribution Aura", 7294, 0 } },
 }
 local function forms() return M.forms or M.FORMS[M.class] or {} end
 M.GetForms = forms
@@ -1315,9 +1447,25 @@ function M.ShapeshiftTo(name)
 	end
 	error("this class has no form called " .. name)
 end
+-- The player, and whoever is targeted (M.target: a name, or nil for nobody). In a fight on a
+-- client that seals things, who the target is comes back sealed.
 function UnitGUID(unit)
-	assert(unit == "player", "mock only knows the player")
+	if unit == "target" then
+		if not M.target then return nil end
+		local guid = "Player-1-" .. M.target
+		if M.sealTarget and M.combat and M.secure == 0 then return M.Seal(guid) end
+		return guid
+	end
+	assert(unit == "player", "mock only knows the player and the target")
 	return M.guid
+end
+-- What the game's own menu for a player offers: to invite them, or, for one who is in a group
+-- already (M.grouped[name]), to ask to join it. Blizzard's function, in its interface code.
+M.grouped = {}
+function GetDisplayedInviteType(guid)
+	assert(type(guid) == "string", "GetDisplayedInviteType wants a GUID that can be read")
+	local name = guid:match("^Player%-1%-(.+)$")
+	return M.grouped[name] and "REQUEST_INVITE" or "INVITE"
 end
 function IsModifiedClick(action) return action == "PICKUPACTION" and M.pickupModifier end
 
@@ -1410,7 +1558,11 @@ local function tooltipText(method, text)
 end
 function GameTooltip:SetText(text) self.lines = { tooltipText("SetText", text) } end
 function GameTooltip:AddLine(text) self.lines[#self.lines + 1] = tooltipText("AddLine", text) end
-function GameTooltip:SetAction(slot) self.lines = { "action " .. slot }; return M.actions[slot] ~= nil end
+function GameTooltip:SetAction(slot)
+	local action = M.actions[slot]
+	self.lines = { action and action.tooltip or "action " .. slot }
+	return action and action.refreshTooltip or false
+end
 function GameTooltip:Show() self.shown = true end
 function GameTooltip:Hide() self.shown = false; self.owner = nil end
 function GameTooltip_SetDefaultAnchor(tooltip, owner) tooltip:SetOwner(owner) end
@@ -1436,3 +1588,182 @@ function CopyTable(t)
 	for k, v in pairs(t) do copy[k] = type(v) == "table" and CopyTable(v) or v end
 	return copy
 end
+
+---------------------------------------------------------------------------
+-- The chat
+---------------------------------------------------------------------------
+-- What the chat keyboard and the quick phrases (the Chat folder) need of the client:
+--
+--   * one chat edit box, ChatFrame1EditBox, with the channel it is on in its attributes as the
+--     client keeps it (chatType, stickyType, tellTarget, channelTarget). Opening the chat shows
+--     it and gives it the focus; its Escape handler empties it and lets the focus go;
+--   * a message is sent by C_ChatInfo.SendChatMessage, which notes it in M.sent. The slash
+--     commands a macro can hold are run through it (M.RunMacroText), the way the client runs a
+--     macro's lines: the chat edit box's own channel is not moved by them;
+--   * hooksecurefunc runs the hook after the function, as addon code.
+M.atlases = {}             -- the game's own pictures this client has, by name
+M.locale = "enUS"
+M.sent = {}                -- chat messages sent: { text, chatType, target }
+M.macroLines = {}          -- the other lines macros ran: "/wave"
+M.inGroup, M.inRaid, M.inGuild = false, false, false
+M.lastTell = nil           -- who whispered the player last
+M.channels = { [1] = "General" }
+M.mouseDown = false
+M.registry = {}            -- EventRegistry callbacks: [event] = { fn, ... }
+
+function GetLocale() return M.locale end
+format = string.format
+function IsInGroup() return M.inGroup or M.inRaid end
+function IsInRaid() return M.inRaid end
+function IsInGuild() return M.inGuild end
+function GetNumGroupMembers() return 0 end
+function UnitName(unit) return unit == "player" and (M.playerName or "Tester") or nil end
+function GetRealmName() return "Testrealm" end
+function GetChannelName(id)
+	local name = M.channels[tonumber(id) or 0]
+	if name then return tonumber(id), name end
+	return 0, nil
+end
+function IsMouseButtonDown() return M.mouseDown end
+C_Texture = { GetAtlasInfo = function(name) return M.atlases[name] and {} or nil end }
+ChatTypeInfo = setmetatable({}, { __index = function() return { r = 1, g = 0.5, b = 0.25 } end })
+NUM_CHAT_WINDOWS = 1
+
+function hooksecurefunc(owner, name, hook)
+	if type(owner) == "string" then owner, name, hook = _G, owner, name end
+	local original = assert(owner[name], "nothing to hook: " .. tostring(name))
+	owner[name] = function(...)
+		local results = { original(...) }
+		local depth = M.secure
+		M.secure = 0
+		hook(...)
+		M.secure = depth
+		return unpack(results)
+	end
+end
+
+EventRegistry = {}
+function EventRegistry:RegisterCallback(event, fn, owner)
+	M.registry[event] = M.registry[event] or {}
+	table.insert(M.registry[event], function(...) fn(owner, ...) end)
+end
+
+C_ChatInfo = {
+	SendChatMessage = function(text, chatType, language, target)
+		M.sent[#M.sent + 1] = { text = text, chatType = chatType or "SAY", target = target }
+	end,
+}
+
+ChatFrame1 = CreateFrame("Frame", "ChatFrame1", UIParent)
+ChatFrame1EditBox = CreateFrame("EditBox", "ChatFrame1EditBox", ChatFrame1)
+ChatFrame1EditBox:Hide()
+ChatFrame1EditBox.__attrs.chatType, ChatFrame1EditBox.__attrs.stickyType = "SAY", "SAY"
+-- The box's own handlers are the game's, set before any addon's hooks.
+ChatFrame1EditBox.__scripts.OnEscapePressed = function(self)
+	self.__text = ""
+	self.__attrs.chatType = self.__attrs.stickyType
+	self:ClearFocus()
+	self:Hide()
+end
+
+ChatFrameUtil = {
+	GetActiveWindow = function() return M.focus == ChatFrame1EditBox and ChatFrame1EditBox or nil end,
+	OpenChat = function(text)
+		ChatFrame1EditBox.__text = text or ""
+		ChatFrame1EditBox:Show()
+		ChatFrame1EditBox:SetFocus()
+	end,
+	GetLastTellTarget = function() return M.lastTell end,
+	GetLastToldTarget = function() return nil end,
+}
+
+-- The player opens the chat: on its usual channel, or on another one for this message only (a
+-- name clicked to whisper; the box keeps that name afterwards, as the client's does). The
+-- addon's timers that wait for the next frame are let run.
+function M.OpenChat(chatType, target)
+	local box = ChatFrame1EditBox
+	box.__attrs.chatType = chatType or box.__attrs.stickyType
+	if target then box.__attrs.tellTarget = target end
+	ChatFrameUtil.OpenChat("")
+	M.Advance(0)
+end
+
+-- The player types a slash command that moves the chat's own channel for good ("/g").
+function M.SetChatSticky(chatType)
+	ChatFrame1EditBox.__attrs.chatType, ChatFrame1EditBox.__attrs.stickyType = chatType, chatType
+end
+
+-- The lines of a macro, run by the game. A chat command sends its message; anything else is
+-- noted as it is.
+local MACRO_CHAT = { ["/s"] = "SAY", ["/y"] = "YELL", ["/p"] = "PARTY", ["/ra"] = "RAID", ["/g"] = "GUILD",
+	["/o"] = "OFFICER", ["/i"] = "INSTANCE_CHAT", ["/rw"] = "RAID_WARNING", ["/e"] = "EMOTE" }
+function M.RunMacroText(text)
+	for line in text:gmatch("[^\n]+") do
+		local command, rest = line:match("^(/%S+)%s*(.*)$")
+		local number = command and tonumber(command:match("^/(%d+)$"))
+		if command == "/r" then
+			C_ChatInfo.SendChatMessage(rest, "WHISPER", nil, M.lastTell)
+		elseif number then
+			C_ChatInfo.SendChatMessage(rest, "CHANNEL", nil, number)
+		elseif MACRO_CHAT[command] then
+			C_ChatInfo.SendChatMessage(rest, MACRO_CHAT[command])
+		else
+			M.macroLines[#M.macroLines + 1] = line
+		end
+	end
+end
+
+-- Where a stick is: told to the frames that asked for the sticks and are on screen.
+function M.Stick(stick, x, y)
+	for _, frame in ipairs(M.all) do
+		local fn = frame.__sticks and frame:IsVisible() and frame.__scripts.OnGamePadStick
+		if fn then fn(frame, stick, x, y) end
+	end
+end
+-- The game's dialogs that ask a question (static popups): the ones on screen, by kind
+-- (M.popups[which] = a dialog), and the answers given them: { which, button }.
+M.popups = {}
+M.popupAnswers = {}
+function StaticPopup_FindVisible(which) return M.popups[which] end
+function StaticPopup_OnClick(dialog, index)
+	assert(dialog and M.popups[dialog.which] == dialog, "StaticPopup_OnClick wants a dialog that is on screen")
+	M.popupAnswers[#M.popupAnswers + 1] = { which = dialog.which, button = index }
+	M.popups[dialog.which] = nil
+end
+-- The game asks: an invitation ("PARTY_INVITE"), someone asking to join ("GROUP_INVITE_CONFIRMATION").
+function M.Ask(which) M.popups[which] = { which = which } end
+-- Items the group is rolling for: M.rolls is the list still going, each { id =, name =, bop =,
+-- canNeed =, canGreed = }; M.rollsMade is what was answered: { id, kind } (0 pass, 1 need,
+-- 2 greed). An item that binds when picked up is not rolled for at once: the game asks first.
+M.rolls = {}
+M.rollsMade = {}
+local function findRoll(id)
+	for _, roll in ipairs(M.rolls) do
+		if roll.id == id then return roll end
+	end
+	error("no such loot roll: " .. tostring(id), 3)
+end
+function GetActiveLootRollIDs()
+	local ids = {}
+	for index, roll in ipairs(M.rolls) do ids[index] = roll.id end
+	return ids
+end
+function GetLootRollItemInfo(id)
+	local roll = findRoll(id)
+	return "icon", roll.name, 1, 3, roll.bop or false, roll.canNeed ~= false, roll.canGreed ~= false, false
+end
+function GetLootRollItemLink(id) return "[" .. findRoll(id).name .. "]" end
+function RollOnLoot(id, kind)
+	local roll = findRoll(id)
+	M.rollsMade[#M.rollsMade + 1] = { id = id, kind = kind }
+	if roll.bop and kind ~= 0 then M.Ask("CONFIRM_LOOT_ROLL") end
+end
+function StaticPopup_Hide(which) M.popups[which] = nil end
+-- What the mouse pointer is on (M.mouseOver, a frame or nil for the world), as the client tells
+-- an addon that asks; whether a frame has a handler of a kind; and the camera's zoom, which is
+-- what the wheel turns over the world: M.zoomed counts the notches in (+) and out (-).
+function GetMouseFoci() return { M.mouseOver } end
+function Frame:HasScript(name) return name == "OnMouseWheel" or self.__scripts[name] ~= nil end
+M.zoomed = 0
+function CameraZoomIn(amount) M.zoomed = M.zoomed + amount end
+function CameraZoomOut(amount) M.zoomed = M.zoomed - amount end
